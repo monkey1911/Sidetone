@@ -351,7 +351,7 @@ namespace dvmcli
             tui.consoleRidForTest = 9000001;
             tui.OnP25Control(P25Defines.TSBK_IOSP_CALL_ALRT, 1234, 9000001, null);
             string screenText = string.Join("\n", Enumerable.Range(0, 40).Select(y => tui.Render(120, 40).RowText(y)));
-            Check(screenText.Contains("aliases 3"), "TUI title shows the alias count");
+            Check(tui.Render(200, 40).RowText(1).Contains("aliases 3"), "TUI title shows the alias count (when the title box has room)");
             Check(screenText.Contains("call alert (page) from Dispatch (1234)") && screenText.Contains("Dispatch"),
                   "TUI log and recent calls show the alias");
         }
