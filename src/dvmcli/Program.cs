@@ -17,6 +17,9 @@ using dvmconsole;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
 
+// Linux only (PipeWire, Unix sockets and file modes)
+[assembly: System.Runtime.Versioning.SupportedOSPlatform("linux")]
+
 namespace dvmcli
 {
     public static class Program
