@@ -190,8 +190,10 @@ namespace dvmcli
                 AddLog(settingsError);
             aliases.Load();
             RestoreSettings();
+            StartControl();
             peer.Start();
 
+            ClaimUiThread();
             Terminal term = new Terminal();
             try
             {
@@ -199,17 +201,20 @@ namespace dvmcli
                 {
                     while (term.TryRead(out InputEvent e))
                         HandleInput(e);
+                    RunControlCalls();
 
                     Housekeeping();
                     (int w, int h) = term.Size;
                     Render(w, h);
                     term.Write(screen.Flush());
-                    Thread.Sleep(50);
+                    wake.WaitOne(50);       // control commands wake the loop at once
                 }
             }
             finally
             {
                 term.Dispose();
+                StopControl();
+                RunControlCalls();  // answer anything still queued
                 CancelTones(wait: true);
                 SaveSettings();     // before the channels are closed below
                 StopTx("console closed");
@@ -426,39 +431,43 @@ namespace dvmcli
                 return;
             }
 
+            StartTx();
+        }
+
+        /// <summary>
+        /// Starts transmitting on the focused channel. Returns null on success, or the reason
+        /// it didn't (also written to the log).
+        /// </summary>
+        private string StartTx()
+        {
+            string Refuse(string why)
+            {
+                AddLog(why);
+                return why;
+            }
+
             Chan c = chans[cursor];
             if (!c.IsP25)
-            {
-                AddLog($"{c.Cfg.Name}: can't transmit on a {c.Cfg.Mode} channel");
-                return;
-            }
+                return Refuse($"{c.Cfg.Name}: can't transmit on a {c.Cfg.Mode} channel");
             if (c.Cfg.RxOnly)
-            {
-                AddLog($"{c.Cfg.Name}: receive-only channel");
-                return;
-            }
+                return Refuse($"{c.Cfg.Name}: receive-only channel");
             if (peer == null || !peer.Connected)
-            {
-                AddLog("not connected to the FNE yet");
-                return;
-            }
+                return Refuse("not connected to the FNE yet");
 
             Select(c);
 
             P25Transmitter t = new P25Transmitter(peer, keys, peer.ConsoleRid, c.Tg, c.TxAlg, c.KeyId);
             if (!t.Start(out string error))
             {
-                AddLog($"{c.Cfg.Name}: not transmitting: {error}");
                 if (c.Encrypted && KeyStore.IsSupported(c.KeyRequestAlg))
                     peer.RequestKey(c.KeyRequestAlg, c.KeyId);
-                return;
+                return Refuse($"{c.Cfg.Name}: not transmitting: {error}");
             }
 
             if (!OpenMic(out string micError))
             {
                 t.Stop();
-                AddLog($"{c.Cfg.Name}: no microphone ({micError})");
-                return;
+                return Refuse($"{c.Cfg.Name}: no microphone ({micError})");
             }
 
             tx = t;
@@ -467,6 +476,7 @@ namespace dvmcli
             if (talkPermit)
                 c.Sink?.Write(TalkPermitPcm());     // played locally once the call has started, as the Windows console does
             AddLog($"{c.Cfg.Name}: TX start as {peer.ConsoleRid}{(t.Encrypted ? $" ({KeyStore.AlgorithmName(t.AlgorithmId)} key 0x{t.KeyId:X4})" : " (clear)")}");
+            return null;
         }
 
         private void StopTx(string reason)
@@ -489,6 +499,144 @@ namespace dvmcli
             tx = null;
             txChan = null;
             CloseMicIfUnused();
+
+            // a "ptt hold" client exits when its transmission ends, however it ended
+            ControlSession held = holdSession;
+            holdSession = null;
+            held?.Close();
+        }
+
+        /*
+        ** Control socket (dvmcli ptt)
+        */
+
+        /// <summary>Control socket path, or null for none.</summary>
+        internal string ControlSocketPath { get; set; }
+
+        private ControlServer control;
+        private ControlSession holdSession;
+        private readonly System.Collections.Concurrent.ConcurrentQueue<(Func<string> Action, TaskCompletionSource<string> Done)> uiCalls = new();
+        private readonly AutoResetEvent wake = new AutoResetEvent(false);
+        private int uiThreadId = -1;
+
+        /// <summary>Marks the calling thread as the UI thread (Run does this; the self-test too).</summary>
+        internal void ClaimUiThread() => uiThreadId = Environment.CurrentManagedThreadId;
+
+        /// <summary>Starts the control socket (self-test hook; Run calls it too).</summary>
+        internal bool ControlRunning => control != null;
+
+        internal void StartControl()
+        {
+            if (string.IsNullOrWhiteSpace(ControlSocketPath))
+                return;
+            try
+            {
+                control = new ControlServer(ControlSocketPath, HandleControl);
+                control.Start();
+                AddLog($"control: PTT socket at {ControlSocketPath} (dvmcli ptt down / up / toggle / hold)");
+            }
+            catch (Exception ex)
+            {
+                control = null;
+                AddLog($"control: no PTT socket ({ex.Message}); start with --socket PATH to use another");
+            }
+        }
+
+        internal void StopControl()
+        {
+            ControlServer c = control;
+            control = null;
+            c?.Dispose();
+        }
+
+        /// <summary>Runs a control command on the UI thread and waits for its reply.</summary>
+        private string OnUiThread(Func<string> action)
+        {
+            if (Environment.CurrentManagedThreadId == uiThreadId)
+                return action();    // already on the UI thread (the console closing a held session itself)
+            TaskCompletionSource<string> done = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+            uiCalls.Enqueue((action, done));
+            wake.Set();
+            return done.Task.Wait(TimeSpan.FromSeconds(3)) ? done.Task.Result : "error: the console didn't answer";
+        }
+
+        /// <summary>Runs queued control commands (UI thread).</summary>
+        internal void RunControlCalls()
+        {
+            while (uiCalls.TryDequeue(out var call))
+            {
+                try { call.Done.TrySetResult(call.Action()); }
+                catch (Exception ex) { call.Done.TrySetResult($"error: {ex.Message}"); }
+            }
+        }
+
+        /// <summary>Handles one control command line (connection thread).</summary>
+        internal string HandleControl(string line, ControlSession session)
+        {
+            string cmd = string.Join(' ', line.ToLowerInvariant().Split(' ', StringSplitOptions.RemoveEmptyEntries));
+            switch (cmd)
+            {
+                case "ptt down":
+                    return OnUiThread(() => PttDown(null));
+                case "ptt up":
+                    return OnUiThread(PttUp);
+                case "ptt toggle":
+                    return OnUiThread(() => Transmitting ? PttUp() : PttDown(null));
+                case "ptt hold":
+                    session.Closed += () => OnUiThread(() => ReleaseHold(session));
+                    return OnUiThread(() => PttDown(session));
+                case "status":
+                    return OnUiThread(ControlStatus);
+                case "help":
+                    return "ok: commands: ptt down, ptt up, ptt toggle, ptt hold, status, help";
+                default:
+                    return $"error: unknown command '{line}' (try 'help')";
+            }
+        }
+
+        private string PttDown(ControlSession session)
+        {
+            if (Transmitting)
+            {
+                if (session != null)
+                    holdSession = session;      // releasing this hold now ends the transmission
+                return $"ok: already transmitting on {txChan?.Cfg.Name}";
+            }
+            if (toneJob != null)
+                return "error: tones are being sent; stop them first";
+            string error = StartTx();
+            if (error != null)
+                return $"error: {error}";
+            holdSession = session;
+            return $"ok: transmitting on {txChan?.Cfg.Name} (tg {tx.Talkgroup})";
+        }
+
+        private string PttUp()
+        {
+            if (!Transmitting)
+                return "ok: not transmitting";
+            string name = txChan?.Cfg.Name;
+            StopTx(null);
+            return $"ok: stopped transmitting on {name}";
+        }
+
+        private string ReleaseHold(ControlSession session)
+        {
+            if (holdSession != session)
+                return "ok";
+            holdSession = null;
+            if (Transmitting)
+                StopTx("PTT released");
+            return "ok";
+        }
+
+        private string ControlStatus()
+        {
+            if (Transmitting)
+                return $"ok: transmitting on {txChan?.Cfg.Name} (tg {tx.Talkgroup}) for {(DateTime.Now - tx.StartedAt).TotalSeconds:F0} s";
+            Chan c = chans[cursor];
+            string conn = peer?.Connected == true ? "connected" : "not connected";
+            return $"ok: idle, {conn}, PTT would transmit on {c.Cfg.Name}{(c.IsP25 ? $" (tg {c.Tg})" : $" ({c.Cfg.Mode}, no transmit)")}";
         }
 
         private bool Transmitting => tx != null && tx.IsTransmitting;

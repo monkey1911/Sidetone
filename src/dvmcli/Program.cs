@@ -7,10 +7,12 @@
 *                   [--wav FILE] [--no-play] [--player CMD] [--output DEVICE] [--verbose]
 *   dvmcli tui      --codeplug FILE [--output DEVICE] [--input DEVICE] ...
 *   dvmcli devices
+*   dvmcli ptt      down | up | toggle | hold | status [--socket PATH]
 *   dvmcli selftest
 */
 
 using System.Reflection;
+using System.Runtime.InteropServices;
 using dvmconsole;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
@@ -31,6 +33,12 @@ namespace dvmcli
             {
                 Console.WriteLine($"dvmcli {Assembly.GetExecutingAssembly().GetName().Version}");
                 return 0;
+            }
+
+            if (args[0] == "ptt")
+            {
+                try { return Ptt(args.Skip(1).ToArray()); }
+                catch (ArgumentException ex) { return Usage(ex.Message); }
             }
 
             try
@@ -72,13 +80,16 @@ namespace dvmcli
             Console.WriteLine("                  [--wav FILE] [--no-play] [--player CMD] [--output DEVICE] [--verbose]");
             Console.WriteLine("  dvmcli tui      --codeplug FILE [--system NAME] [--tx-limit SECONDS] [--log FILE]");
             Console.WriteLine("                  [--marker-interval SECONDS] [--settings FILE | --no-settings]");
-            Console.WriteLine("                  [--output DEVICE] [--input DEVICE]");
+            Console.WriteLine("                  [--output DEVICE] [--input DEVICE] [--socket PATH | --no-socket]");
             Console.WriteLine("  dvmcli devices");
+            Console.WriteLine("  dvmcli ptt      down | up | toggle | hold | status [--socket PATH]");
             Console.WriteLine("  dvmcli selftest");
             Console.WriteLine();
             Console.WriteLine("listen follows one P25 talkgroup and plays clear calls through PipeWire (pw-play).");
             Console.WriteLine("devices lists the audio outputs and inputs. --output / --input pick one by any unique");
             Console.WriteLine("part of its name (or its ID); without them the system default is used.");
+            Console.WriteLine("ptt controls a running 'dvmcli tui' from a hotkey or script: bind 'ptt down' to a key's");
+            Console.WriteLine("press and 'ptt up' to its release, or run 'ptt hold' to transmit until it exits.");
             Console.WriteLine("Press Ctrl+C to stop.");
         }
 
@@ -272,8 +283,62 @@ namespace dvmcli
             AudioSelection audio = AudioSelection.Choose(opt.Output, opt.Input);
 
             string logFile = string.IsNullOrWhiteSpace(opt.LogFile) ? null : Path.GetFullPath(opt.LogFile);
+            string socket = opt.NoSocket ? null : opt.Socket != null ? Path.GetFullPath(opt.Socket) : ControlServer.DefaultPath;
             return new Tui(cp, system, TimeSpan.FromSeconds(opt.TxLimitSeconds), logFile, TimeSpan.FromSeconds(opt.MarkerSeconds),
-                           opt.NoSettings ? null : opt.SettingsFile ?? AppSettings.DefaultPath) { Audio = audio }.Run();
+                           opt.NoSettings ? null : opt.SettingsFile ?? AppSettings.DefaultPath) { Audio = audio, ControlSocketPath = socket }.Run();
+        }
+
+        /// <summary>
+        /// dvmcli ptt down|up|toggle|hold|status: sends one command to a running console. Exit code 0 when the
+        /// console says ok. hold keeps transmitting until this process is stopped (Ctrl+C, SIGTERM, killed)
+        /// or the transmission ends some other way.
+        /// </summary>
+        private static int Ptt(string[] args)
+        {
+            string action = null, socket = null;
+            for (int i = 0; i < args.Length; i++)
+            {
+                if (args[i] == "--socket")
+                    socket = i + 1 < args.Length ? args[++i] : throw new ArgumentException("--socket needs a value");
+                else if (action == null && !args[i].StartsWith("-"))
+                    action = args[i].ToLowerInvariant();
+                else
+                    throw new ArgumentException($"unexpected '{args[i]}' (dvmcli ptt down | up | toggle | hold | status)");
+            }
+            if (action is not ("down" or "up" or "toggle" or "hold" or "status"))
+                throw new ArgumentException("dvmcli ptt needs one of: down, up, toggle, hold, status");
+
+            string path = socket != null ? Path.GetFullPath(socket) : ControlServer.DefaultPath;
+            string command = action == "status" ? "status" : $"ptt {action}";
+            string reply;
+            bool printed = false;
+            void Print(string r)
+            {
+                printed = true;
+                (r.StartsWith("ok", StringComparison.Ordinal) ? Console.Out : Console.Error).WriteLine(r);
+            }
+            try
+            {
+                if (action == "hold")
+                {
+                    using CancellationTokenSource release = new CancellationTokenSource();
+                    Console.CancelKeyPress += (s, e) => { e.Cancel = true; release.Cancel(); };
+                    using PosixSignalRegistration term = PosixSignalRegistration.Create(PosixSignal.SIGTERM, c => { c.Cancel = true; release.Cancel(); });
+                    using PosixSignalRegistration hup = PosixSignalRegistration.Create(PosixSignal.SIGHUP, c => { c.Cancel = true; release.Cancel(); });
+                    reply = ControlClient.Send(path, command, release.Token, hold: true, onReply: Print);
+                }
+                else
+                    reply = ControlClient.Send(path, command, onReply: Print);
+            }
+            catch (InvalidOperationException ex)
+            {
+                Console.Error.WriteLine($"error: {ex.Message}");
+                return 1;
+            }
+
+            if (!printed)
+                Print(reply);
+            return reply.StartsWith("ok", StringComparison.Ordinal) ? 0 : 1;
         }
 
         private static int Devices()
@@ -337,6 +402,8 @@ namespace dvmcli
             public int MarkerSeconds = 10;
             public string SettingsFile;
             public bool NoSettings;
+            public string Socket;
+            public bool NoSocket;
 
             public static Options Parse(string[] args)
             {
@@ -367,6 +434,8 @@ namespace dvmcli
                         case "--no-settings":
                             o.NoSettings = true;
                             break;
+                        case "--socket": o.Socket = Next(); break;
+                        case "--no-socket": o.NoSocket = true; break;
                         case "--marker-interval":
                             if (!int.TryParse(Next(), out o.MarkerSeconds) || o.MarkerSeconds < 5 || o.MarkerSeconds > 600)
                                 throw new ArgumentException("--marker-interval must be between 5 and 600 seconds");

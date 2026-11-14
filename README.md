@@ -162,6 +162,44 @@ To use a different device, give `--output` (playback) or `--input` (microphone, 
 
 The ID from `dvmcli devices` or `wpctl status` works too, but IDs can change after a reboot or replug, so names are more reliable. If a name matches nothing or more than one device, dvmcli stops and lists the choices. If the chosen device disappears while dvmcli is running, PipeWire moves the audio to the default device.
 
+## PTT from hotkeys and scripts
+
+While the TUI is running, other programs can key it up through a control socket, so you can use a desktop hotkey, a script, or your own helper app. It works the same on any distribution or desktop. The socket is `$XDG_RUNTIME_DIR/dvmcli.sock`, and only your user can open it. The TUI logs its path at startup.
+
+`dvmcli ptt` is the ready-made client. It transmits on the focused channel, the same as Space:
+
+| Command | What it does |
+|---|---|
+| `dvmcli ptt down` | Start transmitting |
+| `dvmcli ptt up` | Stop transmitting |
+| `dvmcli ptt toggle` | Start or stop |
+| `dvmcli ptt hold` | Transmit until this command is stopped (Ctrl+C, SIGTERM, or the process dies) |
+| `dvmcli ptt status` | Say whether the console is transmitting, and on which channel |
+
+Each command prints the console's reply and exits with 0 for `ok` and 1 for `error` (for example `error: not connected to the FNE yet`). The transmit time limit still applies.
+
+**Hold-to-talk in Hyprland**: bind a key's press and release:
+
+```
+bind = , F13, exec, dvmcli ptt down
+```
+
+```
+bindr = , F13, exec, dvmcli ptt up
+```
+
+In Sway, use `bindsym` and `bindsym --release`. Desktops whose shortcuts only fire on press, such as GNOME and KDE custom shortcuts, can use `dvmcli ptt toggle`. Give the full path to `dvmcli` if it isn't on your `PATH`.
+
+**`ptt hold`** is the safest choice for helpers: transmit lasts only while the command runs, so if the helper crashes or is killed, the console unkeys. The command exits when the transmission ends some other way, such as Space, `ptt up` or the time limit.
+
+**Writing your own client.** Connect to the socket and send one command per line: `ptt down`, `ptt up`, `ptt toggle`, `ptt hold`, `status` or `help`. Each gets one reply line starting with `ok` or `error`. After `ptt hold`, keep the connection open for as long as you want to transmit; closing it releases PTT. For example, with `socat`:
+
+```bash
+echo "ptt toggle" | socat - UNIX-CONNECT:$XDG_RUNTIME_DIR/dvmcli.sock
+```
+
+Only one TUI can use a socket at a time. To run a second one, start it with `--socket PATH`, and pass the same `--socket PATH` to `dvmcli ptt`. `--no-socket` turns the socket off.
+
 ## Radio aliases
 
 dvmcli shows radio names instead of bare radio IDs, the same way the Windows console does and from the same codeplug settings. Cards and Recent calls show the name; the log shows the name and the ID, for example `RX Kara Portable (9511)`, unless the name already contains the ID (`RX Kara M - 9511`). Radios without an alias show their ID.

@@ -196,6 +196,9 @@ namespace dvmcli
                 // 12. radio aliases (local file, FNE download, cache, display)
                 AliasTests(tmp);
 
+                // 13. control socket (dvmcli ptt)
+                ControlTests(tmp, cp, sys);
+
                 // 8. WAV writer
                 string wavPath = Path.Combine(tmp, "test.wav");
                 using (WavSink wav = new WavSink(wavPath))
@@ -302,6 +305,88 @@ namespace dvmcli
             int at = edge.IndexOf("MIC", StringComparison.Ordinal);
             tui.HandleInput(new InputEvent(InputKind.Click, X: at, Y: Tui.TitleHeight - 1));
             Check(!tui.MicMonitor && tui.Render(120, 40).RowText(Tui.TitleHeight - 1).Contains("MIC off"), "TUI click on the meter closes the mic");
+        }
+
+        private static void ControlTests(string tmp, Codeplug cp, Codeplug.System sys)
+        {
+            string path = Path.Combine(tmp, "ctl.sock");
+            ControlSession held = null;
+            ManualResetEventSlim heldClosed = new ManualResetEventSlim(false);
+            using (ControlServer server = new ControlServer(path, (line, session) =>
+            {
+                if (line == "ptt hold")
+                {
+                    held = session;
+                    session.Closed += heldClosed.Set;
+                }
+                return $"ok: {line}";
+            }))
+            {
+                server.Start();
+                Check(File.GetUnixFileMode(path) == (UnixFileMode.UserRead | UnixFileMode.UserWrite), "control: the socket is readable and writable by its owner only");
+                Check(ControlClient.Send(path, "status") == "ok: status", "control: a command gets one reply line");
+
+                bool refused = false;
+                try { new ControlServer(path, (l, x) => "ok").Start(); }
+                catch (InvalidOperationException) { refused = true; }
+                Check(refused && ControlClient.IsAlive(path), "control: a second console can't take over a socket that's in use");
+
+                using CancellationTokenSource release = new CancellationTokenSource();
+                string early = null;
+                Task<string> hold = Task.Run(() => ControlClient.Send(path, "ptt hold", release.Token, hold: true, onReply: r => early = r));
+                for (int i = 0; i < 200 && held == null; i++) Thread.Sleep(10);
+                Thread.Sleep(100);
+                Check(held != null && early == "ok: ptt hold" && !hold.IsCompleted, "control: 'ptt hold' replies at once and keeps the connection open");
+                release.Cancel();
+                Check(heldClosed.Wait(2000) && hold.Wait(2000), "control: ending the hold client closes the connection, which the console sees");
+
+                held = null;
+                Task<string> hold2 = Task.Run(() => ControlClient.Send(path, "ptt hold", CancellationToken.None, hold: true));
+                for (int i = 0; i < 200 && held == null; i++) Thread.Sleep(10);
+                held?.Close();
+                Check(hold2.Wait(2000), "control: the console ending a hold makes the hold client exit");
+            }
+            Check(!File.Exists(path), "control: the socket file is removed when the console stops");
+
+            File.WriteAllText(path, "stale");
+            bool replacedStale;
+            using (ControlServer again = new ControlServer(path, (l, x) => "ok: again"))
+            {
+                again.Start();
+                replacedStale = ControlClient.Send(path, "status") == "ok: again";
+            }
+            Check(replacedStale, "control: a socket left behind by a crashed console is replaced");
+
+            bool noConsole = false;
+            try { ControlClient.Send(path, "status"); }
+            catch (InvalidOperationException ex) { noConsole = ex.Message.Contains("no dvmcli console"); }
+            Check(noConsole, "control: 'dvmcli ptt' says so when no console is running");
+
+            // through the TUI (offline): commands run on the UI thread
+            string tuiPath = Path.Combine(tmp, "tui.sock");
+            Tui tui = new Tui(cp, sys, TimeSpan.FromSeconds(120), null) { NoAudio = true, ControlSocketPath = tuiPath };
+            tui.ClaimUiThread();
+            tui.StartControl();
+            string Ask(string cmd)
+            {
+                Task<string> t = Task.Run(() => ControlClient.Send(tuiPath, cmd));
+                for (int i = 0; i < 500 && !t.IsCompleted; i++)
+                {
+                    tui.RunControlCalls();
+                    Thread.Sleep(5);
+                }
+                return t.IsCompleted ? t.Result : "(no reply)";
+            }
+            string status = Ask("status");
+            Check(tui.ControlRunning && status.StartsWith("ok: idle, not connected") && status.Contains("Calling") && status.Contains("tg 504"),
+                  $"TUI control: status names the PTT channel ({status})");
+            string down = Ask("ptt down");
+            Check(down == "error: not connected to the FNE yet", $"TUI control: 'ptt down' while offline is refused with the reason ({down})");
+            Check(Ask("ptt up") == "ok: not transmitting" && Ask("PTT  Toggle").StartsWith("error: not connected"),
+                  "TUI control: 'ptt up' when idle is fine; commands ignore case and extra spaces");
+            Check(Ask("fire the lasers").StartsWith("error: unknown command"), "TUI control: unknown commands are refused");
+            tui.StopControl();
+            Check(!File.Exists(tuiPath), "TUI control: the socket goes away with the console");
         }
 
         private static void AliasTests(string tmp)
