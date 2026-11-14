@@ -169,7 +169,7 @@ namespace dvmcli
 
         /// <summary>Whether the alias contains the RID as a whole number (not part of a longer one).</summary>
         public static bool ContainsRid(string alias, uint rid) =>
-            System.Text.RegularExpressions.Regex.IsMatch(alias ?? string.Empty, $@"(?<!\d){rid}(?!\d)");
+            global::System.Text.RegularExpressions.Regex.IsMatch(alias ?? string.Empty, $@"(?<!\d){rid}(?!\d)");
 
         /// <summary>Number of radio IDs that have a name (downloaded and local together).</summary>
         public int Count
