@@ -156,8 +156,20 @@ namespace dvmcli
         /// <summary>The alias, or the radio ID when there is none (for narrow places such as cards).</summary>
         public string Label(uint rid) => Name(rid) ?? rid.ToString();
 
-        /// <summary>"Alias (RID)", or the radio ID when there is no alias (for the log).</summary>
-        public string Describe(uint rid) => Name(rid) is string a ? $"{a} ({rid})" : rid.ToString();
+        /// <summary>
+        /// "Alias (RID)", or the radio ID when there is no alias (for the log). Aliases that already
+        /// contain the RID as a number of its own (Centrunk's "Kara M - 9511") are shown as they are.
+        /// </summary>
+        public string Describe(uint rid)
+        {
+            if (Name(rid) is not string a)
+                return rid.ToString();
+            return ContainsRid(a, rid) ? a : $"{a} ({rid})";
+        }
+
+        /// <summary>Whether the alias contains the RID as a whole number (not part of a longer one).</summary>
+        public static bool ContainsRid(string alias, uint rid) =>
+            System.Text.RegularExpressions.Regex.IsMatch(alias ?? string.Empty, $@"(?<!\d){rid}(?!\d)");
 
         /// <summary>Number of radio IDs that have a name (downloaded and local together).</summary>
         public int Count

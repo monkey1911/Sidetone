@@ -327,9 +327,15 @@ namespace dvmcli
                   book.Describe(777) == "777" && book.Label(777) == "777" && book.Name(0) == null,
                   "aliases: names shown as 'alias (RID)' in the log, the alias on cards, the number when unknown");
 
-            byte[] fne = System.Text.Encoding.UTF8.GetBytes("# FNE radio_alias file\n9511,Kara (FNE),\n1234,Dispatch,\n\n");
+            Check(RadioAliasBook.ContainsRid("Kara M - 9511", 9511) && !RadioAliasBook.ContainsRid("Kara M - 95110", 9511) &&
+                  !RadioAliasBook.ContainsRid("Unit 19511", 9511) && !RadioAliasBook.ContainsRid("Kara Portable", 9511),
+                  "aliases: an alias that already contains its RID is recognised (whole numbers only)");
+
+            byte[] fne = System.Text.Encoding.UTF8.GetBytes("# FNE radio_alias file\n9511,Kara (FNE),\n1234,Dispatch,\n4321,Unit - 4321,\n\n");
             sys.NetworkRidAliases = dvmconsole.AliasTools.ParseNetworkAliases(fne);
-            Check(book.Name(9511) == "Kara (FNE)" && book.Name(1234) == "Dispatch" && book.Name(5555) == "Base" && book.Count == 3 && book.Summary == "aliases 3",
+            Check(book.Describe(4321) == "Unit - 4321" && book.Describe(1234) == "Dispatch (1234)",
+                  "aliases: the log doesn't repeat a RID the alias already shows");
+            Check(book.Name(9511) == "Kara (FNE)" && book.Name(1234) == "Dispatch" && book.Name(5555) == "Base" && book.Count == 4 && book.Summary == "aliases 4",
                   "aliases: FNE names win, RIDs missing from the download fall back to the local file");
             bool rejected = false;
             try { dvmconsole.AliasTools.ParseNetworkAliases(System.Text.Encoding.UTF8.GetBytes("9511,Kara,extra\n")); }
@@ -340,7 +346,7 @@ namespace dvmcli
             sys.NetworkRidAliases = null;
             log.Clear();
             new RadioAliasBook(cp, sys, cache) { }.Load();
-            Check(sys.NetworkRidAliases?.Count == 2 && sys.NetworkRidAliases[1234] == "Dispatch", "aliases: the FNE download is cached and loaded at the next start");
+            Check(sys.NetworkRidAliases?.Count == 3 && sys.NetworkRidAliases[1234] == "Dispatch", "aliases: the FNE download is cached and loaded at the next start");
 
             sys.SyncRadioAliases = false;
             Check(book.Name(9511) == "Kara Portable" && book.Name(1234) == null, "aliases: with syncRadioAliases off, only the local file is used");
@@ -351,7 +357,7 @@ namespace dvmcli
             tui.consoleRidForTest = 9000001;
             tui.OnP25Control(P25Defines.TSBK_IOSP_CALL_ALRT, 1234, 9000001, null);
             string screenText = string.Join("\n", Enumerable.Range(0, 40).Select(y => tui.Render(120, 40).RowText(y)));
-            Check(tui.Render(200, 40).RowText(1).Contains("aliases 3"), "TUI title shows the alias count (when the title box has room)");
+            Check(tui.Render(200, 40).RowText(1).Contains("aliases 4"), "TUI title shows the alias count (when the title box has room)");
             Check(screenText.Contains("call alert (page) from Dispatch (1234)") && screenText.Contains("Dispatch"),
                   "TUI log and recent calls show the alias");
         }
