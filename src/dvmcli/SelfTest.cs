@@ -379,6 +379,14 @@ B: MSC=10
             Check(seen.SequenceEqual(new[] { "down", "mute", "up" }), $"PTT device: press, mute and release decoded from input events ({string.Join(",", seen)})");
 
             Tui tui = new Tui(cp, sys, TimeSpan.FromSeconds(120), null) { NoAudio = true };
+            Tui watching = new Tui(cp, sys, TimeSpan.FromSeconds(120), null) { NoAudio = true, PttDevice = ("dvmcli selftest no such device", null, null) };
+            watching.StartPttDevice();
+            Check(watching.PttDeviceWatching, "TUI: --ptt-device alone (no button options) starts watching the device");
+            watching.StopPttDevice();
+            Tui buttons = new Tui(cp, sys, TimeSpan.FromSeconds(120), null) { NoAudio = true, PttDevice = ("dvmcli selftest no such device", "BTN_THUMB", "none") };
+            buttons.StartPttDevice();
+            Check(buttons.PttDeviceWatching, "TUI: --ptt-device with button options starts watching the device");
+            buttons.StopPttDevice();
             tui.OnDevicePtt(true);
             tui.OnDevicePtt(false);
             string text = string.Join("\n", Enumerable.Range(0, 40).Select(y => tui.Render(120, 40).RowText(y)));

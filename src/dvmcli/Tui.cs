@@ -554,6 +554,8 @@ namespace dvmcli
         internal (string Device, string Button, string MuteButton)? PttDevice { get; set; }
 
         private PttDeviceWatcher pttDevice;
+        internal bool PttDeviceWatching => pttDevice != null;
+        internal void StopPttDevice() { pttDevice?.Dispose(); pttDevice = null; }
         private bool deviceHold;    // the device's PTT is holding the current transmission
 
         /// <summary>Queues work for the UI thread without waiting for it.</summary>
@@ -565,9 +567,10 @@ namespace dvmcli
 
         internal void StartPttDevice()
         {
-            if (PttDevice is not (string device, string button, string mute) || string.IsNullOrWhiteSpace(device))
+            // (not a positional pattern: "string x" doesn't match null, and the buttons are usually null)
+            if (PttDevice is not { } opts || string.IsNullOrWhiteSpace(opts.Device))
                 return;
-            PttDeviceWatcher w = new PttDeviceWatcher(device, button, mute);
+            PttDeviceWatcher w = new PttDeviceWatcher(opts.Device, opts.Button, opts.MuteButton);
             w.Status += msg => PostToUi(() => AddLog(msg));
             w.Ptt += down => PostToUi(() => OnDevicePtt(down));
             w.Mute += () => PostToUi(ToggleGlobalMute);
