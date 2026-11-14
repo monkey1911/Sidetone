@@ -191,6 +191,7 @@ namespace dvmcli
             aliases.Load();
             RestoreSettings();
             StartControl();
+            StartPttDevice();
             peer.Start();
 
             ClaimUiThread();
@@ -214,6 +215,7 @@ namespace dvmcli
             {
                 term.Dispose();
                 StopControl();
+                pttDevice?.Dispose();
                 RunControlCalls();  // answer anything still queued
                 CancelTones(wait: true);
                 SaveSettings();     // before the channels are closed below
@@ -500,6 +502,8 @@ namespace dvmcli
             txChan = null;
             CloseMicIfUnused();
 
+            deviceHold = false;
+
             // a "ptt hold" client exits when its transmission ends, however it ended
             ControlSession held = holdSession;
             holdSession = null;
@@ -540,6 +544,55 @@ namespace dvmcli
                 control = null;
                 AddLog($"control: no PTT socket ({ex.Message}); start with --socket PATH to use another");
             }
+        }
+
+        /*
+        ** Dedicated PTT device (desk mic, footswitch)
+        */
+
+        /// <summary>PTT device options: part of its name or /dev/input path, PTT button, mute button (null = defaults).</summary>
+        internal (string Device, string Button, string MuteButton)? PttDevice { get; set; }
+
+        private PttDeviceWatcher pttDevice;
+        private bool deviceHold;    // the device's PTT is holding the current transmission
+
+        /// <summary>Queues work for the UI thread without waiting for it.</summary>
+        private void PostToUi(Action action)
+        {
+            uiCalls.Enqueue((() => { action(); return null; }, new TaskCompletionSource<string>()));
+            wake.Set();
+        }
+
+        internal void StartPttDevice()
+        {
+            if (PttDevice is not (string device, string button, string mute) || string.IsNullOrWhiteSpace(device))
+                return;
+            PttDeviceWatcher w = new PttDeviceWatcher(device, button, mute);
+            w.Status += msg => PostToUi(() => AddLog(msg));
+            w.Ptt += down => PostToUi(() => OnDevicePtt(down));
+            w.Mute += () => PostToUi(ToggleGlobalMute);
+            pttDevice = w;
+            w.Start();
+        }
+
+        /// <summary>PTT device pressed or released (UI thread).</summary>
+        internal void OnDevicePtt(bool down)
+        {
+            if (down)
+            {
+                if (toneJob != null)
+                {
+                    AddLog("PTT device: tones are being sent; PTT ignored");
+                    return;
+                }
+                string reply = PttDown(null);       // a refusal is already in the log
+                deviceHold = reply.StartsWith("ok", StringComparison.Ordinal);
+                return;
+            }
+
+            if (deviceHold && Transmitting)
+                StopTx("PTT released");
+            deviceHold = false;
         }
 
         internal void StopControl()

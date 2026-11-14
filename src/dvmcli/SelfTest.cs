@@ -199,6 +199,9 @@ namespace dvmcli
                 // 13. control socket (dvmcli ptt)
                 ControlTests(tmp, cp, sys);
 
+                // 14. dedicated PTT device (evdev)
+                PttDeviceTests(cp, sys);
+
                 // 8. WAV writer
                 string wavPath = Path.Combine(tmp, "test.wav");
                 using (WavSink wav = new WavSink(wavPath))
@@ -305,6 +308,99 @@ namespace dvmcli
             int at = edge.IndexOf("MIC", StringComparison.Ordinal);
             tui.HandleInput(new InputEvent(InputKind.Click, X: at, Y: Tui.TitleHeight - 1));
             Check(!tui.MicMonitor && tui.Render(120, 40).RowText(Tui.TitleHeight - 1).Contains("MIC off"), "TUI click on the meter closes the mic");
+        }
+
+        // from a Surface Pro 11 with the Motorola desktop microphone plugged in (trimmed)
+        private const string ProcInputFixture = """
+I: Bus=0019 Vendor=045e Product=09ae Version=0111
+N: Name="Microsoft Surface 045E:09AE Keyboard"
+P: Phys=01:15:02:01:00
+H: Handlers=sysrq kbd event2 leds 
+B: PROP=0
+B: EV=12001f
+B: KEY=3f00733fff 0 0 483ffff17aff32d bfd4444600000000 1 130ff38b17d007 ffe77bfad9415fff ffbeffdff3cfffff fffffffffffffffe
+
+I: Bus=0019 Vendor=045e Product=09af Version=0111
+N: Name="Microsoft Surface 045E:09AF Mouse"
+H: Handlers=mouse0 event7 
+B: EV=17
+B: KEY=30000 0 0 0 0
+
+I: Bus=0003 Vendor=0cad Product=1804 Version=0111
+N: Name="Motorola Solutions Inc. Motorola Desktop Microphone [v1.0.0]"
+P: Phys=usb-xhci-hcd.1.auto-1.3.2/input2
+H: Handlers=event27 js0 
+B: PROP=0
+B: EV=13
+B: KEY=300000000 0 0 0 0
+B: MSC=10
+
+""";
+
+        private static void PttDeviceTests(Codeplug cp, Codeplug.System sys)
+        {
+            List<InputDeviceInfo> devs = InputDevices.Parse(ProcInputFixture);
+            InputDeviceInfo moto = InputDevices.Find(devs, "motorola desktop microphone");
+            Check(devs.Count == 3 && moto != null && moto.EventPath == "/dev/input/event27" && moto.Vendor == 0x0cad && moto.Product == 0x1804 &&
+                  moto.Keys.SequenceEqual(new[] { 288, 289 }), "PTT device: found by name in /proc/bus/input/devices, with its two buttons");
+            Check(InputDevices.Find(devs, "/dev/input/event27") == moto && InputDevices.Find(devs, "footswitch") == null,
+                  "PTT device: found by /dev/input path; unknown names find nothing");
+            Check(devs[1].Keys.SequenceEqual(new[] { 272, 273 }) && devs[0].Keys.Count > 12, "PTT device: key bitmaps decoded (mouse buttons, full keyboard)");
+            Check(InputDevices.ParseButton("BTN_THUMB") == 289 && InputDevices.ParseButton("trigger") == 288 && InputDevices.ParseButton("289") == 289 &&
+                  InputDevices.ParseButton("KEY_F13") == 183 && InputDevices.ParseButton("banana") == -1 &&
+                  InputDevices.ButtonName(289) == "BTN_THUMB" && InputDevices.ButtonName(288) == "BTN_TRIGGER",
+                  "PTT device: button names and codes");
+
+            PttDeviceWatcher w = new PttDeviceWatcher("Motorola", null, null);
+            Check(w.ChooseButtons(moto) == null && w.PttCode == 289 && w.MuteCode == 288,
+                  "PTT device: the Motorola desktop mic's bar is PTT and its other button is mute, with no options");
+            PttDeviceWatcher swapped = new PttDeviceWatcher("Motorola", "BTN_TRIGGER", "none");
+            Check(swapped.ChooseButtons(moto) == null && swapped.PttCode == 288 && swapped.MuteCode == -1, "PTT device: --ptt-button and --mute-button none override");
+            InputDeviceInfo twoButtons = new InputDeviceInfo { Name = "Pedal", EventPath = "/dev/input/event9", Keys = new List<int> { 256, 257 } };
+            InputDeviceInfo oneButton = new InputDeviceInfo { Name = "Pedal", EventPath = "/dev/input/event9", Keys = new List<int> { 256 } };
+            string why = new PttDeviceWatcher("Pedal", null, null).ChooseButtons(twoButtons);
+            Check(why != null && why.Contains("--ptt-button") && new PttDeviceWatcher("Pedal", null, null).ChooseButtons(oneButton) == null,
+                  "PTT device: an unknown device's only button is used; with several, --ptt-button is asked for");
+            bool badName = false;
+            try { _ = new PttDeviceWatcher("x", "BTN_NOPE", null); } catch (ArgumentException) { badName = true; }
+            Check(badName, "PTT device: an unknown --ptt-button name is refused at startup");
+
+            List<string> seen = new List<string>();
+            w.Ptt += down => seen.Add(down ? "down" : "up");
+            w.Mute += () => seen.Add("mute");
+            MemoryStream evs = new MemoryStream();
+            void Ev(ushort t, ushort c, int v) { byte[] b = PttDeviceWatcher.EncodeEvent(t, c, v); evs.Write(b, 0, b.Length); }
+            Ev(4, 4, 0x90002); Ev(1, 289, 1); Ev(0, 0, 0);      // PTT press (MSC_SCAN, key, SYN as the mic sends them)
+            Ev(1, 289, 2);                                      // auto-repeat: ignored
+            Ev(1, 288, 1); Ev(1, 288, 0);                       // mute press and release
+            Ev(1, 289, 0); Ev(0, 0, 0);                         // PTT release
+            evs.Position = 0;
+            w.Pump(new SplitStream(evs, 7));                    // events arriving in odd-sized pieces
+            Check(seen.SequenceEqual(new[] { "down", "mute", "up" }), $"PTT device: press, mute and release decoded from input events ({string.Join(",", seen)})");
+
+            Tui tui = new Tui(cp, sys, TimeSpan.FromSeconds(120), null) { NoAudio = true };
+            tui.OnDevicePtt(true);
+            tui.OnDevicePtt(false);
+            string text = string.Join("\n", Enumerable.Range(0, 40).Select(y => tui.Render(120, 40).RowText(y)));
+            Check(text.Contains("not connected to the FNE yet") && !tui.GlobalMute, "TUI: device PTT while offline is refused in the log; release does nothing");
+        }
+
+        /// <summary>A stream that returns at most a few bytes per read.</summary>
+        private sealed class SplitStream : Stream
+        {
+            private readonly Stream inner;
+            private readonly int chunk;
+            public SplitStream(Stream inner, int chunk) { this.inner = inner; this.chunk = chunk; }
+            public override int Read(byte[] buffer, int offset, int count) => inner.Read(buffer, offset, Math.Min(count, chunk));
+            public override bool CanRead => true;
+            public override bool CanSeek => false;
+            public override bool CanWrite => false;
+            public override long Length => inner.Length;
+            public override long Position { get => inner.Position; set => throw new NotSupportedException(); }
+            public override void Flush() { }
+            public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+            public override void SetLength(long value) => throw new NotSupportedException();
+            public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
         }
 
         private static void ControlTests(string tmp, Codeplug cp, Codeplug.System sys)

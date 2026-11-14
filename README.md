@@ -200,6 +200,39 @@ echo "ptt toggle" | socat - UNIX-CONNECT:$XDG_RUNTIME_DIR/dvmcli.sock
 
 Only one TUI can use a socket at a time. To run a second one, start it with `--socket PATH`, and pass the same `--socket PATH` to `dvmcli ptt`. `--no-socket` turns the socket off.
 
+## PTT devices (desk mics, footswitches, PTT buttons)
+
+A USB desk microphone, footswitch or PTT button can key the console directly. dvmcli reads the device itself, so it sees both press and release on any desktop, even ones whose hotkeys can't bind it. That includes devices that show up as joysticks, which most desktops ignore. Hold the button to transmit; let go to stop. If the device is unplugged mid-transmission, the console unkeys. The device can be unplugged and plugged back in while the TUI runs.
+
+Find your device's name and buttons:
+
+```bash
+./dvmcli devices
+```
+
+Then start the TUI with `--ptt-device` and any part of that name. For the Motorola Solutions desktop microphone, dvmcli already knows the buttons: the bar is PTT and the other button is the console's MUTE. Its audio shows up under the same name, so `--input` makes it the transmit microphone too:
+
+```bash
+./dvmcli tui --codeplug ~/dvm/codeplug-linux.yml --ptt-device "Motorola Desktop Microphone" --input "Motorola Desktop Microphone"
+```
+
+For other devices:
+- A device with one button needs nothing more.
+- With several buttons, name the PTT one with `--ptt-button`, for example `--ptt-button BTN_THUMB`, `--ptt-button KEY_F13` or a number. `evtest` shows what each button sends.
+- `--mute-button BUTTON` makes another button toggle the console's MUTE, and `--mute-button none` turns that off.
+
+The TUI logs the device and buttons it's using, and when the device is unplugged or comes back. It transmits on the focused channel, the same as Space, and the transmit time limit still applies.
+
+**Permissions.** Your user needs read access to the device's `/dev/input/event*` file. Devices that show up as joysticks, like the Motorola mic, usually get that automatically for the logged-in user. Check with `getfacl /dev/input/eventN` (look for `user:yourname:rw-`). For a footswitch that shows up as a keyboard, add a udev rule for just that device, using the vendor and product IDs from `dvmcli devices`. For example, `/etc/udev/rules.d/70-dvmcli-ptt.rules`:
+
+```
+SUBSYSTEM=="input", ATTRS{idVendor}=="1234", ATTRS{idProduct}=="5678", TAG+="uaccess"
+```
+
+Avoid adding yourself to the `input` group instead: that lets every program you run read every keystroke.
+
+dvmcli doesn't take the device away from other programs, so a footswitch that types a key still types it in the focused window. Pick a key nothing else uses, such as F13 to F24.
+
 ## Radio aliases
 
 dvmcli shows radio names instead of bare radio IDs, the same way the Windows console does and from the same codeplug settings. Cards and Recent calls show the name; the log shows the name and the ID, for example `RX Kara Portable (9511)`, unless the name already contains the ID (`RX Kara M - 9511`). Radios without an alias show their ID.

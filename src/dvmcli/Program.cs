@@ -84,6 +84,7 @@ namespace dvmcli
             Console.WriteLine("  dvmcli tui      --codeplug FILE [--system NAME] [--tx-limit SECONDS] [--log FILE]");
             Console.WriteLine("                  [--marker-interval SECONDS] [--settings FILE | --no-settings]");
             Console.WriteLine("                  [--output DEVICE] [--input DEVICE] [--socket PATH | --no-socket]");
+            Console.WriteLine("                  [--ptt-device NAME [--ptt-button BUTTON] [--mute-button BUTTON|none]]");
             Console.WriteLine("  dvmcli devices");
             Console.WriteLine("  dvmcli ptt      down | up | toggle | hold | status [--socket PATH]");
             Console.WriteLine("  dvmcli selftest");
@@ -286,9 +287,19 @@ namespace dvmcli
             AudioSelection audio = AudioSelection.Choose(opt.Output, opt.Input);
 
             string logFile = string.IsNullOrWhiteSpace(opt.LogFile) ? null : Path.GetFullPath(opt.LogFile);
+            if (opt.PttDevice == null && (opt.PttButton != null || opt.MuteButton != null))
+                throw new ArgumentException("--ptt-button and --mute-button need --ptt-device");
+            if (opt.PttDevice != null)
+                _ = new PttDeviceWatcher(opt.PttDevice, opt.PttButton, opt.MuteButton);    // checks the button names
+
             string socket = opt.NoSocket ? null : opt.Socket != null ? Path.GetFullPath(opt.Socket) : ControlServer.DefaultPath;
             return new Tui(cp, system, TimeSpan.FromSeconds(opt.TxLimitSeconds), logFile, TimeSpan.FromSeconds(opt.MarkerSeconds),
-                           opt.NoSettings ? null : opt.SettingsFile ?? AppSettings.DefaultPath) { Audio = audio, ControlSocketPath = socket }.Run();
+                           opt.NoSettings ? null : opt.SettingsFile ?? AppSettings.DefaultPath)
+            {
+                Audio = audio,
+                ControlSocketPath = socket,
+                PttDevice = opt.PttDevice != null ? (opt.PttDevice, opt.PttButton, opt.MuteButton) : null
+            }.Run();
         }
 
         /// <summary>
@@ -369,6 +380,18 @@ namespace dvmcli
 
             Print("Outputs", list.Outputs, list.DefaultOutputName);
             Print("Inputs", list.Inputs, list.DefaultInputName);
+
+            List<InputDeviceInfo> buttons = InputDevices.List().Where(d => d.EventPath != null && d.Keys.Count > 0 && d.Keys.Count <= 12).ToList();
+            Console.WriteLine("Button devices (for --ptt-device; full keyboards not shown):");
+            if (buttons.Count == 0)
+                Console.WriteLine("  (none)");
+            foreach (InputDeviceInfo d in buttons)
+            {
+                bool known = InputDevices.Known.ContainsKey((d.Vendor, d.Product));
+                Console.WriteLine($"  {d.Name}{(known ? "  [known PTT device]" : string.Empty)}");
+                Console.WriteLine($"          {d.EventPath}  {d.Vendor:x4}:{d.Product:x4}  buttons: {InputDevices.DescribeKeys(d)}");
+            }
+            Console.WriteLine();
             Console.WriteLine("Pick one with --output or --input and any part of its name that matches only that device,");
             Console.WriteLine("for example --output \"Savi\". IDs work too, but they can change after a reboot or replug.");
             return 0;
@@ -405,7 +428,7 @@ namespace dvmcli
             public int MarkerSeconds = 10;
             public string SettingsFile;
             public bool NoSettings;
-            public string Socket;
+            public string Socket, PttDevice, PttButton, MuteButton;
             public bool NoSocket;
 
             public static Options Parse(string[] args)
@@ -439,6 +462,9 @@ namespace dvmcli
                             break;
                         case "--socket": o.Socket = Next(); break;
                         case "--no-socket": o.NoSocket = true; break;
+                        case "--ptt-device": o.PttDevice = Next(); break;
+                        case "--ptt-button": o.PttButton = Next(); break;
+                        case "--mute-button": o.MuteButton = Next(); break;
                         case "--marker-interval":
                             if (!int.TryParse(Next(), out o.MarkerSeconds) || o.MarkerSeconds < 5 || o.MarkerSeconds > 600)
                                 throw new ArgumentException("--marker-interval must be between 5 and 600 seconds");
