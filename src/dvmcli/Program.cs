@@ -212,7 +212,12 @@ namespace dvmcli
                         sink.Write(samples);
                 };
 
-                CliPeer peer = new CliPeer(system, keys, opt.Verbose);
+                RadioAliasBook aliases = new RadioAliasBook(cp, system, Path.GetDirectoryName(AppSettings.DefaultPath));
+                aliases.Status += Say;
+                aliases.Load();
+                receiver.DescribeSource = aliases.Describe;
+
+                CliPeer peer = new CliPeer(system, keys, opt.Verbose) { Aliases = aliases };
                 peer.Status += Say;
                 peer.P25Frame += e => receiver.Handle(e.DstId, e.SrcId, e.DUID, e.StreamId, e.Data);
 

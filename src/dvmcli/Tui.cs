@@ -119,6 +119,9 @@ namespace dvmcli
         /// <summary>Set when the user asks to quit (self-test hook).</summary>
         internal bool QuitRequested => quit;
         internal bool MicMonitor => micMonitor;
+        internal RadioAliasBook Aliases => aliases;
+
+        private readonly RadioAliasBook aliases;
         internal LevelMeter MicLevel => micLevel;
 
         /// <summary>
@@ -133,6 +136,8 @@ namespace dvmcli
             this.markerInterval = markerInterval ?? TimeSpan.FromSeconds(10);   // the Windows console's hold timer
             this.system = system;
             this.txLimit = txLimit;
+            aliases = new RadioAliasBook(codeplug, system, Path.GetDirectoryName(settingsPath ?? AppSettings.DefaultPath));
+            aliases.Status += AddLog;
             this.logFile = logFile;
 
             foreach (Codeplug.Zone zone in codeplug.Zones ?? new List<Codeplug.Zone>())
@@ -173,6 +178,7 @@ namespace dvmcli
             peer.Status += AddLog;
             peer.P25Frame += OnFrame;
             peer.P25Control += OnP25Control;
+            peer.Aliases = aliases;
 
             if (Audio != null)
             {
@@ -182,6 +188,7 @@ namespace dvmcli
             AddLog($"connecting to {system.Name} ({system.Address}:{system.Port}) as peer {system.PeerId}");
             if (settingsError != null)
                 AddLog(settingsError);
+            aliases.Load();
             RestoreSettings();
             peer.Start();
 
@@ -245,8 +252,8 @@ namespace dvmcli
                         if (c.Active && e.StreamId == c.ActiveStream)
                         {
                             c.Active = false;
-                            c.LastCall = $"{c.ActiveSrc} at {DateTime.Now:HH:mm}";
-                            AddRecent(c.Cfg.Name, c.ActiveSrc.ToString(), "not listening", tx: false);
+                            c.LastCall = $"{aliases.Label(c.ActiveSrc)} at {DateTime.Now:HH:mm}";
+                            AddRecent(c.Cfg.Name, aliases.Label(c.ActiveSrc), "not listening", tx: false);
                         }
                     }
                     else if (e.DUID == P25DUID.LDU1 || e.DUID == P25DUID.LDU2 || e.DUID == P25DUID.HDU)
@@ -276,12 +283,13 @@ namespace dvmcli
             P25VoiceReceiver rx = new P25VoiceReceiver(c.Tg, keys);
             rx.Status += s => { if (!s.StartsWith("CALL ")) AddLog($"{c.Cfg.Name}: {s}"); };
             rx.KeyNeeded += (alg, kid) => peer?.RequestKey(alg, kid);
-            rx.CallStarted += src => AddLog($"{c.Cfg.Name}: RX {src}");
+            rx.DescribeSource = aliases.Describe;
+            rx.CallStarted += src => AddLog($"{c.Cfg.Name}: RX {aliases.Describe(src)}");
             rx.CallEnded += (src, secs, played, muted, crypt) =>
             {
-                c.LastCall = $"{src} at {DateTime.Now:HH:mm} ({secs:F0} s)";
-                AddLog($"{c.Cfg.Name}: end {src}, {secs:F1} s, {crypt}{(muted > 0 ? $", {muted} frames muted" : string.Empty)}");
-                AddRecent(c.Cfg.Name, src.ToString(), $"{secs:F0} s, {crypt}{(muted > 0 ? ", partly muted" : string.Empty)}", tx: false);
+                c.LastCall = $"{aliases.Label(src)} at {DateTime.Now:HH:mm} ({secs:F0} s)";
+                AddLog($"{c.Cfg.Name}: end {aliases.Describe(src)}, {secs:F1} s, {crypt}{(muted > 0 ? $", {muted} frames muted" : string.Empty)}");
+                AddRecent(c.Cfg.Name, aliases.Label(src), $"{secs:F0} s, {crypt}{(muted > 0 ? ", partly muted" : string.Empty)}", tx: false);
             };
             rx.Audio += samples =>
             {
@@ -475,7 +483,7 @@ namespace dvmcli
             if (was)
             {
                 AddLog($"{txChan?.Cfg.Name}: TX end, {secs:F1} s, {t.FramesSent} frames{(reason != null ? $" ({reason})" : string.Empty)}");
-                AddRecent(txChan?.Cfg.Name, $"{t.SourceId}", $"{secs:F0} s, {(t.Encrypted ? KeyStore.AlgorithmName(t.AlgorithmId) : "clear")}", tx: true);
+                AddRecent(txChan?.Cfg.Name, aliases.Label(t.SourceId), $"{secs:F0} s, {(t.Encrypted ? KeyStore.AlgorithmName(t.AlgorithmId) : "clear")}", tx: true);
             }
 
             tx = null;
@@ -526,6 +534,14 @@ namespace dvmcli
             capture = null;
             cap?.Dispose();
             micLevel.Reset();
+        }
+
+        /// <summary>Reloads the local alias file and, when FNE sync is on, downloads the list again.</summary>
+        private void RefreshAliases()
+        {
+            aliases.LoadLocal();
+            if (aliases.SyncEnabled)
+                peer?.SyncAliases();
         }
 
         private void ToggleMicMonitor()
@@ -772,7 +788,7 @@ namespace dvmcli
             MarkDirty();
             commanded[rid] = DateTime.Now;
             radioDialog = null;
-            AddLog($"radio {label.ToLowerInvariant()} sent to {rid}");
+            AddLog($"radio {label.ToLowerInvariant()} sent to {aliases.Describe(rid)}");
             AddRecent("radio", rid.ToString(), label.ToLowerInvariant(), tx: true);
         }
 
@@ -962,8 +978,8 @@ namespace dvmcli
                 lastPageRid = d.Rid;
                 MarkDirty();
                 pageDialog = null;
-                AddLog($"digital page (call alert) sent to {rid}");
-                AddRecent("call alert", rid.ToString(), "digital page", tx: true);
+                AddLog($"digital page (call alert) sent to {aliases.Describe(rid)}");
+                AddRecent("call alert", aliases.Label(rid), "digital page", tx: true);
                 return;
             }
 
@@ -1004,14 +1020,14 @@ namespace dvmcli
                 case P25Defines.TSBK_IOSP_CALL_ALRT:
                     if (dst == me && me != 0)
                     {
-                        AddLog($"call alert (page) from {src}");
-                        AddRecent("call alert", src.ToString(), "paged this console", tx: false);
+                        AddLog($"call alert (page) from {aliases.Describe(src)}");
+                        AddRecent("call alert", aliases.Label(src), "paged this console", tx: false);
                     }
                     break;
 
                 case P25Defines.TSBK_IOSP_ACK_RSP:
                     if (dst == me && me != 0)
-                        AddLog($"acknowledged by {src}");
+                        AddLog($"acknowledged by {aliases.Describe(src)}");
                     break;
 
                 case P25Defines.TSBK_IOSP_EXT_FNCT:
@@ -1035,8 +1051,8 @@ namespace dvmcli
                     bool recent = commanded.TryGetValue(target, out DateTime when) && DateTime.Now - when < TimeSpan.FromMinutes(2);
                     if ((arg == me && me != 0) || recent)
                     {
-                        AddLog($"radio {target} {what}");
-                        AddRecent("radio", target.ToString(), what.Replace("confirmed it is ", string.Empty).Replace("answered the ", string.Empty), tx: false);
+                        AddLog($"radio {aliases.Describe(target)} {what}");
+                        AddRecent("radio", aliases.Label(target), what.Replace("confirmed it is ", string.Empty).Replace("answered the ", string.Empty), tx: false);
                     }
                     break;
                 }
@@ -1261,6 +1277,7 @@ namespace dvmcli
                         case 'p': case 'P': OpenPage(); break;
                         case 'd': case 'D': OpenPage(digital: true); break;
                         case 'v': case 'V': ToggleMicMonitor(); break;
+                        case 'a': case 'A': RefreshAliases(); break;
                     }
                     break;
             }
@@ -1418,7 +1435,7 @@ namespace dvmcli
             int used = screen.Text(tx0, 1, system.Name, Style.Of(Ansi.BrightWhite, bold: true), inner);
             used += screen.Text(tx0 + used, 1, connected ? "  ● connected" : "  ○ connecting…",
                                 connected ? Style.Of(Ansi.BrightGreen) : Style.Of(Ansi.Yellow), inner - used);
-            screen.Text(tx0 + used, 1, $"  peer {system.PeerId}  RID {peer?.ConsoleRid ?? 0}  keys {keys.Count}", Style.Of(Ansi.White), inner - used);
+            screen.Text(tx0 + used, 1, $"  peer {system.PeerId}  RID {peer?.ConsoleRid ?? 0}  keys {keys.Count}  {aliases.Summary}", Style.Of(Ansi.White), inner - used);
 
             DrawMicMeter(boxW);
         }
@@ -1615,7 +1632,7 @@ namespace dvmcli
             }
 
             if (!c.Selected && c.Active)
-                screen.Text(x, y, $"busy {c.ActiveSrc}", Style.Of(Ansi.Cyan), w);
+                screen.Text(x, y, $"busy {aliases.Label(c.ActiveSrc)}", Style.Of(Ansi.Cyan), w);
             else if (c.Selected)
                 screen.Text(x, y, c.Muted || globalMute ? "listening (muted)" : "listening", c.Muted || globalMute ? Style.Of(Ansi.Yellow) : Style.Of(Ansi.Green), w);
             else
@@ -1707,7 +1724,7 @@ namespace dvmcli
                 screen.Text(1, y, target, Style.Of(Ansi.White), width - 2);
             }
 
-            screen.Text(1, y + 1, "click card: listen  [●]: stop  Space: PTT  1-6: alert  p/d: page  r: radio cmd  c: marker  t: talk permit  v: mic meter  m/M: mute card/all  +/-: vol  k: key  q: quit",
+            screen.Text(1, y + 1, "click card: listen  [●]: stop  Space: PTT  1-6: alert  p/d: page  r: radio cmd  c: marker  t: talk permit  v: mic meter  a: aliases  m/M: mute card/all  +/-: vol  k: key  q: quit",
                         Style.Of(Ansi.Grey), width - 2);
         }
 

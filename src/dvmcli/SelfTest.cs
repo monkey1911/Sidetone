@@ -193,6 +193,9 @@ namespace dvmcli
                 // 11. microphone level meter
                 MeterTests(cp, sys);
 
+                // 12. radio aliases (local file, FNE download, cache, display)
+                AliasTests(tmp);
+
                 // 8. WAV writer
                 string wavPath = Path.Combine(tmp, "test.wav");
                 using (WavSink wav = new WavSink(wavPath))
@@ -299,6 +302,58 @@ namespace dvmcli
             int at = edge.IndexOf("MIC", StringComparison.Ordinal);
             tui.HandleInput(new InputEvent(InputKind.Click, X: at, Y: Tui.TitleHeight - 1));
             Check(!tui.MicMonitor && tui.Render(120, 40).RowText(Tui.TitleHeight - 1).Contains("MIC off"), "TUI click on the meter closes the mic");
+        }
+
+        private static void AliasTests(string tmp)
+        {
+            string dir = Path.Combine(tmp, "aliases");
+            Directory.CreateDirectory(dir);
+            string cpPath = Path.Combine(dir, "codeplug.yml");
+            File.WriteAllText(cpPath, SampleCodeplug.Replace("    encrypted: false\n", "    encrypted: false\n    syncRadioAliases: true\n")
+                                                    .Replace("    encrypted: false\r\n", "    encrypted: false\r\n    syncRadioAliases: true\r\n"));
+            File.WriteAllText(Path.Combine(dir, "alias.yml"), "- alias: \"Kara Portable\"\n  rid: 9511\n- alias: \"Base\"\n  rid: 5555\n");
+            Codeplug cp = Program.LoadCodeplug(cpPath);
+            Codeplug.System sys = cp.Systems.First();
+            Check(sys.SyncRadioAliases && sys.AliasPath == "alias.yml", "aliases: syncRadioAliases and the default aliasPath read from the codeplug");
+
+            List<string> log = new List<string>();
+            string cache = Path.Combine(dir, "cache");
+            RadioAliasBook book = new RadioAliasBook(cp, sys, cache);
+            book.Status += log.Add;
+            book.Load();
+            Check(book.LocalCount == 2 && book.Name(9511) == "Kara Portable" && log.Any(l => l.Contains("2 from") && l.Contains("alias.yml")),
+                  "aliases: alias.yml beside the codeplug is loaded");
+            Check(book.Describe(9511) == "Kara Portable (9511)" && book.Label(9511) == "Kara Portable" &&
+                  book.Describe(777) == "777" && book.Label(777) == "777" && book.Name(0) == null,
+                  "aliases: names shown as 'alias (RID)' in the log, the alias on cards, the number when unknown");
+
+            byte[] fne = System.Text.Encoding.UTF8.GetBytes("# FNE radio_alias file\n9511,Kara (FNE),\n1234,Dispatch,\n\n");
+            sys.NetworkRidAliases = dvmconsole.AliasTools.ParseNetworkAliases(fne);
+            Check(book.Name(9511) == "Kara (FNE)" && book.Name(1234) == "Dispatch" && book.Name(5555) == "Base" && book.Count == 3 && book.Summary == "aliases 3",
+                  "aliases: FNE names win, RIDs missing from the download fall back to the local file");
+            bool rejected = false;
+            try { dvmconsole.AliasTools.ParseNetworkAliases(System.Text.Encoding.UTF8.GetBytes("9511,Kara,extra\n")); }
+            catch (InvalidDataException) { rejected = true; }
+            Check(rejected, "aliases: a malformed FNE alias list is rejected (the current aliases are kept)");
+
+            dvmconsole.RadioAliasCache.Save(cache, sys, fne);
+            sys.NetworkRidAliases = null;
+            log.Clear();
+            new RadioAliasBook(cp, sys, cache) { }.Load();
+            Check(sys.NetworkRidAliases?.Count == 2 && sys.NetworkRidAliases[1234] == "Dispatch", "aliases: the FNE download is cached and loaded at the next start");
+
+            sys.SyncRadioAliases = false;
+            Check(book.Name(9511) == "Kara Portable" && book.Name(1234) == null, "aliases: with syncRadioAliases off, only the local file is used");
+            sys.SyncRadioAliases = true;
+
+            Tui tui = new Tui(cp, sys, TimeSpan.FromSeconds(120), null, settingsPath: Path.Combine(dir, "settings.json")) { NoAudio = true };
+            tui.Aliases.Load();
+            tui.consoleRidForTest = 9000001;
+            tui.OnP25Control(P25Defines.TSBK_IOSP_CALL_ALRT, 1234, 9000001, null);
+            string screenText = string.Join("\n", Enumerable.Range(0, 40).Select(y => tui.Render(120, 40).RowText(y)));
+            Check(screenText.Contains("aliases 3"), "TUI title shows the alias count");
+            Check(screenText.Contains("call alert (page) from Dispatch (1234)") && screenText.Contains("Dispatch"),
+                  "TUI log and recent calls show the alias");
         }
 
         private static void AudioDeviceTests()

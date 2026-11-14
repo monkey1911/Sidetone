@@ -123,6 +123,11 @@ namespace dvmcli
         /// <summary>Raised when a call starts (source radio ID).</summary>
         public event Action<uint> CallStarted;
 
+        /// <summary>Names a radio ID in status messages (aliases); the bare number by default.</summary>
+        public Func<uint, string> DescribeSource { get; set; }
+
+        private string Src(uint rid) => DescribeSource?.Invoke(rid) ?? rid.ToString();
+
         /// <summary>Raised when a call ends: source, duration in seconds, frames played, frames muted, crypto description.</summary>
         public event Action<uint, double, int, int, string> CallEnded;
 
@@ -289,7 +294,7 @@ namespace dvmcli
                 if (!keyRequested)
                 {
                     keyRequested = true;
-                    Status?.Invoke($"call from {sourceId} is {KeyStore.AlgorithmName(algId)} key 0x{keyId:X4}; no key yet, " +
+                    Status?.Invoke($"call from {Src(sourceId)} is {KeyStore.AlgorithmName(algId)} key 0x{keyId:X4}; no key yet, " +
                                    "requesting it from the FNE (muted until it arrives)");
                     KeyNeeded?.Invoke(algId, keyId);
                 }
@@ -341,7 +346,7 @@ namespace dvmcli
             // fresh decoder state per call, as a radio would start
             decoder = new MBEDecoder(MBE_MODE.IMBE_88BIT);
 
-            Status?.Invoke($"CALL START  src {srcId}  tg {talkgroup}  stream {newStreamId}");
+            Status?.Invoke($"CALL START  src {Src(srcId)}  tg {talkgroup}  stream {newStreamId}");
             CallStarted?.Invoke(srcId);
         }
 
@@ -350,7 +355,7 @@ namespace dvmcli
             double secs = (DateTime.Now - callStarted).TotalSeconds;
             string crypt = algId == 0 || algId == P25Defines.P25_ALGO_UNENCRYPT ? "clear" : $"{KeyStore.AlgorithmName(algId)} key 0x{keyId:X4}";
             string muted = callMuted > 0 ? $", {callMuted} muted" : string.Empty;
-            Status?.Invoke($"CALL END    src {sourceId}  tg {talkgroup}  {secs:F1} s, {crypt}, {callFrames} voice frames played{muted}");
+            Status?.Invoke($"CALL END    src {Src(sourceId)}  tg {talkgroup}  {secs:F1} s, {crypt}, {callFrames} voice frames played{muted}");
             streamId = 0;
             CallEnded?.Invoke(sourceId, secs, callFrames, callMuted, crypt);
         }

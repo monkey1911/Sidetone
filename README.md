@@ -121,6 +121,7 @@ Channels are shown as cards, up to four across. The mouse works in any terminal 
 | p / d | Open the page box in tone or digital mode (←/→ switch modes, Tab switches tone A / B, Enter sends, Esc cancels) |
 | c | Turn the channel marker on or off |
 | v | Microphone level meter on or off (without transmitting) |
+| a | Reload the alias file and download aliases from the FNE again |
 | m / M | Mute the focused card / mute everything |
 | + / - | Volume of the focused card |
 | k | Request the focused card's key from the FNE again |
@@ -160,6 +161,33 @@ To use a different device, give `--output` (playback) or `--input` (microphone, 
 ```
 
 The ID from `dvmcli devices` or `wpctl status` works too, but IDs can change after a reboot or replug, so names are more reliable. If a name matches nothing or more than one device, dvmcli stops and lists the choices. If the chosen device disappears while dvmcli is running, PipeWire moves the audio to the default device.
+
+## Radio aliases
+
+dvmcli shows radio names instead of bare radio IDs, the same way the Windows console does and from the same codeplug settings. Cards and Recent calls show the name; the log shows the name and the ID, for example `RX Kara Portable (9511)`. Radios without an alias show their ID.
+
+**From a file.** Put an `alias.yml` beside the codeplug, or point `aliasPath` under the system at another file (relative paths are relative to the codeplug). It's the Windows console's format, so you can copy that file over:
+
+```yaml
+- alias: "Kara Portable"
+  rid: 9511
+- alias: "Dispatch"
+  rid: 1234
+```
+
+**From the FNE.** Add `syncRadioAliases: true` to the system in the codeplug:
+
+```yaml
+systems:
+  - name: "Centrunk"
+    syncRadioAliases: true
+```
+
+dvmcli then downloads the FNE's alias list after every login. The download is cached in `~/.config/dvmcli/RadioAliases/`, so names show up straight away the next time, before the FNE answers. FNE names take priority, and radios missing from the FNE's list fall back to the local file. If a download fails, the aliases you already have are kept, and the FNE connection isn't affected.
+
+This needs an FNE with radio alias sync, set up with a `radio_alias` file, and the request goes to the FNE's metadata port (its traffic port plus one), so that UDP port has to be reachable too.
+
+Startup and every download write a line to the log, for example `aliases: 2 from /home/kara/dvm/alias.yml` or `aliases: 812 from the FNE (13520 bytes)`. The TUI's title bar shows how many radios have a name, and `a` reloads the file and downloads again.
 
 ## Building from source
 

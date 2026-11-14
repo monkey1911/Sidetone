@@ -47,6 +47,22 @@ namespace dvmcli
         /// <summary>The console RID from the codeplug (0 if missing); used as the source of key requests and transmissions.</summary>
         public uint ConsoleRid => consoleRid;
 
+        /// <summary>Radio aliases for this system; downloaded from the FNE after each login when syncRadioAliases is on.</summary>
+        public RadioAliasBook Aliases { get; set; }
+
+        /// <summary>Downloads the alias list from the FNE now (manual refresh).</summary>
+        public void SyncAliases()
+        {
+            if (Aliases == null)
+                return;
+            if (!Connected)
+            {
+                Status?.Invoke("aliases: not connected to the FNE yet");
+                return;
+            }
+            _ = Aliases.SyncAsync(fne, manual: true);
+        }
+
         /// <summary>
         /// Initializes a new instance of the <see cref="CliPeer"/> class.
         /// </summary>
@@ -161,6 +177,16 @@ namespace dvmcli
             }
             foreach ((byte alg, ushort kid) in pending)
                 RequestKey(alg, kid);
+
+            // like the Windows console: refresh aliases after every login (off the network thread, once the login has settled)
+            RadioAliasBook aliases = Aliases;
+            if (aliases != null && aliases.SyncEnabled)
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(500).ConfigureAwait(false);
+                    if (Connected)
+                        await aliases.SyncAsync(fne).ConfigureAwait(false);
+                });
         }
 
         /// <summary>
