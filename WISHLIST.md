@@ -58,9 +58,19 @@ Things we'd like to do, roughly in the order that makes sense to do them. Nothin
 From the feature comparison, not yet placed in the order above:
 
 - more than one FNE system at a time
-- microphone processing (automatic gain control)
 - sending different channels to different audio outputs
 - playing a WAV file onto a talkgroup
-- talkgroup recording in the consoles (`sidetone-cli listen` can record one talkgroup to WAV)
 - web streams
-- a call history that survives closing the console
+- a call history that survives closing the console (instant recall keeps the last ten calls per channel, in memory only)
+
+Done since the comparison: microphone processing (0.22) and talkgroup recording in both consoles (0.21).
+
+## Terminal console
+
+Gaps between the terminal console (`sidetone-cli tui`) and the graphical one:
+
+- use the graphical console's saved audio devices, PTT device, transmit time limit and key file when no option is given (today only the recordings folder, notifications and audio processing carry over)
+- clickable buttons for the newer features, which are keyboard-only so far: Replay, Rec, patch, secure/clear and key request
+- the same transmit time limit range in both (the TUI allows up to 900 seconds, the GUI 600)
+- unlocking a key file after start-up (the TUI only asks once, before it starts)
+- sending audio to another machine's sound system, for when the TUI is run over SSH (today audio stays on the machine Sidetone runs on)
