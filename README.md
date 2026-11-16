@@ -121,6 +121,7 @@ Channels are shown as cards, up to four across. The mouse works in any terminal 
 | p / d | Open the page box in tone or digital mode (←/→ switch modes, Tab switches tone A / B, Enter sends, Esc cancels) |
 | c | Turn the channel marker on or off |
 | v | Microphone level meter on or off (without transmitting) |
+| u | Mute or unmute the microphone |
 | a | Reload the alias file and download aliases from the FNE again |
 | m / M | Mute the focused card / mute everything |
 | + / - | Volume of the focused card |
@@ -161,6 +162,12 @@ To use a different device, give `--output` (playback) or `--input` (microphone, 
 ```
 
 The ID from `dvmcli devices` or `wpctl status` works too, but IDs can change after a reboot or replug, so names are more reliable. If a name matches nothing or more than one device, dvmcli stops and lists the choices. If the chosen device disappears while dvmcli is running, PipeWire moves the audio to the default device.
+
+### Microphone mute and the no-audio warning
+
+`u`, or a PTT device's mute button, mutes the microphone. While it's muted, the title bar shows `MIC MUTED` in red where the level meter is, and the bottom line says so too. PTT still keys up, but sends silence, and the transmit bar shows `MIC MUTED`. Press `u` or the mute button again, or click `MIC MUTED`, to unmute. The mute isn't remembered between runs, so dvmcli always starts unmuted.
+
+If you transmit unmuted and the microphone stays near-silent for two seconds, the log and the transmit bar show `NO AUDIO FROM THE MICROPHONE`. That usually means the wrong input, a mic turned down or unplugged, or a mic with its own mute switch.
 
 ## PTT from hotkeys and scripts
 
@@ -210,7 +217,7 @@ Find your device's name and buttons:
 ./dvmcli devices
 ```
 
-Then start the TUI with `--ptt-device` and any part of that name. For the Motorola Solutions desktop microphone, dvmcli already knows the buttons: the bar is PTT and the other button is the console's MUTE. Its audio shows up under the same name, so `--input` makes it the transmit microphone too:
+Then start the TUI with `--ptt-device` and any part of that name. For the Motorola Solutions desktop microphone, dvmcli already knows the buttons: the bar is PTT and the other button mutes the microphone (see below). Its audio shows up under the same name, so `--input` makes it the transmit microphone too:
 
 ```bash
 ./dvmcli tui --codeplug ~/dvm/codeplug-linux.yml --ptt-device "Motorola Desktop Microphone" --input "Motorola Desktop Microphone"
@@ -219,7 +226,7 @@ Then start the TUI with `--ptt-device` and any part of that name. For the Motoro
 For other devices:
 - A device with one button needs nothing more.
 - With several buttons, name the PTT one with `--ptt-button`, for example `--ptt-button BTN_THUMB`, `--ptt-button KEY_F13` or a number. `evtest` shows what each button sends.
-- `--mute-button BUTTON` makes another button toggle the console's MUTE, and `--mute-button none` turns that off.
+- `--mute-button BUTTON` makes another button toggle the microphone mute, and `--mute-button none` turns that off.
 
 The TUI logs the device and buttons it's using, and when the device is unplugged or comes back. It transmits on the focused channel, the same as Space, and the transmit time limit still applies.
 

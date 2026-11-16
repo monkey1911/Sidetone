@@ -387,6 +387,29 @@ B: MSC=10
             buttons.StartPttDevice();
             Check(buttons.PttDeviceWatching, "TUI: --ptt-device with button options starts watching the device");
             buttons.StopPttDevice();
+            // mic mute: u, the device's mute button (same handler), shown on screen, silence to the transmitter
+            short[] voice = Sine(8192);
+            Check(!tui.MicMuted && ReferenceEquals(tui.MicToTx(voice), voice), "mic mute: off at start; mic audio goes to the transmitter unchanged");
+            tui.HandleInput(new InputEvent(InputKind.Key, InputKey.Char, 'u'));
+            short[] sent = tui.MicToTx(voice);
+            string edge = tui.Render(120, 40).RowText(Tui.TitleHeight - 1);
+            string footer = tui.Render(120, 40).RowText(40 - Tui.FooterHeight);
+            Check(tui.MicMuted && sent.Length == voice.Length && sent.All(v => v == 0) && edge.Contains("MIC MUTED") && footer.Contains("MIC MUTED"),
+                  "mic mute: u mutes; the transmitter gets silence; MIC MUTED shows in the title box and the bottom line");
+            int at = edge.IndexOf("MIC MUTED", StringComparison.Ordinal);
+            tui.HandleInput(new InputEvent(InputKind.Click, X: at, Y: Tui.TitleHeight - 1));
+            Check(!tui.MicMuted && !tui.Render(120, 40).RowText(Tui.TitleHeight - 1).Contains("MUTED"), "mic mute: clicking MIC MUTED unmutes");
+            tui.ToggleMicMute();
+            tui.ToggleMicMute();
+            Check(!tui.MicMuted, "mic mute: the device's mute button handler toggles it");
+
+            DateTime t0 = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+            Check(!Tui.NoAudioDue(t0.AddSeconds(1.5), t0, DateTime.MinValue, false) && Tui.NoAudioDue(t0.AddSeconds(2.5), t0, DateTime.MinValue, false) &&
+                  !Tui.NoAudioDue(t0.AddSeconds(2.5), t0, t0.AddSeconds(1), false) && !Tui.NoAudioDue(t0.AddSeconds(9), t0, DateTime.MinValue, true),
+                  "no-audio warning: after 2 s of transmit without mic audio; not while audio arrives; not while muted");
+            Check(Tui.RmsDb(new short[160]) <= LevelMeter.FloorDb && Tui.RmsDb(voice) > Tui.NoAudioDb && Tui.RmsDb(Sine(20)) < Tui.NoAudioDb,
+                  "no-audio warning: speech counts as audio, a muted-mic trickle (-64 dB) doesn't");
+
             tui.OnDevicePtt(true);
             tui.OnDevicePtt(false);
             string text = string.Join("\n", Enumerable.Range(0, 40).Select(y => tui.Render(120, 40).RowText(y)));

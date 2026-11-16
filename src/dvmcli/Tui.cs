@@ -573,7 +573,7 @@ namespace dvmcli
             PttDeviceWatcher w = new PttDeviceWatcher(opts.Device, opts.Button, opts.MuteButton);
             w.Status += msg => PostToUi(() => AddLog(msg));
             w.Ptt += down => PostToUi(() => OnDevicePtt(down));
-            w.Mute += () => PostToUi(ToggleGlobalMute);
+            w.Mute += () => PostToUi(ToggleMicMute);
             pttDevice = w;
             w.Start();
         }
@@ -726,7 +726,49 @@ namespace dvmcli
         private void OnMicBlock(short[] samples)
         {
             micLevel.Push(samples);
-            txFeed?.PushAudio(samples);
+            if (RmsDb(samples) > NoAudioDb)
+                Interlocked.Exchange(ref lastVoiceTicks, DateTime.UtcNow.Ticks);
+            txFeed?.PushAudio(MicToTx(samples));
+        }
+
+        /*
+        ** Mic mute and the no-audio warning
+        */
+
+        /// <summary>Below this (dBFS RMS) the microphone counts as silent for the no-audio warning.</summary>
+        internal const double NoAudioDb = -55.0;
+        /// <summary>Transmitting this long without audio above <see cref="NoAudioDb"/> raises the warning.</summary>
+        internal static readonly TimeSpan NoAudioAfter = TimeSpan.FromSeconds(2);
+
+        private volatile bool micMuted;
+        private long lastVoiceTicks;
+        private bool noAudioWarned;
+
+        internal bool MicMuted => micMuted;
+        internal bool NoAudioWarning => noAudioWarned;
+
+        /// <summary>What goes to the transmitter for one mic block: silence while the mic is muted.</summary>
+        internal short[] MicToTx(short[] samples) => micMuted ? new short[samples.Length] : samples;
+
+        internal static double RmsDb(short[] samples)
+        {
+            if (samples == null || samples.Length == 0)
+                return LevelMeter.FloorDb;
+            double sum = 0;
+            foreach (short v in samples)
+                sum += (double)v * v;
+            return LevelMeter.ToDb(Math.Sqrt(sum / samples.Length));
+        }
+
+        /// <summary>Whether a transmission has gone long enough without microphone audio to warn.</summary>
+        internal static bool NoAudioDue(DateTime nowUtc, DateTime txStartUtc, DateTime lastVoiceUtc, bool muted) =>
+            !muted && nowUtc - (lastVoiceUtc > txStartUtc ? lastVoiceUtc : txStartUtc) > NoAudioAfter;
+
+        internal void ToggleMicMute()
+        {
+            micMuted = !micMuted;
+            noAudioWarned = false;
+            AddLog(micMuted ? "microphone muted (transmissions send silence; u or the mute button to unmute)" : "microphone unmuted");
         }
 
         /// <summary>Closes the microphone once neither transmit nor the meter needs it.</summary>
@@ -796,6 +838,15 @@ namespace dvmcli
 
             if (Transmitting && DateTime.Now - tx.StartedAt > txLimit)
                 StopTx($"{txLimit.TotalSeconds:F0} s transmit limit reached");
+
+            if (Transmitting && !noAudioWarned && !NoAudio &&
+                NoAudioDue(DateTime.UtcNow, tx.StartedAt.ToUniversalTime(), new DateTime(Interlocked.Read(ref lastVoiceTicks), DateTimeKind.Utc), micMuted))
+            {
+                noAudioWarned = true;
+                AddLog("no audio from the microphone: check that it's plugged in, not turned down, and is the input in use (dvmcli devices)");
+            }
+            else if (noAudioWarned && (!Transmitting || DateTime.UtcNow.Ticks - Interlocked.Read(ref lastVoiceTicks) < TimeSpan.TicksPerSecond / 2))
+                noAudioWarned = false;
 
             if (settingsDirty && DateTime.Now - dirtyAt > TimeSpan.FromSeconds(1))
                 SaveSettings();
@@ -1481,6 +1532,7 @@ namespace dvmcli
                         case 'p': case 'P': OpenPage(); break;
                         case 'd': case 'D': OpenPage(digital: true); break;
                         case 'v': case 'V': ToggleMicMonitor(); break;
+                        case 'u': case 'U': ToggleMicMute(); break;
                         case 'a': case 'A': RefreshAliases(); break;
                     }
                     break;
@@ -1665,6 +1717,15 @@ namespace dvmcli
             int y = TitleHeight - 1;
             bool txOn = Transmitting;
             bool open = txOn || micMonitor;
+
+            if (micMuted)
+            {
+                string muted = txOn ? " TX · MIC MUTED " : " MIC MUTED ";
+                int mx = Math.Max(1, boxW - 1 - ScreenBuffer.TextWidth(muted));
+                int mw = screen.Text(mx, y, muted, Style.Of(Ansi.BrightWhite, Ansi.Red, bold: true), boxW - 1 - mx);
+                screen.OnClick(new Rect(mx, y, mw, 1), ToggleMicMute);
+                return;
+            }
 
             if (!open)
             {
@@ -1918,17 +1979,20 @@ namespace dvmcli
                 TimeSpan held = DateTime.Now - tx.StartedAt;
                 Style s = Style.Of(Ansi.BrightWhite, Ansi.Red, bold: true);
                 screen.Fill(new Rect(0, y, width, 1), s);
+                string warn = micMuted ? "   ■ MIC MUTED (u to unmute)" : noAudioWarned ? "   ■ NO AUDIO FROM THE MICROPHONE" : string.Empty;
                 screen.Text(1, y, $"● TRANSMITTING  {txChan?.Cfg.Name}  tg {tx.Talkgroup}  {(tx.Encrypted ? KeyStore.AlgorithmName(tx.AlgorithmId) : "clear")}  " +
-                                  $"{held:mm\\:ss} / {txLimit:mm\\:ss}   (Space, Esc or PTT to stop)", s, width - 2);
+                                  $"{held:mm\\:ss} / {txLimit:mm\\:ss}   (Space, Esc or PTT to stop){warn}", s, width - 2);
             }
             else
             {
                 Chan c = chans[cursor];
                 string target = c.IsP25 ? $"PTT → {c.Cfg.Name} (tg {c.Tg}, {(c.Encrypted ? KeyStore.AlgorithmName(c.TxAlg) : "clear")})" : $"{c.Cfg.Name}: no transmit on {c.Cfg.Mode}";
-                screen.Text(1, y, target, Style.Of(Ansi.White), width - 2);
+                int used = screen.Text(1, y, target, Style.Of(Ansi.White), width - 2);
+                if (micMuted)
+                    screen.Text(1 + used, y, "   MIC MUTED (u to unmute)", Style.Of(Ansi.BrightRed, bold: true), width - 2 - used);
             }
 
-            screen.Text(1, y + 1, "click card: listen  [●]: stop  Space: PTT  1-6: alert  p/d: page  r: radio cmd  c: marker  t: talk permit  v: mic meter  a: aliases  m/M: mute card/all  +/-: vol  k: key  q: quit",
+            screen.Text(1, y + 1, "click card: listen  [●]: stop  Space: PTT  1-6: alert  p/d: page  r: radio cmd  c: marker  t: talk permit  v: mic meter  u: mic mute  a: aliases  m/M: mute card/all  +/-: vol  k: key  q: quit",
                         Style.Of(Ansi.Grey), width - 2);
         }
 
