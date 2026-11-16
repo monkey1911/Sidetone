@@ -5,7 +5,8 @@
 #   ERRS=40 tools/ci-status.sh     # show more error lines
 set -u
 cd "$(git rev-parse --show-toplevel)"
-R=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
+# owner/repo from the origin remote (https://github.com/OWNER/REPO(.git) or git@github.com:OWNER/REPO.git)
+R=$(git remote get-url origin | sed -E 's#^(https://[^/]+/|git@[^:]+:)##; s#\.git$##; s#/$##')
 sha=$(git rev-parse HEAD)
 id=""
 for i in $(seq 1 30); do
