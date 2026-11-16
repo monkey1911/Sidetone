@@ -42,6 +42,12 @@ namespace dvmcore
     public sealed class AppSettings
     {
         public bool TalkPermitTone { get; set; } = true;
+        /// <summary>The graphical console's theme: "light", "dark", or null to follow the desktop.</summary>
+        public string Theme { get; set; }
+        /// <summary>The codeplug the graphical console opened last.</summary>
+        public string LastCodeplug { get; set; }
+        /// <summary>The system the graphical console used last.</summary>
+        public string LastSystem { get; set; }
         public Dictionary<string, SystemSettings> Systems { get; set; } = new Dictionary<string, SystemSettings>(StringComparer.OrdinalIgnoreCase);
 
         private static readonly JsonSerializerOptions Json = new JsonSerializerOptions

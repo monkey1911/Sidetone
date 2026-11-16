@@ -1,48 +1,26 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 /**
-* dvmcli - headless Linux proof of concept for the DVM Desktop Dispatch Console.
+* dvmcli - the terminal front end of the Linux DVM console.
 *
 * Terminal UI: one system's channels as a grid of cards (up to four across), live
 * receive on selected channels, toggle push-to-talk, alert tones 1-5 and the channel
 * marker on every listening channel, and mouse support: buttons in the title bar,
-* click a card to listen, wheel to scroll.
+* click a card to listen, wheel to scroll. The console itself (what the keys and
+* clicks do) is dvmcore's DispatchConsole; this class adds input, dialogs and drawing.
 */
 
 using dvmconsole;
 using fnecore;
 using fnecore.P25;
+using Chan = dvmcore.ConsoleChannel;
 
 namespace dvmcli
 {
     /// <summary>
     /// Terminal dispatch console.
     /// </summary>
-    public sealed class Tui
+    public sealed class Tui : DispatchConsole
     {
-        private sealed class Chan
-        {
-            public Codeplug.Channel Cfg;
-            public string Zone;
-            public uint Tg;
-            public bool IsP25;
-            public bool Encrypted;
-            public byte TxAlg;
-            public byte KeyRequestAlg;
-            public ushort KeyId;
-
-            public volatile bool Selected;
-            public volatile bool Muted;
-            public double Gain = 1.0;
-            public P25VoiceReceiver Rx;
-            public PipeWireSink Sink;
-
-            // activity seen on channels that aren't selected
-            public bool Active;
-            public uint ActiveSrc;
-            public uint ActiveStream;
-            public string LastCall = string.Empty;
-        }
-
         /// <summary>Grid geometry for a terminal size.</summary>
         public readonly record struct GridGeometry(int Columns, int CardWidth, int VisibleRows, int TotalRows, int GridTop, int LogTop, int LogHeight);
 
@@ -53,117 +31,25 @@ namespace dvmcli
         public const int MaxColumns = 4;
         private const int MinLogHeight = 6;
         private const int MaxBottomHeight = 10;   // log + recent calls: 8 lines plus the border
-        private const int MaxLogLines = 500;
-        private const int MaxRecentCalls = 100;
         private const int MinSplitWidth = 100;    // below this the recent-calls panel is hidden
 
-        private readonly Codeplug.System system;
-        private readonly TimeSpan txLimit;
-        private readonly string logFile;
-        private readonly KeyStore keys = new KeyStore();
-        private readonly List<Chan> chans = new List<Chan>();
-        private readonly object uiLock = new object();
-        private readonly LinkedList<string> log = new LinkedList<string>();
-        private readonly LinkedList<(string Time, string Chan, string Who, string Detail, bool Tx)> recent = new();
         private readonly ScreenBuffer screen = new ScreenBuffer();
 
-        private CliPeer peer;
-        private int cursor;
         private int scrollRow;
         private int logOffset;
         private bool followCursor = true;
         private volatile bool quit;
-        private volatile bool globalMute;
-
-        private P25Transmitter tx;
-        private Chan txChan;
-        private PipeWireCapture capture;
-        private volatile string pendingTxStop;
-
-        // microphone: one capture shared by transmit and the level meter
-        private readonly LevelMeter micLevel = new LevelMeter();
-        private volatile P25Transmitter txFeed;     // gets mic audio while transmitting
-        private bool micMonitor;                    // mic open just for the meter (v)
-        private volatile string pendingMicFail;
-
-        // remembered settings
-        private readonly string settingsPath;
-        private readonly AppSettings settings;
-        private readonly string settingsError;
-        private bool settingsDirty;
-        private DateTime dirtyAt;
-        private bool talkPermit;
-
-        // tones: alert 1-5 and the periodic channel marker, sent on every listening channel
-        private readonly TimeSpan markerInterval;
-        private volatile ToneJob toneJob;
-        private HashSet<Chan> toneChans = new HashSet<Chan>();
-        private bool markerOn;
-        private DateTime nextMarker;
-
-        /// <summary>Self-test hook: don't start audio players when selecting channels.</summary>
-        internal bool NoAudio { get; set; }
-
-        /// <summary>Output and input to use (from --output / --input or the defaults); null means PipeWire's defaults, unreported.</summary>
-        internal AudioSelection Audio { get; set; }
-
-        /// <summary>Index of the focused card (self-test hook).</summary>
-        internal int Cursor => cursor;
-
-        /// <summary>Whether channel <paramref name="i"/> is selected (self-test hook).</summary>
-        internal bool IsSelected(int i) => chans[i].Selected;
-
-        /// <summary>Global mute (self-test hook).</summary>
-        internal bool GlobalMute => globalMute;
 
         /// <summary>Set when the user asks to quit (self-test hook).</summary>
         internal bool QuitRequested => quit;
-        internal bool MicMonitor => micMonitor;
-        internal RadioAliasBook Aliases => aliases;
-
-        private readonly RadioAliasBook aliases;
-        internal LevelMeter MicLevel => micLevel;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="Tui"/> class.
         /// </summary>
         public Tui(Codeplug codeplug, Codeplug.System system, TimeSpan txLimit, string logFile, TimeSpan? markerInterval = null,
                    string settingsPath = null)
+            : base(codeplug, system, txLimit, logFile, markerInterval, settingsPath)
         {
-            this.settingsPath = settingsPath;
-            settings = AppSettings.Load(settingsPath, out settingsError);
-            talkPermit = settings.TalkPermitTone;
-            this.markerInterval = markerInterval ?? TimeSpan.FromSeconds(10);   // the Windows console's hold timer
-            this.system = system;
-            this.txLimit = txLimit;
-            aliases = new RadioAliasBook(codeplug, system, Path.GetDirectoryName(settingsPath ?? AppSettings.DefaultPath));
-            aliases.Status += AddLog;
-            this.logFile = logFile;
-
-            foreach (Codeplug.Zone zone in codeplug.Zones ?? new List<Codeplug.Zone>())
-                foreach (Codeplug.Channel c in zone.Channels ?? new List<Codeplug.Channel>())
-                {
-                    if (!string.IsNullOrWhiteSpace(c.System) && !string.Equals(c.System, system.Name, StringComparison.OrdinalIgnoreCase))
-                        continue;
-
-                    bool p25 = c.GetChannelMode() == Codeplug.ChannelMode.P25;
-                    bool enc = p25 && !string.IsNullOrWhiteSpace(c.Algo) && !c.Algo.Equals("none", StringComparison.OrdinalIgnoreCase);
-                    uint.TryParse(c.Tgid, out uint tg);
-                    chans.Add(new Chan
-                    {
-                        Cfg = c,
-                        Zone = zone.Name,
-                        Tg = tg,
-                        IsP25 = p25 && tg != 0,
-                        Encrypted = enc,
-                        TxAlg = enc ? c.GetAlgoId() : P25Defines.P25_ALGO_UNENCRYPT,
-                        KeyRequestAlg = enc ? c.GetKeyRequestAlgoId() : (byte)0,
-                        KeyId = enc ? c.GetKeyId() : (ushort)0
-                    });
-                }
-
-            if (chans.Count == 0)
-                throw new ArgumentException($"no channels for system '{system.Name}' in the codeplug");
         }
 
         /// <summary>
@@ -174,27 +60,8 @@ namespace dvmcli
             if (!Terminal.IsTerminal())
                 throw new InvalidOperationException("the TUI needs an interactive terminal (use 'listen' for scripts)");
 
-            peer = new CliPeer(system, keys, verbose: false);
-            peer.Status += AddLog;
-            peer.P25Frame += OnFrame;
-            peer.P25Control += OnP25Control;
-            peer.Aliases = aliases;
+            Start();
 
-            if (Audio != null)
-            {
-                AddLog(Audio.OutputReport);
-                AddLog(Audio.InputReport);
-            }
-            AddLog($"connecting to {system.Name} ({system.Address}:{system.Port}) as peer {system.PeerId}");
-            if (settingsError != null)
-                AddLog(settingsError);
-            aliases.Load();
-            RestoreSettings();
-            StartControl();
-            StartPttDevice();
-            peer.Start();
-
-            ClaimUiThread();
             Terminal term = new Terminal();
             try
             {
@@ -202,9 +69,8 @@ namespace dvmcli
                 {
                     while (term.TryRead(out InputEvent e))
                         HandleInput(e);
-                    RunControlCalls();
 
-                    Housekeeping();
+                    Tick();
                     (int w, int h) = term.Size;
                     Render(w, h);
                     term.Write(screen.Flush());
@@ -214,735 +80,23 @@ namespace dvmcli
             finally
             {
                 term.Dispose();
-                StopControl();
-                pttDevice?.Dispose();
-                RunControlCalls();  // answer anything still queued
-                CancelTones(wait: true);
-                SaveSettings();     // before the channels are closed below
-                StopTx("console closed");
-                micMonitor = false;
-                CloseMicIfUnused();
-                foreach (Chan c in chans)
-                    Deselect(c, quiet: true);
-                peer.Stop();
+                Shutdown();
             }
 
             Console.WriteLine("dvmcli: stopped");
             return 0;
         }
 
-        /*
-        ** Network
-        */
-
-        private void OnFrame(P25DataReceivedEvent e)
+        /// <summary>Scrolled back in the log: keep looking at the same lines when new ones arrive.</summary>
+        protected override void OnLogAdded()
         {
-            List<Chan> matching;
-            lock (uiLock)
-                matching = chans.Where(c => c.IsP25 && c.Tg == e.DstId).ToList();
-
-            bool terminator = e.DUID == P25DUID.TDU || e.DUID == P25DUID.TDULC;
-            foreach (Chan c in matching)
-            {
-                P25VoiceReceiver rx = c.Rx;
-                if (c.Selected && rx != null)
-                {
-                    rx.Handle(e.DstId, e.SrcId, e.DUID, e.StreamId, e.Data);
-                    continue;
-                }
-
-                // not selected: just show that the channel is busy
-                lock (uiLock)
-                {
-                    if (terminator)
-                    {
-                        if (c.Active && e.StreamId == c.ActiveStream)
-                        {
-                            c.Active = false;
-                            c.LastCall = $"{aliases.Label(c.ActiveSrc)} at {DateTime.Now:HH:mm}";
-                            AddRecent(c.Cfg.Name, aliases.Label(c.ActiveSrc), "not listening", tx: false);
-                        }
-                    }
-                    else if (e.DUID == P25DUID.LDU1 || e.DUID == P25DUID.LDU2 || e.DUID == P25DUID.HDU)
-                    {
-                        c.Active = true;
-                        c.ActiveSrc = e.SrcId;
-                        c.ActiveStream = e.StreamId;
-                    }
-                }
-            }
-        }
-
-        /*
-        ** Channels
-        */
-
-        private void Select(Chan c)
-        {
-            if (c.Selected)
-                return;
-            if (!c.IsP25)
-            {
-                AddLog($"{c.Cfg.Name}: {c.Cfg.Mode} channels aren't supported yet");
-                return;
-            }
-
-            P25VoiceReceiver rx = new P25VoiceReceiver(c.Tg, keys);
-            rx.Status += s => { if (!s.StartsWith("CALL ")) AddLog($"{c.Cfg.Name}: {s}"); };
-            rx.KeyNeeded += (alg, kid) => peer?.RequestKey(alg, kid);
-            rx.DescribeSource = aliases.Describe;
-            rx.CallStarted += src => AddLog($"{c.Cfg.Name}: RX {aliases.Describe(src)}");
-            rx.CallEnded += (src, secs, played, muted, crypt) =>
-            {
-                c.LastCall = $"{aliases.Label(src)} at {DateTime.Now:HH:mm} ({secs:F0} s)";
-                AddLog($"{c.Cfg.Name}: end {aliases.Describe(src)}, {secs:F1} s, {crypt}{(muted > 0 ? $", {muted} frames muted" : string.Empty)}");
-                AddRecent(c.Cfg.Name, aliases.Label(src), $"{secs:F0} s, {crypt}{(muted > 0 ? ", partly muted" : string.Empty)}", tx: false);
-            };
-            rx.Audio += samples =>
-            {
-                PipeWireSink sink = c.Sink;
-                if (sink == null || c.Muted || globalMute || (txChan == c && tx?.IsTransmitting == true) || toneChans.Contains(c))
-                    return;
-                Program.ApplyGain(samples, c.Gain);
-                sink.Write(samples);
-            };
-
-            if (!NoAudio)
-            {
-                try
-                {
-                    PipeWireSink sink = new PipeWireSink(target: Audio?.OutputTarget);
-                    sink.Failed += msg => AddLog($"{c.Cfg.Name}: {msg}");
-                    c.Sink = sink;
-                }
-                catch (Exception ex)
-                {
-                    AddLog($"{c.Cfg.Name}: no audio output ({ex.Message})");
-                }
-            }
-
-            c.Rx = rx;
-            c.Active = false;
-            c.Selected = true;
-            AddLog($"{c.Cfg.Name}: listening (tg {c.Tg})");
-            MarkDirty();
-
-            if (c.Encrypted && KeyStore.IsSupported(c.KeyRequestAlg) && !keys.TryGet(c.KeyRequestAlg, c.KeyId, out _))
-                peer?.RequestKey(c.KeyRequestAlg, c.KeyId);
-        }
-
-        private void Deselect(Chan c, bool quiet = false)
-        {
-            if (!c.Selected)
-                return;
-            if (txChan == c)
-                StopTx("channel deselected");
-
-            c.Selected = false;
-            P25VoiceReceiver rx = c.Rx;
-            PipeWireSink sink = c.Sink;
-            c.Rx = null;
-            c.Sink = null;
-            rx?.Dispose();
-            sink?.Dispose();
-            if (!quiet)
-            {
-                AddLog($"{c.Cfg.Name}: stopped listening");
-                MarkDirty();
-            }
-        }
-
-        private void ToggleSelect(Chan c)
-        {
-            if (c.Selected) Deselect(c); else Select(c);
-        }
-
-        private void ToggleMute(Chan c)
-        {
-            c.Muted = !c.Muted;
-            AddLog($"{c.Cfg.Name}: {(c.Muted ? "muted" : "unmuted")}");
-            MarkDirty();
-        }
-
-        private void ToggleGlobalMute()
-        {
-            globalMute = !globalMute;
-            AddLog(globalMute ? "all receive audio muted" : "receive audio unmuted");
-            MarkDirty();
-        }
-
-        private void Louder(Chan c)
-        {
-            c.Gain = Math.Min(8.0, c.Gain * 1.25);
-            MarkDirty();
-        }
-
-        private void Quieter(Chan c)
-        {
-            c.Gain = Math.Max(0.25, c.Gain / 1.25);
-            MarkDirty();
-        }
-
-        private void ToggleTalkPermit()
-        {
-            talkPermit = !talkPermit;
-            AddLog(talkPermit ? "talk permit tone on" : "talk permit tone off");
-            MarkDirty();
-        }
-
-        /// <summary>Talk permit tone on (self-test hook).</summary>
-        internal bool TalkPermit => talkPermit;
-
-        /// <summary>
-        /// The Windows console's talk permit tone: 50 ms of 1200 Hz at 20 % with 10 ms fades.
-        /// </summary>
-        public static short[] TalkPermitPcm()
-        {
-            const int rate = 8000, samples = rate * 50 / 1000, fade = rate * 10 / 1000;
-            short[] pcm = new short[samples];
-            for (int i = 0; i < samples; i++)
-            {
-                double env = i < fade ? (double)i / fade : i >= samples - fade ? (double)(samples - i - 1) / fade : 1.0;
-                pcm[i] = (short)(Math.Sin(2 * Math.PI * 1200.0 * i / rate) * 0.20 * env * short.MaxValue);
-            }
-            return pcm;
-        }
-
-        private void RequestKey(Chan c)
-        {
-            if (c.Encrypted && KeyStore.IsSupported(c.KeyRequestAlg))
-                peer?.RequestKey(c.KeyRequestAlg, c.KeyId);
-            else
-                AddLog($"{c.Cfg.Name}: clear channel, no key needed");
-        }
-
-        /*
-        ** Transmit
-        */
-
-        private void ToggleTx()
-        {
-            if (toneJob != null)
-            {
-                CancelTones();
-                return;
-            }
-            if (tx != null && tx.IsTransmitting)
-            {
-                StopTx(null);
-                return;
-            }
-
-            StartTx();
-        }
-
-        /// <summary>
-        /// Starts transmitting on the focused channel. Returns null on success, or the reason
-        /// it didn't (also written to the log).
-        /// </summary>
-        private string StartTx()
-        {
-            string Refuse(string why)
-            {
-                AddLog(why);
-                return why;
-            }
-
-            Chan c = chans[cursor];
-            if (!c.IsP25)
-                return Refuse($"{c.Cfg.Name}: can't transmit on a {c.Cfg.Mode} channel");
-            if (c.Cfg.RxOnly)
-                return Refuse($"{c.Cfg.Name}: receive-only channel");
-            if (peer == null || !peer.Connected)
-                return Refuse("not connected to the FNE yet");
-
-            Select(c);
-
-            P25Transmitter t = new P25Transmitter(peer, keys, peer.ConsoleRid, c.Tg, c.TxAlg, c.KeyId);
-            if (!t.Start(out string error))
-            {
-                if (c.Encrypted && KeyStore.IsSupported(c.KeyRequestAlg))
-                    peer.RequestKey(c.KeyRequestAlg, c.KeyId);
-                return Refuse($"{c.Cfg.Name}: not transmitting: {error}");
-            }
-
-            if (!OpenMic(out string micError))
-            {
-                t.Stop();
-                return Refuse($"{c.Cfg.Name}: no microphone ({micError})");
-            }
-
-            tx = t;
-            txChan = c;
-            txFeed = t;
-            if (talkPermit)
-                c.Sink?.Write(TalkPermitPcm());     // played locally once the call has started, as the Windows console does
-            AddLog($"{c.Cfg.Name}: TX start as {peer.ConsoleRid}{(t.Encrypted ? $" ({KeyStore.AlgorithmName(t.AlgorithmId)} key 0x{t.KeyId:X4})" : " (clear)")}");
-            return null;
-        }
-
-        private void StopTx(string reason)
-        {
-            P25Transmitter t = tx;
-            if (t == null)
-                return;
-
-            txFeed = null;      // stop feeding mic audio before the call ends
-
-            double secs = (DateTime.Now - t.StartedAt).TotalSeconds;
-            bool was = t.IsTransmitting;
-            t.Stop();
-            if (was)
-            {
-                AddLog($"{txChan?.Cfg.Name}: TX end, {secs:F1} s, {t.FramesSent} frames{(reason != null ? $" ({reason})" : string.Empty)}");
-                AddRecent(txChan?.Cfg.Name, aliases.Label(t.SourceId), $"{secs:F0} s, {(t.Encrypted ? KeyStore.AlgorithmName(t.AlgorithmId) : "clear")}", tx: true);
-            }
-
-            tx = null;
-            txChan = null;
-            CloseMicIfUnused();
-
-            deviceHold = false;
-
-            // a "ptt hold" client exits when its transmission ends, however it ended
-            ControlSession held = holdSession;
-            holdSession = null;
-            held?.Close();
-        }
-
-        /*
-        ** Control socket (dvmcli ptt)
-        */
-
-        /// <summary>Control socket path, or null for none.</summary>
-        internal string ControlSocketPath { get; set; }
-
-        private ControlServer control;
-        private ControlSession holdSession;
-        private readonly System.Collections.Concurrent.ConcurrentQueue<(Func<string> Action, TaskCompletionSource<string> Done)> uiCalls = new();
-        private readonly AutoResetEvent wake = new AutoResetEvent(false);
-        private int uiThreadId = -1;
-
-        /// <summary>Marks the calling thread as the UI thread (Run does this; the self-test too).</summary>
-        internal void ClaimUiThread() => uiThreadId = Environment.CurrentManagedThreadId;
-
-        /// <summary>Starts the control socket (self-test hook; Run calls it too).</summary>
-        internal bool ControlRunning => control != null;
-
-        internal void StartControl()
-        {
-            if (string.IsNullOrWhiteSpace(ControlSocketPath))
-                return;
-            try
-            {
-                control = new ControlServer(ControlSocketPath, HandleControl);
-                control.Start();
-                AddLog($"control: PTT socket at {ControlSocketPath} (dvmcli ptt down / up / toggle / hold)");
-            }
-            catch (Exception ex)
-            {
-                control = null;
-                AddLog($"control: no PTT socket ({ex.Message}); start with --socket PATH to use another");
-            }
-        }
-
-        /*
-        ** Dedicated PTT device (desk mic, footswitch)
-        */
-
-        /// <summary>PTT device options: part of its name or /dev/input path, PTT button, mute button (null = defaults).</summary>
-        internal (string Device, string Button, string MuteButton)? PttDevice { get; set; }
-
-        private PttDeviceWatcher pttDevice;
-        internal bool PttDeviceWatching => pttDevice != null;
-        internal void StopPttDevice() { pttDevice?.Dispose(); pttDevice = null; }
-        private bool deviceHold;    // the device's PTT is holding the current transmission
-
-        /// <summary>Queues work for the UI thread without waiting for it.</summary>
-        private void PostToUi(Action action)
-        {
-            uiCalls.Enqueue((() => { action(); return null; }, new TaskCompletionSource<string>()));
-            wake.Set();
-        }
-
-        internal void StartPttDevice()
-        {
-            // (not a positional pattern: "string x" doesn't match null, and the buttons are usually null)
-            if (PttDevice is not { } opts || string.IsNullOrWhiteSpace(opts.Device))
-                return;
-            PttDeviceWatcher w = new PttDeviceWatcher(opts.Device, opts.Button, opts.MuteButton);
-            w.Status += msg => PostToUi(() => AddLog(msg));
-            w.Ptt += down => PostToUi(() => OnDevicePtt(down));
-            w.Mute += () => PostToUi(ToggleMicMute);
-            pttDevice = w;
-            w.Start();
-        }
-
-        /// <summary>PTT device pressed or released (UI thread).</summary>
-        internal void OnDevicePtt(bool down)
-        {
-            if (down)
-            {
-                if (toneJob != null)
-                {
-                    AddLog("PTT device: tones are being sent; PTT ignored");
-                    return;
-                }
-                string reply = PttDown(null);       // a refusal is already in the log
-                deviceHold = reply.StartsWith("ok", StringComparison.Ordinal);
-                return;
-            }
-
-            if (deviceHold && Transmitting)
-                StopTx("PTT released");
-            deviceHold = false;
-        }
-
-        internal void StopControl()
-        {
-            ControlServer c = control;
-            control = null;
-            c?.Dispose();
-        }
-
-        /// <summary>Runs a control command on the UI thread and waits for its reply.</summary>
-        private string OnUiThread(Func<string> action)
-        {
-            if (Environment.CurrentManagedThreadId == uiThreadId)
-                return action();    // already on the UI thread (the console closing a held session itself)
-            TaskCompletionSource<string> done = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
-            uiCalls.Enqueue((action, done));
-            wake.Set();
-            return done.Task.Wait(TimeSpan.FromSeconds(3)) ? done.Task.Result : "error: the console didn't answer";
-        }
-
-        /// <summary>Runs queued control commands (UI thread).</summary>
-        internal void RunControlCalls()
-        {
-            while (uiCalls.TryDequeue(out var call))
-            {
-                try { call.Done.TrySetResult(call.Action()); }
-                catch (Exception ex) { call.Done.TrySetResult($"error: {ex.Message}"); }
-            }
-        }
-
-        /// <summary>Handles one control command line (connection thread).</summary>
-        internal string HandleControl(string line, ControlSession session)
-        {
-            string cmd = string.Join(' ', line.ToLowerInvariant().Split(' ', StringSplitOptions.RemoveEmptyEntries));
-            switch (cmd)
-            {
-                case "ptt down":
-                    return OnUiThread(() => PttDown(null));
-                case "ptt up":
-                    return OnUiThread(PttUp);
-                case "ptt toggle":
-                    return OnUiThread(() => Transmitting ? PttUp() : PttDown(null));
-                case "ptt hold":
-                    session.Closed += () => OnUiThread(() => ReleaseHold(session));
-                    return OnUiThread(() => PttDown(session));
-                case "status":
-                    return OnUiThread(ControlStatus);
-                case "help":
-                    return "ok: commands: ptt down, ptt up, ptt toggle, ptt hold, status, help";
-                default:
-                    return $"error: unknown command '{line}' (try 'help')";
-            }
-        }
-
-        private string PttDown(ControlSession session)
-        {
-            if (Transmitting)
-            {
-                if (session != null)
-                    holdSession = session;      // releasing this hold now ends the transmission
-                return $"ok: already transmitting on {txChan?.Cfg.Name}";
-            }
-            if (toneJob != null)
-                return "error: tones are being sent; stop them first";
-            string error = StartTx();
-            if (error != null)
-                return $"error: {error}";
-            holdSession = session;
-            return $"ok: transmitting on {txChan?.Cfg.Name} (tg {tx.Talkgroup})";
-        }
-
-        private string PttUp()
-        {
-            if (!Transmitting)
-                return "ok: not transmitting";
-            string name = txChan?.Cfg.Name;
-            StopTx(null);
-            return $"ok: stopped transmitting on {name}";
-        }
-
-        private string ReleaseHold(ControlSession session)
-        {
-            if (holdSession != session)
-                return "ok";
-            holdSession = null;
-            if (Transmitting)
-                StopTx("PTT released");
-            return "ok";
-        }
-
-        private string ControlStatus()
-        {
-            if (Transmitting)
-                return $"ok: transmitting on {txChan?.Cfg.Name} (tg {tx.Talkgroup}) for {(DateTime.Now - tx.StartedAt).TotalSeconds:F0} s";
-            Chan c = chans[cursor];
-            string conn = peer?.Connected == true ? "connected" : "not connected";
-            return $"ok: idle, {conn}, PTT would transmit on {c.Cfg.Name}{(c.IsP25 ? $" (tg {c.Tg})" : $" ({c.Cfg.Mode}, no transmit)")}";
-        }
-
-        private bool Transmitting => tx != null && tx.IsTransmitting;
-
-        /*
-        ** Microphone and level meter
-        */
-
-        /// <summary>Opens the microphone if it isn't open yet.</summary>
-        private bool OpenMic(out string error)
-        {
-            error = null;
-            if (capture != null)
-                return true;
-            try
-            {
-                PipeWireCapture cap = new PipeWireCapture(target: Audio?.InputTarget);
-                cap.Block += OnMicBlock;
-                cap.Failed += msg => pendingMicFail = msg;
-                capture = cap;
-                return true;
-            }
-            catch (Exception ex)
-            {
-                error = ex.Message;
-                return false;
-            }
-        }
-
-        // capture thread
-        private void OnMicBlock(short[] samples)
-        {
-            micLevel.Push(samples);
-            if (RmsDb(samples) > NoAudioDb)
-                Interlocked.Exchange(ref lastVoiceTicks, DateTime.UtcNow.Ticks);
-            txFeed?.PushAudio(MicToTx(samples));
-        }
-
-        /*
-        ** Mic mute and the no-audio warning
-        */
-
-        /// <summary>Below this (dBFS RMS) the microphone counts as silent for the no-audio warning.</summary>
-        internal const double NoAudioDb = -55.0;
-        /// <summary>Transmitting this long without audio above <see cref="NoAudioDb"/> raises the warning.</summary>
-        internal static readonly TimeSpan NoAudioAfter = TimeSpan.FromSeconds(2);
-
-        private volatile bool micMuted;
-        private long lastVoiceTicks;
-        private bool noAudioWarned;
-
-        internal bool MicMuted => micMuted;
-        internal bool NoAudioWarning => noAudioWarned;
-
-        /// <summary>What goes to the transmitter for one mic block: silence while the mic is muted.</summary>
-        internal short[] MicToTx(short[] samples) => micMuted ? new short[samples.Length] : samples;
-
-        internal static double RmsDb(short[] samples)
-        {
-            if (samples == null || samples.Length == 0)
-                return LevelMeter.FloorDb;
-            double sum = 0;
-            foreach (short v in samples)
-                sum += (double)v * v;
-            return LevelMeter.ToDb(Math.Sqrt(sum / samples.Length));
-        }
-
-        /// <summary>Whether a transmission has gone long enough without microphone audio to warn.</summary>
-        internal static bool NoAudioDue(DateTime nowUtc, DateTime txStartUtc, DateTime lastVoiceUtc, bool muted) =>
-            !muted && nowUtc - (lastVoiceUtc > txStartUtc ? lastVoiceUtc : txStartUtc) > NoAudioAfter;
-
-        internal void ToggleMicMute()
-        {
-            micMuted = !micMuted;
-            noAudioWarned = false;
-            AddLog(micMuted ? "microphone muted (transmissions send silence; u or the mute button to unmute)" : "microphone unmuted");
-        }
-
-        /// <summary>Closes the microphone once neither transmit nor the meter needs it.</summary>
-        private void CloseMicIfUnused()
-        {
-            if (micMonitor || txFeed != null)
-                return;
-            PipeWireCapture cap = capture;
-            capture = null;
-            cap?.Dispose();
-            micLevel.Reset();
-        }
-
-        /// <summary>Reloads the local alias file and, when FNE sync is on, downloads the list again.</summary>
-        private void RefreshAliases()
-        {
-            aliases.LoadLocal();
-            if (aliases.SyncEnabled)
-                peer?.SyncAliases();
-        }
-
-        private void ToggleMicMonitor()
-        {
-            if (micMonitor)
-            {
-                micMonitor = false;
-                CloseMicIfUnused();
-                AddLog("mic meter off");
-                return;
-            }
-
-            micMonitor = true;
-            if (!NoAudio && !OpenMic(out string error))
-            {
-                micMonitor = false;
-                AddLog($"mic meter: no microphone ({error})");
-                return;
-            }
-            AddLog("mic meter on: the microphone stays open (nothing is transmitted); v turns it off");
-        }
-
-        private void Housekeeping()
-        {
-            string micFail = pendingMicFail;
-            if (micFail != null)
-            {
-                pendingMicFail = null;
-                PipeWireCapture cap = capture;
-                capture = null;
-                cap?.Dispose();
-                micLevel.Reset();
-                if (micMonitor)
-                {
-                    micMonitor = false;
-                    AddLog($"mic meter off: microphone stopped ({micFail})");
-                }
-                if (tx != null)
-                    pendingTxStop = $"microphone: {micFail}";
-            }
-
-            string stop = pendingTxStop;
-            if (stop != null)
-            {
-                pendingTxStop = null;
-                StopTx(stop);
-            }
-
-            if (Transmitting && DateTime.Now - tx.StartedAt > txLimit)
-                StopTx($"{txLimit.TotalSeconds:F0} s transmit limit reached");
-
-            if (Transmitting && !noAudioWarned && !NoAudio &&
-                NoAudioDue(DateTime.UtcNow, tx.StartedAt.ToUniversalTime(), new DateTime(Interlocked.Read(ref lastVoiceTicks), DateTimeKind.Utc), micMuted))
-            {
-                noAudioWarned = true;
-                AddLog("no audio from the microphone: check that it's plugged in, not turned down, and is the input in use (dvmcli devices)");
-            }
-            else if (noAudioWarned && (!Transmitting || DateTime.UtcNow.Ticks - Interlocked.Read(ref lastVoiceTicks) < TimeSpan.TicksPerSecond / 2))
-                noAudioWarned = false;
-
-            if (settingsDirty && DateTime.Now - dirtyAt > TimeSpan.FromSeconds(1))
-                SaveSettings();
-
-            // channel marker: a beep on every idle listening channel, every markerInterval
-            if (markerOn && DateTime.Now >= nextMarker)
-            {
-                nextMarker = DateTime.Now + markerInterval;
-                if (toneJob == null && !Transmitting && peer?.Connected == true)
-                {
-                    List<Chan> idle = TxCapableListening().Where(c => !(c.Rx?.InCall ?? false) && !c.Active).ToList();
-                    if (idle.Count > 0)
-                        SendTone(TonePlan.Marker(), idle, quiet: true);
-                }
-            }
-        }
-
-        /*
-        ** Remembered settings
-        */
-
-        private static string ChanKey(Chan c) => $"{c.Zone}/{c.Cfg.Name}/{(c.Tg != 0 ? c.Tg.ToString() : c.Cfg.Tgid)}";
-
-        private void MarkDirty()
-        {
-            settingsDirty = true;
-            dirtyAt = DateTime.Now;
-        }
-
-        /// <summary>
-        /// Applies the remembered settings for this system: listening channels, volumes, mutes, focus, last page values
-        /// (internal for the self-test). The channel marker is never switched on automatically.
-        /// </summary>
-        internal void RestoreSettings()
-        {
-            SystemSettings ss = settings.For(system.Name);
-            globalMute = ss.GlobalMute;
-            lastPageA = ss.PageA ?? string.Empty;
-            lastPageB = ss.PageB ?? string.Empty;
-            lastPageRid = ss.PageRid ?? string.Empty;
-
-            List<string> restored = new List<string>();
-            for (int i = 0; i < chans.Count; i++)
-            {
-                Chan c = chans[i];
-                string key = ChanKey(c);
-                if (key == ss.Focused)
-                    cursor = i;
-                if (!ss.Channels.TryGetValue(key, out ChannelSettings cs))
-                    continue;
-                c.Muted = cs.Muted;
-                c.Gain = Math.Clamp(cs.Gain, 0.25, 8.0);
-                if (cs.Listening && c.IsP25)
-                {
-                    Select(c);
-                    restored.Add(c.Cfg.Name);
-                }
-            }
-            if (restored.Count > 0)
-                AddLog($"restored: listening on {string.Join(", ", restored)}");
-            settingsDirty = false;
-        }
-
-        /// <summary>
-        /// Writes the current settings to the settings file (internal for the self-test).
-        /// </summary>
-        internal void SaveSettings()
-        {
-            settingsDirty = false;
-            if (settingsPath == null)
-                return;
-
-            SystemSettings ss = settings.For(system.Name);
-            settings.TalkPermitTone = talkPermit;
-            ss.GlobalMute = globalMute;
-            ss.PageA = lastPageA;
-            ss.PageB = lastPageB;
-            ss.PageRid = lastPageRid;
-            ss.Focused = ChanKey(chans[cursor]);
-            foreach (Chan c in chans)
-                ss.Channels[ChanKey(c)] = new ChannelSettings { Listening = c.Selected, Muted = c.Muted, Gain = Math.Round(c.Gain, 3) };
-
-            try { settings.Save(settingsPath); }
-            catch (Exception ex) { AddLog($"could not save settings to {settingsPath}: {ex.Message}"); }
+            if (logOffset > 0)
+                logOffset++;
         }
 
         /*
         ** Radio commands: check, inhibit, uninhibit (one box: radio ID, action, send)
         */
-
-        private static readonly (string Label, ExtendedFunction Function)[] RadioActions =
-        {
-            ("Check", ExtendedFunction.CHECK),
-            ("Inhibit", ExtendedFunction.INHIBIT),
-            ("Uninhibit", ExtendedFunction.UNINHIBIT)
-        };
 
         private sealed class RadioDialog
         {
@@ -1017,7 +171,7 @@ namespace dvmcli
             RadioDialog d = radioDialog;
             if (d == null)
                 return;
-            (string label, ExtendedFunction fn) = RadioActions[d.Action];
+            ExtendedFunction fn = RadioActions[d.Action].Function;
 
             if (!uint.TryParse(d.Rid, out uint rid) || rid == 0 || rid > 0xFFFFFF)
             {
@@ -1031,20 +185,14 @@ namespace dvmcli
                 return;
             }
 
-            string error = "not connected to the FNE yet";
-            if (peer == null || !peer.SendExtendedFunction(fn, rid, out error))
+            string error = SendRadioCommand(d.Action, rid);
+            if (error != null)
             {
                 d.Error = error;
                 d.Confirm = false;
                 return;
             }
-
-            lastPageRid = d.Rid;
-            MarkDirty();
-            commanded[rid] = DateTime.Now;
             radioDialog = null;
-            AddLog($"radio {label.ToLowerInvariant()} sent to {aliases.Describe(rid)}");
-            AddRecent("radio", rid.ToString(), label.ToLowerInvariant(), tx: true);
         }
 
         private void DrawRadioDialog(int width, int height)
@@ -1098,50 +246,6 @@ namespace dvmcli
         }
 
         /*
-        ** Tones
-        */
-
-        private List<Chan> TxCapableListening() =>
-            chans.Where(c => c.Selected && c.IsP25 && !c.Cfg.RxOnly).ToList();
-
-        /// <summary>
-        /// Sends alert tone 1-5 on every listening channel (internal for the self-test).
-        /// </summary>
-        internal void SendAlert(int number) => SendManual(TonePlan.Alert(number));
-
-        /// <summary>
-        /// Sends a QuickCall II page on every listening channel (internal for the self-test).
-        /// </summary>
-        internal void SendPage(double aHz, double bHz) => SendManual(TonePlan.Page(aHz, bHz));
-
-        private void SendManual(TonePlan plan)
-        {
-            if (toneJob != null)
-            {
-                AddLog($"a tone is already being sent ({toneJob.Plan.Name}); Esc stops it");
-                return;
-            }
-            if (Transmitting)
-            {
-                AddLog("stop transmitting before sending a tone");
-                return;
-            }
-            if (peer == null || !peer.Connected)
-            {
-                AddLog("not connected to the FNE yet");
-                return;
-            }
-
-            List<Chan> targets = TxCapableListening();
-            if (targets.Count == 0)
-            {
-                AddLog("no listening channels to send the tone on (click a card to listen)");
-                return;
-            }
-            SendTone(plan, targets, quiet: false);
-        }
-
-        /*
         ** Page dialog: QuickCall II tone page (on listening channels) or digital page (P25 call alert to one radio)
         */
 
@@ -1154,7 +258,6 @@ namespace dvmcli
         }
 
         private PageDialog pageDialog;
-        private string lastPageA = string.Empty, lastPageB = string.Empty, lastPageRid = string.Empty;
 
         /// <summary>True while the page dialog is open (self-test hook).</summary>
         internal bool PageDialogOpen => pageDialog != null;
@@ -1224,17 +327,13 @@ namespace dvmcli
                     d.Error = "enter a radio ID (1-16777215)";
                     return;
                 }
-                string error = "not connected to the FNE yet";
-                if (peer == null || !peer.SendCallAlert(rid, out error))
+                string error = SendDigitalPage(rid);
+                if (error != null)
                 {
                     d.Error = error;
                     return;
                 }
-                lastPageRid = d.Rid;
-                MarkDirty();
                 pageDialog = null;
-                AddLog($"digital page (call alert) sent to {aliases.Describe(rid)}");
-                AddRecent("call alert", aliases.Label(rid), "digital page", tx: true);
                 return;
             }
 
@@ -1259,63 +358,6 @@ namespace dvmcli
             pageDialog = null;
             SendPage(a, b);
         }
-
-        // radios sent a command recently (radio ID -> time), so their replies are reported
-        private readonly System.Collections.Concurrent.ConcurrentDictionary<uint, DateTime> commanded = new();
-
-        /// <summary>
-        /// Reports control messages that concern this console (internal for the self-test). Octets of a TSBK: 0 opcode,
-        /// 1 MFID, then the arguments; for an extended function: 2-3 function, 4-6 argument, 7-9 target radio.
-        /// </summary>
-        internal void OnP25Control(byte lco, uint src, uint dst, byte[] tsbk)
-        {
-            uint me = peer?.ConsoleRid ?? consoleRidForTest;
-            switch (lco)
-            {
-                case P25Defines.TSBK_IOSP_CALL_ALRT:
-                    if (dst == me && me != 0)
-                    {
-                        AddLog($"call alert (page) from {aliases.Describe(src)}");
-                        AddRecent("call alert", aliases.Label(src), "paged this console", tx: false);
-                    }
-                    break;
-
-                case P25Defines.TSBK_IOSP_ACK_RSP:
-                    if (dst == me && me != 0)
-                        AddLog($"acknowledged by {aliases.Describe(src)}");
-                    break;
-
-                case P25Defines.TSBK_IOSP_EXT_FNCT:
-                {
-                    if (tsbk == null)
-                        break;
-                    ushort fn = (ushort)(tsbk[2] << 8 | tsbk[3]);
-                    uint arg = (uint)(tsbk[4] << 16 | tsbk[5] << 8 | tsbk[6]);
-                    uint target = (uint)(tsbk[7] << 16 | tsbk[8] << 8 | tsbk[9]);
-                    string what = fn switch
-                    {
-                        (ushort)ExtendedFunction.CHECK_ACK => "answered the radio check",
-                        (ushort)ExtendedFunction.INHIBIT_ACK => "confirmed it is inhibited",
-                        (ushort)ExtendedFunction.UNINHIBIT_ACK => "confirmed it is uninhibited",
-                        _ => null
-                    };
-                    if (what == null)
-                        break;      // our own command coming back, or a function we don't report
-
-                    // a reply to us: argument is our RID (check) or the radio was commanded from here recently
-                    bool recent = commanded.TryGetValue(target, out DateTime when) && DateTime.Now - when < TimeSpan.FromMinutes(2);
-                    if ((arg == me && me != 0) || recent)
-                    {
-                        AddLog($"radio {aliases.Describe(target)} {what}");
-                        AddRecent("radio", aliases.Label(target), what.Replace("confirmed it is ", string.Empty).Replace("answered the ", string.Empty), tx: false);
-                    }
-                    break;
-                }
-            }
-        }
-
-        /// <summary>Console RID used by the self-test when there is no peer.</summary>
-        internal uint consoleRidForTest;
 
         private void DrawPageDialog(int width, int height)
         {
@@ -1386,76 +428,6 @@ namespace dvmcli
                 screen.Text(box.X + box.W + 2, y, suffix, Style.Of(Ansi.Grey, Ansi.Black));
             screen.OnClick(new Rect(x, y, 30, 1), focus);
         }
-
-        private void SendTone(TonePlan plan, List<Chan> targets, bool quiet)
-        {
-            List<(string, P25Transmitter)> started = new List<(string, P25Transmitter)>();
-            HashSet<Chan> sending = new HashSet<Chan>();
-            foreach (Chan c in targets)
-            {
-                P25Transmitter t = new P25Transmitter(peer, keys, peer.ConsoleRid, c.Tg, c.TxAlg, c.KeyId);
-                if (t.Start(out string error))
-                {
-                    started.Add((c.Cfg.Name, t));
-                    sending.Add(c);
-                }
-                else
-                {
-                    AddLog($"{c.Cfg.Name}: no {plan.Name}: {error}");
-                    if (c.Encrypted && KeyStore.IsSupported(c.KeyRequestAlg))
-                        peer.RequestKey(c.KeyRequestAlg, c.KeyId);
-                }
-            }
-            if (started.Count == 0)
-                return;
-
-            // monitor locally on one channel's speaker (not every one), unless muted
-            Chan monitorChan = sending.FirstOrDefault(c => c.Sink != null && !c.Muted);
-            Action<short[]> monitor = monitorChan == null ? null : pcm =>
-            {
-                if (!globalMute && !monitorChan.Muted)
-                    monitorChan.Sink?.Write(pcm);
-            };
-
-            ToneJob job = new ToneJob(plan, started, monitor);
-            job.Finished += j =>
-            {
-                if (!quiet || j.Cancelled)
-                    AddLog($"{plan.Name} {(j.Cancelled ? "stopped" : "sent")} on {string.Join(", ", j.Channels)}");
-                if (!quiet)
-                    foreach (string name in j.Channels)
-                        AddRecent(name, $"{peer?.ConsoleRid}", plan.Name, tx: true);
-                toneChans = new HashSet<Chan>();
-                toneJob = null;
-            };
-
-            toneChans = sending;
-            toneJob = job;
-            if (!quiet)
-                AddLog($"sending {plan.Name} on {string.Join(", ", started.Select(t => t.Item1))}");
-            job.Start();
-        }
-
-        private void CancelTones(bool wait = false)
-        {
-            ToneJob job = toneJob;
-            if (job == null)
-                return;
-            job.Cancel();
-            for (int i = 0; wait && job.Running && i < 50; i++)
-                Thread.Sleep(20);
-        }
-
-        private void ToggleMarker()
-        {
-            markerOn = !markerOn;
-            nextMarker = DateTime.Now;     // first beep straight away
-            AddLog(markerOn ? $"channel marker on: a {TonePlan.MarkerHz:F0} Hz beep every {markerInterval.TotalSeconds:F0} s on idle listening channels"
-                            : "channel marker off");
-        }
-
-        /// <summary>Channel marker on (self-test hook).</summary>
-        internal bool MarkerOn => markerOn;
 
         /*
         ** Input
@@ -1928,16 +900,6 @@ namespace dvmcli
             }
         }
 
-        private void AddRecent(string chan, string who, string detail, bool tx)
-        {
-            lock (uiLock)
-            {
-                recent.AddFirst(($"{DateTime.Now:HH:mm}", chan ?? "?", who, detail, tx));
-                while (recent.Count > MaxRecentCalls)
-                    recent.RemoveLast();
-            }
-        }
-
         private void DrawLog(Rect r)
         {
             screen.Box(r, Style.Of(Ansi.Grey));
@@ -1994,30 +956,6 @@ namespace dvmcli
 
             screen.Text(1, y + 1, "click card: listen  [●]: stop  Space: PTT  1-6: alert  p/d: page  r: radio cmd  c: marker  t: talk permit  v: mic meter  u: mic mute  a: aliases  m/M: mute card/all  +/-: vol  k: key  q: quit",
                         Style.Of(Ansi.Grey), width - 2);
-        }
-
-        /*
-        ** Log
-        */
-
-        private void AddLog(string message)
-        {
-            message = (message ?? string.Empty).Replace("(DVMCLI) ", string.Empty);
-            string line = $"{DateTime.Now:HH:mm:ss} {message}";
-            lock (uiLock)
-            {
-                log.AddLast(line);
-                while (log.Count > MaxLogLines)
-                    log.RemoveFirst();
-                if (logOffset > 0)
-                    logOffset++;    // scrolled back: keep looking at the same lines
-            }
-
-            if (logFile != null)
-            {
-                try { File.AppendAllText(logFile, line + Environment.NewLine); }
-                catch { /* ignore */ }
-            }
         }
     } // public sealed class Tui
 }
