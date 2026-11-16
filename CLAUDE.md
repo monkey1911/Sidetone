@@ -167,6 +167,11 @@ every release on the air and on their hardware after publishing it.
 ## Working with the owner
 
 - Commit straight to `main`; no feature branches or PRs unless asked.
+- **Releases are gated on CI.** Only offer release notes, or say a version is ready, once
+  `tools/ci-status.sh` shows both architectures green for the commit being released. Local tests
+  run on one architecture only. CI runs natively on both (ubuntu-24.04 and ubuntu-24.04-arm), so it
+  is the check for the architecture you aren't on. If either job fails, fix it first. (An emulated
+  x86-64 run in Docker on the ARM64 machine is possible but slow, and adds nothing CI doesn't do.)
 - The owner publishes GitHub releases and pastes notes written for them. After a version, offer
   release notes in this shape (one release can cover several version bumps):
   ```
