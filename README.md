@@ -133,7 +133,7 @@ Channels are shown as cards, up to four across. The mouse works in any terminal 
 
 Alert tones match the Windows console's built-in tones 1–6 (5 seconds each). A digital page is a P25 call alert from the console's RID to one radio (the Windows console's "Page Subscriber"); call alerts and acknowledgements addressed to the console's RID are logged when the FNE passes them on. A QuickCall II page is tone A for 1 s then tone B for 3 s (250–3000 Hz, as the Windows console's manual page), sent on every listening channel; the last page's tones are filled in next time. On P25, tones travel as IMBE tone frames, which carry the frequency in steps of about 31 Hz, so radios regenerate the nearest step. The channel marker is the console's "channel hold" beep: 0.5 s of 650 Hz every 10 seconds on each listening channel that isn't busy; change the interval with `--marker-interval SECONDS`. Tones are encrypted on secure channels and skipped on channels whose key isn't held. The tone buttons are hidden on terminals narrower than 110 columns; the keys still work.
 
-Radio check, inhibit and uninhibit are sent as in the Windows console. Inhibit disables the radio, so it asks you to press SEND a second time. Replies ("radio 1234 answered the radio check", inhibit / uninhibit confirmations) are logged when the FNE passes them on.
+Radio check, inhibit and uninhibit are sent as in the Windows console. Inhibit disables the radio, so it asks you to press SEND a second time. Replies ("radio 1234 answered the radio check", inhibit / uninhibit confirmations) are logged when the FNE passes them back to the console, which not every FNE version does. Without that, the command still reaches the radio; the console just doesn't hear the answer.
 
 The talk permit tone (a short 1200 Hz beep when transmit starts) is on by default; `t` turns it off.
 
@@ -161,7 +161,7 @@ What it has so far:
 - a tool bar under the header:
   - **Alert tones 1 to 6**, sent on every listening channel. While a tone is going out, the PTT button reads **STOP TONE**; click it or press Esc to stop.
   - **Page…** opens a box for a two-tone (QuickCall II) page on every listening channel, or a digital page (P25 call alert) to one radio. The last values are filled in.
-  - **Radio command…** sends a check, inhibit or uninhibit to one radio. Inhibit has to be sent twice to confirm. The radio's alias shows as you type its ID, and replies appear in the log.
+  - **Radio command…** sends a check, inhibit or uninhibit to one radio. Inhibit has to be sent twice to confirm. The radio's alias shows as you type its ID. Replies appear in the log when the FNE passes them back to the console, which not every FNE version does.
   - **Channel marker** turns the periodic beep on idle listening channels on and off
 - a transmit bar, recent calls and the log
 - **Auto / Light / Dark** in the top right. Auto follows your desktop's light or dark setting. The choice is remembered. `--theme light|dark|system` sets it from the command line.
