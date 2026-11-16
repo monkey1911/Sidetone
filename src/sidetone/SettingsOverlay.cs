@@ -49,7 +49,8 @@ namespace Sidetone.Gui
         private readonly Border card = new Border
         {
             Width = 580,
-            Padding = new Thickness(24, 18, 24, 18),
+            Padding = new Thickness(24, 16, 10, 16),
+            Margin = new Thickness(0, 10),
             CornerRadius = new CornerRadius(10),
             BorderThickness = new Thickness(1),
             HorizontalAlignment = HorizontalAlignment.Center,
@@ -61,7 +62,7 @@ namespace Sidetone.Gui
         private readonly TextBlock seconds = new TextBlock { Text = $"seconds ({MinTxLimit} to {MaxTxLimit})", FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
         private readonly TextBlock overrides = new TextBlock { FontSize = 12, TextWrapping = TextWrapping.Wrap };
         private readonly TextBlock note = new TextBlock { FontSize = 12, TextWrapping = TextWrapping.Wrap };
-        private readonly TextBlock message = new TextBlock { FontSize = 13, FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap, MinHeight = 18 };
+        private readonly TextBlock message = new TextBlock { FontSize = 13, FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap };
         private readonly List<TextBlock> labels = new List<TextBlock>();
         private readonly List<TextBlock> headings = new List<TextBlock>();
         private readonly TextBlock keyFileText = new TextBlock { FontSize = 12, TextWrapping = TextWrapping.Wrap };
@@ -144,8 +145,8 @@ namespace Sidetone.Gui
 
             note.Text = "Saving a change to audio, the PTT device or the time limit reconnects the console.";
 
-            StackPanel stack = new StackPanel { Spacing = 8 };
-            stack.Children.Add(title);
+            // the title and the buttons stay put; what's between them scrolls when the window is short
+            StackPanel stack = new StackPanel { Spacing = 7, Margin = new Thickness(0, 0, 16, 0) };
             stack.Children.Add(Heading("Audio"));
             stack.Children.Add(Field("Output", Output));
             stack.Children.Add(Field("Microphone", Input));
@@ -164,9 +165,18 @@ namespace Sidetone.Gui
             stack.Children.Add(launcherRow);
             stack.Children.Add(overrides);
             stack.Children.Add(note);
-            stack.Children.Add(message);
-            stack.Children.Add(buttons);
-            card.Child = new ScrollViewer { Content = stack, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled };
+
+            StackPanel foot = new StackPanel { Spacing = 4, Margin = new Thickness(0, 8, 14, 0) };
+            foot.Children.Add(message);
+            foot.Children.Add(buttons);
+            title.Margin = new Thickness(0, 0, 0, 4);
+            DockPanel dock = new DockPanel();
+            DockPanel.SetDock(title, Dock.Top);
+            DockPanel.SetDock(foot, Dock.Bottom);
+            dock.Children.Add(title);
+            dock.Children.Add(foot);
+            dock.Children.Add(new ScrollViewer { Content = stack, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled });
+            card.Child = dock;
 
             scrim.PointerPressed += (s, e) => { e.Handled = true; Close(); };
             card.PointerPressed += (s, e) => e.Handled = true;
@@ -178,7 +188,7 @@ namespace Sidetone.Gui
 
         private TextBlock Heading(string text)
         {
-            TextBlock h = new TextBlock { Text = text, FontSize = 13, FontWeight = FontWeight.Bold, Margin = new Thickness(0, 6, 0, 0) };
+            TextBlock h = new TextBlock { Text = text, FontSize = 13, FontWeight = FontWeight.Bold, Margin = new Thickness(0, 4, 0, 0) };
             headings.Add(h);
             return h;
         }

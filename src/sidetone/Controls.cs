@@ -142,11 +142,11 @@ namespace Sidetone.Gui
 
             last = new TextBlock { FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis, MinHeight = 16 };
 
-            vol = new TextBlock { FontSize = 12, VerticalAlignment = VerticalAlignment.Center, MinWidth = 54 };
-            quieter = new Tap("-", () => { console.SetFocus(index); console.Quieter(chan); changed(); }, fontSize: 13, minWidth: 30, padX: 6, padY: 1);
-            louder = new Tap("+", () => { console.SetFocus(index); console.Louder(chan); changed(); }, fontSize: 13, minWidth: 30, padX: 6, padY: 1);
+            vol = new TextBlock { FontSize = 12, VerticalAlignment = VerticalAlignment.Center, MinWidth = 50 };
+            quieter = new Tap("-", () => { console.SetFocus(index); console.Quieter(chan); changed(); }, fontSize: 13, minWidth: 26, padX: 6, padY: 1);
+            louder = new Tap("+", () => { console.SetFocus(index); console.Louder(chan); changed(); }, fontSize: 13, minWidth: 26, padX: 6, padY: 1);
             mute = new Tap("Mute", () => { console.SetFocus(index); console.ToggleMute(chan); changed(); }, fontSize: 12, padX: 10, padY: 2);
-            volRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+            volRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 5 };
             volRow.Children.Add(vol);
             volRow.Children.Add(quieter.Root);
             volRow.Children.Add(louder.Root);
