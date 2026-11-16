@@ -783,7 +783,7 @@ B: MSC=10
                 Directory.CreateDirectory(keyDir);
                 Tui keyed = new Tui(cp, sys, TimeSpan.FromSeconds(120), null) { NoAudio = true };
                 ConsoleChannel secure = keyed.Channels.First(ch => ch.Encrypted);
-                ConsoleChannel plain = keyed.Channels.First(ch => ch.IsP25 && !ch.Encrypted);
+                ConsoleChannel clearChan = keyed.Channels.First(ch => ch.IsP25 && !ch.Encrypted);
                 int keyBytes = secure.KeyRequestAlg == 0x84 ? 32 : secure.KeyRequestAlg == 0x81 ? 8 : 5;
                 byte[] material = Enumerable.Range(1, keyBytes).Select(i => (byte)(i * 7)).ToArray();
                 string ekc = Path.Combine(keyDir, "test.ekc");
@@ -820,12 +820,12 @@ B: MSC=10
                 // selectable encryption
                 keyed.ToggleTxSecure(secure);
                 bool fixedStays = !secure.TxClear && secure.TxSecure;
-                keyed.ToggleTxSecure(plain);
+                keyed.ToggleTxSecure(clearChan);
                 secure.Selectable = true;
                 keyed.ToggleTxSecure(secure);
                 bool clear = secure.TxClear && !secure.TxSecure && secure.ActiveTxAlg == fnecore.P25.P25Defines.P25_ALGO_UNENCRYPT && secure.ActiveKeyId == 0;
                 keyed.ToggleTxSecure(secure);
-                Check(fixedStays && !plain.TxClear && clear && secure.TxSecure && secure.ActiveTxAlg == secure.TxAlg && secure.ActiveKeyId == secure.KeyId,
+                Check(fixedStays && !clearChan.TxClear && clear && secure.TxSecure && secure.ActiveTxAlg == secure.TxAlg && secure.ActiveKeyId == secure.KeyId,
                       "selectable encryption: only a channel the codeplug marks can be switched to clear, and back");
                 secure.Selectable = false;
             }
