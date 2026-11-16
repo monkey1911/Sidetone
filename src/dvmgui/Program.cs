@@ -191,6 +191,14 @@ namespace dvmgui
             opt.Demo = true;
             SetupHeadless();
 
+            // never hang a CI job: give up after half a minute
+            new Thread(() =>
+            {
+                Thread.Sleep(30000);
+                Console.Error.WriteLine("error: the self-check didn't finish in 30 s");
+                Environment.Exit(3);
+            }) { IsBackground = true }.Start();
+
             MainWindow w = new MainWindow(opt);
             bool closed = false;
             w.Closed += (s, e) => closed = true;
@@ -259,12 +267,10 @@ namespace dvmgui
             Check(w.SpacePresses == 1 && w.SpaceReleases == 0, $"holding Space is one press, however the repeats arrive ({w.SpacePresses} / {w.SpaceReleases})");
             Check(c.SnapshotLog(5).Any(l => l.Contains("not connected to the FNE yet")), "Space reaches the console's push-to-talk (refused here: the demo isn't connected)");
 
+            // the release is decided by a timer, so run the real event loop for a moment
             w.KeyReleaseQwerty(PhysicalKey.Space, RawInputModifiers.None);
-            for (int i = 0; i < 100 && w.SpaceReleases == 0; i++)
-            {
-                Thread.Sleep(20);
-                Dispatcher.UIThread.RunJobs();
-            }
+            using (CancellationTokenSource stop = new CancellationTokenSource(TimeSpan.FromMilliseconds(500)))
+                Dispatcher.UIThread.MainLoop(stop.Token);
             Check(w.SpacePresses == 1 && w.SpaceReleases == 1, $"letting go of Space releases once, shortly after ({w.SpacePresses} / {w.SpaceReleases})");
 
             w.KeyPressQwerty(PhysicalKey.Q, RawInputModifiers.Control);
