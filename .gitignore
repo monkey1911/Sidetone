@@ -6,3 +6,4 @@ out/
 # never commit real codeplugs (they contain passwords)
 *.yml
 !.github/workflows/*.yml
+ci-shots/
