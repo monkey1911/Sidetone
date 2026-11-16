@@ -855,13 +855,14 @@ B: MSC=10
                     ch.Sink.Write(new short[160]);
                     ft.OpenMic(out string micError);
                     fake.Input?.Raise(Enumerable.Range(0, 160).Select(i => (short)(i % 2 == 0 ? 8000 : -8000)).ToArray());
+                    bool metered = ft.MicLevel.Read().Active;
                     ft.AddDemoCall(ch, 1234, "Unit 1", 1, false, "clear", DateTime.Now);
                     ft.ReplayLast(ch);
                     bool replayed = fake.Outputs.Count == 2;
                     for (int i = 0; i < 200 && fake.Outputs[1].Blocks < 50; i++)
                         Thread.Sleep(20);
                     ft.Deselect(ch, quiet: true);
-                    Check(opened && micError == null && fake.Input != null && ft.MicLevel.Read().Active && replayed && fake.Outputs[1].Blocks == 50 &&
+                    Check(opened && micError == null && fake.Input != null && metered && replayed && fake.Outputs[1].Blocks == 50 &&
                           AudioSelection.Choose(null, null).OutputReport.Contains("Fake default"),
                           $"audio layer: channels, the microphone, replays and device lists all go through the backend ({fake.Outputs.Count} outputs)");
                     ft.Select(ch);
