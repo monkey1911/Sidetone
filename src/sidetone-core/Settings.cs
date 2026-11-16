@@ -21,6 +21,8 @@ namespace Sidetone.Core
         public bool Listening { get; set; }
         public bool Muted { get; set; }
         public double Gain { get; set; } = 1.0;
+        /// <summary>On a channel whose encryption is selectable: transmit in the clear.</summary>
+        public bool TxClear { get; set; }
     }
 
     /// <summary>
@@ -55,6 +57,8 @@ namespace Sidetone.Core
         public string PttButton { get; set; }
         /// <summary>Mute button on that device, "none", or null to choose automatically.</summary>
         public string MuteButton { get; set; }
+        /// <summary>Local key file (.ekc) chosen in Settings, or null to use the codeplug's, if it names one.</summary>
+        public string KeyFile { get; set; }
         /// <summary>Transmit time limit in seconds, or null for the default.</summary>
         public int? TxLimitSeconds { get; set; }
         /// <summary>Space starts and stops transmit instead of hold-to-talk.</summary>

@@ -29,7 +29,7 @@ namespace Sidetone.Gui
     /// </summary>
     public sealed class GuiOptions
     {
-        public string Codeplug, SystemName, Output, Input, PttDevice, PttButton, MuteButton, Socket, LogFile, Theme, Screenshot, SettingsFile, Show;
+        public string Codeplug, SystemName, Output, Input, PttDevice, PttButton, MuteButton, Socket, LogFile, Theme, Screenshot, SettingsFile, Show, KeyFile;
         public bool NoSocket, Wayland, Demo, NoSettings, SelfCheck;
         /// <summary>Given on the command line; null leaves it to the saved settings.</summary>
         public bool? SpaceToggle;
@@ -49,6 +49,7 @@ namespace Sidetone.Gui
                     case "--output": o.Output = Next(); break;
                     case "--input": o.Input = Next(); break;
                     case "--ptt-device": o.PttDevice = Next(); break;
+                    case "--key-file": o.KeyFile = Next(); break;
                     case "--ptt-button": o.PttButton = Next(); break;
                     case "--mute-button": o.MuteButton = Next(); break;
                     case "--socket": o.Socket = Next(); break;
@@ -62,8 +63,8 @@ namespace Sidetone.Gui
                     case "--selfcheck": o.SelfCheck = true; break;
                     case "--show":
                         o.Show = Next().ToLowerInvariant();
-                        if (o.Show is not ("page" or "digital" or "radio" or "settings"))
-                            throw new ArgumentException("--show must be page, digital, radio or settings");
+                        if (o.Show is not ("page" or "digital" or "radio" or "settings" or "keyfile"))
+                            throw new ArgumentException("--show must be page, digital, radio, settings or keyfile");
                         break;
                     case "--space":
                     {
@@ -359,6 +360,37 @@ namespace Sidetone.Gui
             Press(PhysicalKey.Escape);
             Check(box.Open == CommandOverlay.Kind.None, "the boxes are closed again");
 
+            // on-screen PTT: hold-to-talk with the pointer
+            int refusals = c.SnapshotLog(200).Count(l => l.Contains("not connected to the FNE yet"));
+            Point onPtt = w.PttTap.Root.TranslatePoint(new Point(10, 10), w) ?? new Point(-1, -1);
+            w.MouseDown(onPtt, MouseButton.Left);
+            Dispatcher.UIThread.RunJobs();
+            bool pressed = w.PointerPresses == 1 && w.PointerReleases == 0 &&
+                           c.SnapshotLog(200).Count(l => l.Contains("not connected to the FNE yet")) == refusals + 1;
+            w.MouseUp(onPtt, MouseButton.Left);
+            Dispatcher.UIThread.RunJobs();
+            Check(pressed && w.PointerReleases == 1, $"pressing the PTT button keys the console and letting go releases it ({w.PointerPresses} / {w.PointerReleases})");
+
+            // selectable encryption: E on a channel the codeplug allows it on
+            Press(PhysicalKey.E);
+            bool clearChannel = !focus.TxClear && c.SnapshotLog(1).Any(l => l.Contains("no encryption to switch"));
+            Press(PhysicalKey.ArrowLeft);
+            ConsoleChannel secure = c.Channels[0];
+            Press(PhysicalKey.E);
+            bool nowClear = secure.Selectable && secure.TxClear && !secure.TxSecure && secure.ActiveTxAlg == 0x80;
+            Press(PhysicalKey.E);
+            Press(PhysicalKey.ArrowRight);
+            Check(clearChannel && nowClear && secure.TxSecure && c.FocusIndex == 1,
+                  "E switches a selectable channel's transmit between secure and clear, and does nothing on a clear channel");
+
+            // key file password box
+            w.OpenBox("keyfile");
+            Dispatcher.UIThread.RunJobs();
+            Press(PhysicalKey.Enter);
+            bool needsPassword = w.KeyBox.IsOpen && w.KeyBox.Message.Contains("password");
+            Press(PhysicalKey.Escape);
+            Check(needsPassword && !w.KeyBox.IsOpen, "the key file box wants a password; Esc is 'not now'");
+
             // Settings
             SettingsOverlay set = w.SettingsBox;
             Press(PhysicalKey.Comma, RawInputModifiers.Control);
@@ -432,7 +464,7 @@ namespace Sidetone.Gui
             Console.WriteLine("         [--settings FILE | --no-settings] [--space hold|toggle]");
             Console.WriteLine("  sidetone --install-launcher | --remove-launcher");
             Console.WriteLine("  sidetone --demo");
-            Console.WriteLine("  sidetone --screenshot FILE.png [--demo] [--theme light|dark] [--size 1280x800] [--show page|digital|radio|settings]");
+            Console.WriteLine("  sidetone --screenshot FILE.png [--demo] [--theme light|dark] [--size 1280x800] [--show page|digital|radio|settings|keyfile]");
             Console.WriteLine();
             Console.WriteLine("Without --codeplug, the codeplug opened last time is used. --demo shows a made-up system");
             Console.WriteLine("without connecting to anything. The options are the same as 'sidetone-cli tui'; see the README.");

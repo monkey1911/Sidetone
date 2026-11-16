@@ -65,6 +65,9 @@ namespace Sidetone.Gui
         private Tap pageTap, radioTap, markerTap;
         private CommandOverlay overlay;
         private SettingsOverlay settingsBox;
+        private KeyFileOverlay keyBox;
+        private string codeplugKeyFile;     // the key file the open codeplug names, if any
+        private bool pointerHold;           // an on-screen PTT button is being held
         private readonly WrapPanel cardPanel = new WrapPanel { Margin = new Thickness(10, 8) };
         private readonly Border txBar = new Border { Padding = new Thickness(16, 7) };
         private readonly TextBlock txText = new TextBlock { FontSize = 14, FontWeight = FontWeight.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
@@ -139,6 +142,13 @@ namespace Sidetone.Gui
         /// <summary>The page and radio-command boxes (self-check hook).</summary>
         internal CommandOverlay Overlay => overlay;
 
+        /// <summary>The key file password box (self-check hook).</summary>
+        internal KeyFileOverlay KeyBox => keyBox;
+
+        /// <summary>The header's PTT button, and how often on-screen PTT buttons were pressed and let go (self-check hooks).</summary>
+        internal Tap PttTap => ptt;
+        internal int PointerPresses, PointerReleases;
+
         /// <summary>The Settings box (self-check hook).</summary>
         internal SettingsOverlay SettingsBox => settingsBox;
 
@@ -157,6 +167,7 @@ namespace Sidetone.Gui
                 case "digital": overlay.ShowPage(true); break;
                 case "radio": overlay.ShowRadio(); break;
                 case "settings": ShowSettings(); break;
+                case "keyfile": keyBox.Show("/home/operator/keys/demo.ekc", true); keyBox.Refresh(palette); break;
             }
         }
 
@@ -185,7 +196,7 @@ namespace Sidetone.Gui
             micCheck = new Tap("Mic check", () => Do(c => c.ToggleMicMonitor()), fontSize: 12);
             micMute = new Tap("Mute mic", () => Do(c => c.ToggleMicMute()), fontSize: 12);
             mute = new Tap("MUTE", () => Do(c => c.ToggleGlobalMute()), fontSize: 14, minWidth: 84, padY: 11);
-            ptt = new Tap("PTT", () => Do(c => c.ToggleTx()), fontSize: 16, minWidth: 120, padY: 11);
+            ptt = new Tap("PTT", () => PttPressed(null), fontSize: 16, minWidth: 120, padY: 11) { Released = PttReleased };
             consoleButtons.Children.Add(micMeter);
             consoleButtons.Children.Add(micCheck.Root);
             consoleButtons.Children.Add(micMute.Root);
@@ -238,7 +249,9 @@ namespace Sidetone.Gui
             toolBar.Child = tools;
 
             overlay = new CommandOverlay(() => console, RefreshNow, () => root.Focus());
-            settingsBox = new SettingsOverlay(SaveSettings, () => _ = PickCodeplug(), LauncherAction, () => root.Focus());
+            settingsBox = new SettingsOverlay(SaveSettings, () => _ = PickCodeplug(), LauncherAction, () => root.Focus(),
+                                              () => _ = PickKeyFile(), ClearKeyFile, ShowKeyBox);
+            keyBox = new KeyFileOverlay(UnlockKeyFile, () => root.Focus());
 
             // console view: cards, transmit bar, recent calls and log
             ScrollViewer cardScroll = new ScrollViewer { Content = cardPanel, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
@@ -291,16 +304,58 @@ namespace Sidetone.Gui
             Grid.SetRow(welcome, 1);
             Grid.SetRow(overlay.Root, 1);
             Grid.SetRow(settingsBox.Root, 1);
+            Grid.SetRow(keyBox.Root, 1);
             root.Children.Add(header);
             root.Children.Add(consoleView);
             root.Children.Add(welcome);
             root.Children.Add(overlay.Root);     // last, so they're on top
             root.Children.Add(settingsBox.Root);
+            root.Children.Add(keyBox.Root);
             Content = root;
         }
 
         private void UpdateKeyHints() =>
             keyHints.Text = $"Space: PTT ({(SpaceIsToggle ? "start/stop" : "hold")})    Enter: listen    M: mute    U: mute mic    V: mic check    Ctrl+Q: quit";
+
+        /// <summary>
+        /// An on-screen PTT button was pressed: the header's (the focused channel) or a card's own.
+        /// Like Space, it's hold-to-talk unless Settings says press to start and press to stop.
+        /// </summary>
+        private void PttPressed(ConsoleChannel target)
+        {
+            DispatchConsole c = console;
+            if (c == null)
+                return;
+            PointerPresses++;
+            if (c.ActiveTone != null)
+                c.CancelTones();        // the button reads STOP TONE
+            else if (SpaceIsToggle)
+            {
+                if (target == null)
+                    c.ToggleTx();
+                else
+                    c.ToggleTxOn(target);
+            }
+            else
+            {
+                pointerHold = true;
+                if (target == null)
+                    c.HoldToTalk(true);
+                else
+                    c.HoldToTalkOn(target, true);
+            }
+            RefreshNow();
+        }
+
+        private void PttReleased()
+        {
+            PointerReleases++;
+            if (!pointerHold)
+                return;
+            pointerHold = false;
+            console?.HoldToTalk(false);
+            RefreshNow();
+        }
 
         /// <summary>Runs a console action from a button and redraws straight away.</summary>
         private void Do(Action<DispatchConsole> action)
@@ -410,6 +465,21 @@ namespace Sidetone.Gui
                     ControlSocketPath = offline || opt.NoSocket ? null : opt.Socket != null ? Path.GetFullPath(opt.Socket) : ControlServer.DefaultPath,
                     PttDevice = !offline && pttDevice != null ? (pttDevice.Value.Device, pttDevice.Value.Button, pttDevice.Value.Mute) : null
                 };
+
+                // a local key file: the command line's, the one chosen in Settings, or the codeplug's
+                codeplugKeyFile = LocalKeyFile.Resolve(cp, null);
+                bool askForPassword = false;
+                if (!offline)
+                {
+                    c.KeyFilePath = LocalKeyFile.Resolve(cp, opt.KeyFile ?? appSettings.KeyFile);
+                    if (c.KeyFilePath != null && !File.Exists(c.KeyFilePath))
+                        notes.Add($"warning: key file not found: {c.KeyFilePath}");
+                    else if (c.KeyFilePath != null)
+                    {
+                        string remembered = SecretStore.Lookup(c.KeyFilePath);
+                        askForPassword = remembered == null || c.LoadKeyFile(remembered, out _) != null;
+                    }
+                }
                 foreach (string line in notes)
                     c.AddLog(line);
 
@@ -438,7 +508,7 @@ namespace Sidetone.Gui
                 cardPanel.Children.Clear();
                 for (int i = 0; i < c.Channels.Count; i++)
                 {
-                    ChannelCard card = new ChannelCard(c, i, RefreshNow);
+                    ChannelCard card = new ChannelCard(c, i, RefreshNow, PttPressed, PttReleased);
                     cards.Add(card);
                     cardPanel.Children.Add(card.Root);
                 }
@@ -448,6 +518,8 @@ namespace Sidetone.Gui
                 consoleView.IsVisible = true;
                 consoleButtons.IsVisible = true;
                 Title = $"Sidetone: {system.Name}";
+                if (askForPassword)
+                    ShowKeyBox();
             }
             catch (Exception ex) when (ex is ArgumentException || ex is IOException || ex is InvalidOperationException || ex is YamlDotNet.Core.YamlException)
             {
@@ -516,6 +588,86 @@ namespace Sidetone.Gui
             }
         }
 
+        /*
+        ** Local key file
+        */
+
+        private void ShowKeyBox()
+        {
+            DispatchConsole c = console;
+            if (c?.KeyFilePath == null)
+                return;
+            keyBox.Show(c.KeyFilePath, SecretStore.Available);
+            keyBox.Refresh(palette);
+        }
+
+        /// <summary>Tries a password on the console's key file. Returns null, or why it didn't work.</summary>
+        private string UnlockKeyFile(string password, bool remember)
+        {
+            DispatchConsole c = console;
+            if (c == null)
+                return "No console is open.";
+            string error = c.LoadKeyFile(password, out _);
+            if (error != null)
+                return char.ToUpperInvariant(error[0]) + error.Substring(1) + ".";
+            if (remember && !SecretStore.Store(c.KeyFilePath, password))
+                c.AddLog("warning: the keyring didn't take the key file password; you'll be asked again next time");
+            RefreshNow();
+            return null;
+        }
+
+        private async Task PickKeyFile()
+        {
+            try
+            {
+                IReadOnlyList<IStorageFile> files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+                {
+                    Title = "Choose a key file",
+                    AllowMultiple = false,
+                    FileTypeFilter = new[] { new FilePickerFileType("KFDEKC key container") { Patterns = new[] { "*.ekc" } } }
+                });
+                string path = files != null && files.Count > 0 ? files[0].TryGetLocalPath() : null;
+                if (path == null)
+                    return;
+                ChangeSettings(s => s.KeyFile = path);
+                Reconnect();
+            }
+            catch (Exception ex)
+            {
+                console?.AddLog($"warning: couldn't open a file dialog ({ex.Message}); use --key-file FILE.ekc instead");
+            }
+        }
+
+        /// <summary>Goes back to the codeplug's key file, or none.</summary>
+        private void ClearKeyFile()
+        {
+            if (appSettings.KeyFile == null)
+                return;
+            ChangeSettings(s => s.KeyFile = null);
+            Reconnect();
+        }
+
+        /// <summary>Restarts the console on the open codeplug, to pick up changed settings.</summary>
+        private void Reconnect()
+        {
+            if (console == null || offline || currentPath == null)
+                return;
+            OpenCodeplug(currentPath, currentSystem);
+            ApplyTheme();
+        }
+
+        /// <summary>The key file line for the Settings box.</summary>
+        private string KeyFileSummary(out bool locked)
+        {
+            DispatchConsole c = console;
+            locked = c?.KeyFilePath != null && !c.KeyFileLoaded && File.Exists(c.KeyFilePath);
+            if (offline || c?.KeyFilePath == null)
+                return "None. Keys come from the FNE.";
+            string source = opt.KeyFile != null ? "from --key-file" : appSettings.KeyFile != null ? "chosen here" : "named in the codeplug";
+            string state = c.KeyFileLoaded ? $"unlocked, {c.Keys.LocalCount} keys" : File.Exists(c.KeyFilePath) ? "locked" : "not found";
+            return $"{c.KeyFilePath} ({source}; {state})";
+        }
+
         /// <summary>Options given on the command line that Settings can't change for this run, or null.</summary>
         private string CommandLineOverrides()
         {
@@ -523,6 +675,7 @@ namespace Sidetone.Gui
             if (opt.Output != null) given.Add("--output");
             if (opt.Input != null) given.Add("--input");
             if (opt.PttDevice != null) given.Add("--ptt-device");
+            if (opt.KeyFile != null) given.Add("--key-file");
             if (opt.TxLimit != null) given.Add("--tx-limit");
             if (opt.SpaceToggle != null) given.Add("--space");
             return given.Count == 0 ? null : string.Join(", ", given);
@@ -555,7 +708,8 @@ namespace Sidetone.Gui
                 TxLimit = Math.Clamp(appSettings.TxLimitSeconds ?? 120, SettingsOverlay.MinTxLimit, SettingsOverlay.MaxTxLimit),
                 SpaceToggle = appSettings.SpaceToggle
             }, audio, inputs, opt.Demo ? "The demo system (no codeplug file)." : currentPath, CommandLineOverrides(),
-               !offline && AppLauncher.IsInstalled(AppLauncher.DataHome));
+               !offline && AppLauncher.IsInstalled(AppLauncher.DataHome), KeyFileSummary(out bool locked), locked,
+               appSettings.KeyFile != null && opt.KeyFile == null);
             settingsBox.Refresh(palette);
         }
 
@@ -588,11 +742,8 @@ namespace Sidetone.Gui
             });
             UpdateKeyHints();
 
-            if (reconnect && c != null && !offline && currentPath != null)
-            {
-                OpenCodeplug(currentPath, currentSystem);
-                ApplyTheme();
-            }
+            if (reconnect)
+                Reconnect();
             return null;
         }
 
@@ -714,6 +865,7 @@ namespace Sidetone.Gui
             DispatchConsole c = console;
             Palette p = palette;
             settingsBox?.Refresh(p);
+            keyBox?.Refresh(p);
             if (c == null || ptt == null)
                 return;
 
@@ -817,7 +969,7 @@ namespace Sidetone.Gui
             keyHints.Foreground = p.Dim;
             txText.Foreground = c.MicMuted ? p.Tx : p.Dim;
             txText.Text = (focus.IsP25
-                ? $"PTT transmits on {focus.Cfg.Name} (tg {focus.Tg}, {(focus.Encrypted ? KeyStore.AlgorithmName(focus.TxAlg) : "clear")})"
+                ? $"PTT transmits on {focus.Cfg.Name} (tg {focus.Tg}, {(focus.TxSecure ? KeyStore.AlgorithmName(focus.TxAlg) : "clear")})"
                 : $"{focus.Cfg.Name}: no transmit on {focus.Cfg.Mode}") + (c.MicMuted ? "     MIC MUTED" : string.Empty);
         }
 
@@ -852,6 +1004,22 @@ namespace Sidetone.Gui
             {
                 e.Handled = true;
                 ShowSettings();
+                return;
+            }
+
+            // the password box is open: Esc is "not now", Enter tries the password, everything else is typing
+            if (keyBox.IsOpen)
+            {
+                if (e.Key == Key.Escape)
+                {
+                    e.Handled = true;
+                    keyBox.Close();
+                }
+                else if (e.Key == Key.Enter)
+                {
+                    e.Handled = true;
+                    keyBox.Submit();
+                }
                 return;
             }
 
@@ -943,6 +1111,7 @@ namespace Sidetone.Gui
                     case Key.U: c.ToggleMicMute(); break;
                     case Key.V: c.ToggleMicMonitor(); break;
                     case Key.K: c.RequestKey(focus); break;
+                    case Key.E: c.ToggleTxSecure(focus); break;
                     case Key.A: c.RefreshAliases(); break;
                     case Key.T: c.ToggleTalkPermit(); break;
                     case Key.C: c.ToggleMarker(); break;
@@ -1059,6 +1228,7 @@ zones:
         mode: ""p25""
         algo: ""aes""
         keyId: 0x101
+        selectable_encryption: true
       - name: ""Tac 1""
         system: ""Demo System""
         tgid: ""101""

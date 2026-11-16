@@ -497,6 +497,7 @@ namespace Sidetone.Cli
                         case '+': case '=': Louder(c); break;
                         case '-': case '_': Quieter(c); break;
                         case 'k': case 'K': RequestKey(c); break;
+                        case 'e': case 'E': ToggleTxSecure(c); break;
                         case >= '1' and <= '6': SendAlert(e.Char - '0'); break;
                         case 'r': case 'R': OpenRadio(); break;
                         case 't': case 'T': ToggleTalkPermit(); break;
@@ -798,14 +799,16 @@ namespace Sidetone.Cli
 
             // line 1: talkgroup and crypto
             screen.Text(ix, y, $"TG {c.Tg}", Style.Of(Ansi.BrightWhite), iw);
-            string crypt = c.Encrypted ? $"{KeyStore.AlgorithmName(c.TxAlg)} 🔒" : "clear";
-            screen.TextRight(right, y, crypt, c.Encrypted ? Style.Of(Ansi.BrightYellow) : dim);
+            // a selectable channel switched to clear still decrypts what it receives, so say which half is clear
+            string crypt = !c.Encrypted ? "clear" : c.TxSecure ? $"{KeyStore.AlgorithmName(c.TxAlg)} 🔒" : "TX CLEAR 🔓";
+            screen.TextRight(right, y, crypt, !c.Encrypted ? dim : c.TxSecure ? Style.Of(Ansi.BrightYellow) : Style.Of(Ansi.BrightRed, bold: true));
 
             // line 2: key
             if (c.Encrypted)
             {
                 bool have = keys.TryGet(c.KeyRequestAlg, c.KeyId, out _);
-                screen.Text(ix, y + 1, have ? $"key ✓ {c.KeyId:X4}" : $"key – {c.KeyId:X4}  (k: request)",
+                screen.Text(ix, y + 1, have ? $"key ✓ {c.KeyId:X4}{(keys.IsLocal(c.KeyRequestAlg, c.KeyId) ? " (file)" : string.Empty)}{(c.Selectable ? "  e: secure/clear" : string.Empty)}"
+                                            : $"key – {c.KeyId:X4}  (k: request)",
                             have ? Style.Of(Ansi.Green) : Style.Of(Ansi.Yellow), iw);
             }
             else
@@ -948,13 +951,13 @@ namespace Sidetone.Cli
             else
             {
                 Chan c = chans[cursor];
-                string target = c.IsP25 ? $"PTT → {c.Cfg.Name} (tg {c.Tg}, {(c.Encrypted ? KeyStore.AlgorithmName(c.TxAlg) : "clear")})" : $"{c.Cfg.Name}: no transmit on {c.Cfg.Mode}";
+                string target = c.IsP25 ? $"PTT → {c.Cfg.Name} (tg {c.Tg}, {(c.TxSecure ? KeyStore.AlgorithmName(c.TxAlg) : "clear")})" : $"{c.Cfg.Name}: no transmit on {c.Cfg.Mode}";
                 int used = screen.Text(1, y, target, Style.Of(Ansi.White), width - 2);
                 if (micMuted)
                     screen.Text(1 + used, y, "   MIC MUTED (u to unmute)", Style.Of(Ansi.BrightRed, bold: true), width - 2 - used);
             }
 
-            screen.Text(1, y + 1, "click card: listen  [●]: stop  Space: PTT  1-6: alert  p/d: page  r: radio cmd  c: marker  t: talk permit  v: mic meter  u: mic mute  a: aliases  m/M: mute card/all  +/-: vol  k: key  q: quit",
+            screen.Text(1, y + 1, "click card: listen  [●]: stop  Space: PTT  1-6: alert  p/d: page  r: radio cmd  c: marker  t: talk permit  v: mic meter  u: mic mute  a: aliases  m/M: mute card/all  +/-: vol  k: key  e: secure/clear  q: quit",
                         Style.Of(Ansi.Grey), width - 2);
         }
     } // public sealed class Tui

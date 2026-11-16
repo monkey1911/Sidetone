@@ -64,7 +64,8 @@ namespace Sidetone.Gui
         private readonly TextBlock message = new TextBlock { FontSize = 13, FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap, MinHeight = 18 };
         private readonly List<TextBlock> labels = new List<TextBlock>();
         private readonly List<TextBlock> headings = new List<TextBlock>();
-        private readonly Tap spaceHold, spaceToggle, openCodeplug, launcherTap, cancel, saveTap;
+        private readonly TextBlock keyFileText = new TextBlock { FontSize = 12, TextWrapping = TextWrapping.Wrap };
+        private readonly Tap spaceHold, spaceToggle, openCodeplug, launcherTap, cancel, saveTap, keyChoose, keyNone, keyUnlock;
 
         private List<InputDeviceInfo> inputDevices = new List<InputDeviceInfo>();
         private bool filling;
@@ -84,14 +85,26 @@ namespace Sidetone.Gui
         /// <param name="pickCodeplug">Opens the file dialog for another codeplug.</param>
         /// <param name="launcher">Adds (true) or removes (false) the app launcher entry; returns what happened, as a sentence.</param>
         /// <param name="closed">Called after the box closes.</param>
-        public SettingsOverlay(Func<Values, string> save, Action pickCodeplug, Func<bool, string> launcher, Action closed)
+        /// <param name="pickKeyFile">Opens the file dialog for a key file.</param>
+        /// <param name="clearKeyFile">Stops using the key file chosen here.</param>
+        /// <param name="unlockKeyFile">Opens the password box for the key file.</param>
+        public SettingsOverlay(Func<Values, string> save, Action pickCodeplug, Func<bool, string> launcher, Action closed,
+                               Action pickKeyFile, Action clearKeyFile, Action unlockKeyFile)
         {
+            keyChoose = new Tap("Choose…", () => { Close(); pickKeyFile(); }, fontSize: 12, padX: 10, padY: 5);
+            keyNone = new Tap("Stop using it", () => { Close(); clearKeyFile(); }, fontSize: 12, padX: 10, padY: 5);
+            keyUnlock = new Tap("Unlock…", () => { Close(); unlockKeyFile(); }, fontSize: 12, padX: 10, padY: 5);
+            StackPanel keyRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+            keyRow.Children.Add(keyChoose.Root);
+            keyRow.Children.Add(keyUnlock.Root);
+            keyRow.Children.Add(keyNone.Root);
+
             this.save = save;
             this.launcher = launcher;
             this.closed = closed;
 
             spaceHold = new Tap("Hold to talk", () => SetSpace(false), fontSize: 12, padX: 10, padY: 5);
-            spaceToggle = new Tap("Press to start, press to stop", () => SetSpace(true), fontSize: 12, padX: 10, padY: 5);
+            spaceToggle = new Tap("Press to start, press again to stop", () => SetSpace(true), fontSize: 12, padX: 10, padY: 5);
             StackPanel spaceRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
             spaceRow.Children.Add(spaceHold.Root);
             spaceRow.Children.Add(spaceToggle.Root);
@@ -140,10 +153,13 @@ namespace Sidetone.Gui
             stack.Children.Add(Field("PTT device", PttDevice));
             stack.Children.Add(Field("PTT button", PttButton));
             stack.Children.Add(Field("Mute button", MuteButton));
-            stack.Children.Add(Field("Space key", spaceRow));
+            stack.Children.Add(Field("Space and PTT", spaceRow));
             stack.Children.Add(Field("Time limit", limitRow));
             stack.Children.Add(Heading("Codeplug"));
             stack.Children.Add(codeplugRow);
+            stack.Children.Add(Heading("Key file"));
+            stack.Children.Add(keyFileText);
+            stack.Children.Add(keyRow);
             stack.Children.Add(Heading("App launcher"));
             stack.Children.Add(launcherRow);
             stack.Children.Add(overrides);
@@ -190,8 +206,15 @@ namespace Sidetone.Gui
         /// <param name="inputs">Input devices that could be a PTT device.</param>
         /// <param name="codeplug">The open codeplug's path, or null.</param>
         /// <param name="commandLine">Options given on the command line that win over these settings, or null.</param>
-        public void Show(Values current, AudioDeviceList audio, List<InputDeviceInfo> inputs, string codeplug, string commandLine, bool launcherIsInstalled)
+        /// <param name="keyFile">What to say about the local key file.</param>
+        /// <param name="keyFileLocked">There is one and it's waiting for its password.</param>
+        /// <param name="keyFileChosen">One was chosen here (so it can be un-chosen).</param>
+        public void Show(Values current, AudioDeviceList audio, List<InputDeviceInfo> inputs, string codeplug, string commandLine, bool launcherIsInstalled,
+                         string keyFile, bool keyFileLocked, bool keyFileChosen)
         {
+            keyFileText.Text = keyFile;
+            keyUnlock.Root.IsVisible = keyFileLocked;
+            keyNone.Root.IsVisible = keyFileChosen;
             filling = true;
             try
             {
@@ -352,6 +375,10 @@ namespace Sidetone.Gui
             Paint(spaceHold, !SpaceToggle, p);
             Paint(spaceToggle, SpaceToggle, p);
             openCodeplug.Paint(Brushes.Transparent, p.Text, p.Edge);
+            keyFileText.Foreground = p.Dim;
+            keyChoose.Paint(Brushes.Transparent, p.Text, p.Edge);
+            keyNone.Paint(Brushes.Transparent, p.Text, p.Edge);
+            keyUnlock.Paint(p.Accent, p.OnStrong);
             launcherTap.Text = launcherInstalled ? "Remove from app launcher" : "Add to app launcher";
             launcherTap.Paint(Brushes.Transparent, p.Text, p.Edge);
             cancel.Paint(Brushes.Transparent, p.Text, p.Edge);

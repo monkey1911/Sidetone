@@ -22,6 +22,13 @@ namespace Sidetone.Gui
         public readonly Border Root;
         public readonly TextBlock Label;
 
+        /// <summary>
+        /// Called when the press that ran the action is let go (or the pointer is taken away), for
+        /// hold-to-talk buttons. Set it before the button is used.
+        /// </summary>
+        public Action Released;
+        private bool pressed;
+
         public Tap(string text, Action click, double fontSize = 13, double minWidth = 0, double padX = 12, double padY = 6)
         {
             Label = new TextBlock
@@ -47,10 +54,25 @@ namespace Sidetone.Gui
                 if (!e.GetCurrentPoint(Root).Properties.IsLeftButtonPressed)
                     return;
                 e.Handled = true;       // not also a click on whatever the button sits on
+                if (Released != null)
+                {
+                    pressed = true;
+                    e.Pointer.Capture(Root);    // the release comes here even if the pointer has moved off the button
+                }
                 click();
             };
+            Root.PointerReleased += (s, e) => LetGo();
+            Root.PointerCaptureLost += (s, e) => LetGo();
             Root.PointerEntered += (s, e) => Root.Opacity = 0.82;
             Root.PointerExited += (s, e) => Root.Opacity = 1.0;
+        }
+
+        private void LetGo()
+        {
+            if (!pressed)
+                return;
+            pressed = false;
+            Released?.Invoke();
         }
 
         public string Text
@@ -84,10 +106,13 @@ namespace Sidetone.Gui
         private readonly int index;
         private readonly TextBlock name, tg, crypt, keyLine, status, last, vol;
         private readonly Border statusPill;
-        private readonly Tap listen, keyTap, quieter, louder, mute;
+        private readonly Tap listen, keyTap, quieter, louder, mute, secureTap, pttTap;
         private readonly StackPanel volRow;
+        private readonly Grid bottomRow;
 
-        public ChannelCard(DispatchConsole console, int index, Action changed)
+        /// <param name="pttDown">The card's PTT was pressed.</param>
+        /// <param name="pttUp">It was let go.</param>
+        public ChannelCard(DispatchConsole console, int index, Action changed, Action<ConsoleChannel> pttDown, Action pttUp)
         {
             this.console = console;
             this.index = index;
@@ -99,7 +124,13 @@ namespace Sidetone.Gui
 
             tg = new TextBlock { FontSize = 13 };
             crypt = new TextBlock { FontSize = 13, FontWeight = FontWeight.SemiBold };
-            Grid line1 = Row(tg, crypt);
+            // where the codeplug allows it, the encryption label is a button that switches transmit between secure and clear
+            secureTap = new Tap("secure", () => { console.ToggleTxSecure(chan); changed(); }, fontSize: 11, padX: 8, padY: 1);
+            secureTap.Root.IsVisible = false;
+            StackPanel cryptHolder = new StackPanel { Orientation = Orientation.Horizontal };
+            cryptHolder.Children.Add(crypt);
+            cryptHolder.Children.Add(secureTap.Root);
+            Grid line1 = Row(tg, cryptHolder);
 
             keyLine = new TextBlock { FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
             keyTap = new Tap("Request key", () => { console.RequestKey(chan); changed(); }, fontSize: 11, padX: 8, padY: 2);
@@ -111,15 +142,20 @@ namespace Sidetone.Gui
 
             last = new TextBlock { FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis, MinHeight = 16 };
 
-            vol = new TextBlock { FontSize = 12, VerticalAlignment = VerticalAlignment.Center, MinWidth = 62 };
+            vol = new TextBlock { FontSize = 12, VerticalAlignment = VerticalAlignment.Center, MinWidth = 54 };
             quieter = new Tap("-", () => { console.SetFocus(index); console.Quieter(chan); changed(); }, fontSize: 13, minWidth: 30, padX: 6, padY: 1);
             louder = new Tap("+", () => { console.SetFocus(index); console.Louder(chan); changed(); }, fontSize: 13, minWidth: 30, padX: 6, padY: 1);
             mute = new Tap("Mute", () => { console.SetFocus(index); console.ToggleMute(chan); changed(); }, fontSize: 12, padX: 10, padY: 2);
-            volRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Margin = new Thickness(0, 4, 0, 0) };
+            volRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
             volRow.Children.Add(vol);
             volRow.Children.Add(quieter.Root);
             volRow.Children.Add(louder.Root);
             volRow.Children.Add(mute.Root);
+
+            // the card's own PTT keys this channel without moving the focus to it
+            pttTap = new Tap("PTT", () => pttDown(chan), fontSize: 12, padX: 11, padY: 2) { Released = pttUp };
+            bottomRow = Row(volRow, pttTap.Root);
+            bottomRow.Margin = new Thickness(0, 4, 0, 0);
 
             StackPanel stack = new StackPanel { Spacing = 3 };
             stack.Children.Add(top);
@@ -127,7 +163,7 @@ namespace Sidetone.Gui
             stack.Children.Add(line2);
             stack.Children.Add(statusPill);
             stack.Children.Add(last);
-            stack.Children.Add(volRow);
+            stack.Children.Add(bottomRow);
 
             Root = new Border
             {
@@ -191,14 +227,25 @@ namespace Sidetone.Gui
                 Set(keyLine, string.Empty);
                 keyTap.Root.IsVisible = false;
                 listen.Root.IsVisible = false;
-                volRow.IsVisible = false;       // nothing to hear on a mode that isn't supported yet
+                bottomRow.IsVisible = false;    // nothing to hear or key on a mode that isn't supported yet
             }
             else if (chan.Encrypted)
             {
                 bool have = console.HasKey(chan);
                 Set(crypt, KeyStore.AlgorithmName(chan.TxAlg));
                 crypt.Foreground = p.Warn;
-                Set(keyLine, have ? $"key {chan.KeyId:X4} loaded" : $"key {chan.KeyId:X4} not loaded");
+                crypt.IsVisible = !chan.Selectable;
+                secureTap.Root.IsVisible = chan.Selectable;
+                if (chan.Selectable)
+                {
+                    secureTap.Text = chan.TxSecure ? $"TX {KeyStore.AlgorithmName(chan.TxAlg)}" : "TX CLEAR";
+                    if (chan.TxSecure)
+                        secureTap.Paint(Brushes.Transparent, p.Warn, p.Warn);
+                    else
+                        secureTap.Paint(p.Tx, p.OnStrong);
+                }
+                Set(keyLine, !have ? $"key {chan.KeyId:X4} not loaded"
+                           : console.KeyIsLocal(chan) ? $"key {chan.KeyId:X4} from key file" : $"key {chan.KeyId:X4} loaded");
                 keyLine.Foreground = have ? p.Rx : p.Warn;
                 keyTap.Root.IsVisible = !have;
                 keyTap.Paint(Brushes.Transparent, p.Warn, p.Warn);
@@ -245,6 +292,11 @@ namespace Sidetone.Gui
             vol.Foreground = chan.Selected ? p.Text : p.Dim;
             quieter.Paint(Brushes.Transparent, p.Text, p.Edge);
             louder.Paint(Brushes.Transparent, p.Text, p.Edge);
+            pttTap.Root.IsVisible = chan.IsP25 && !chan.Cfg.RxOnly;
+            if (st.Activity == ChannelActivity.Transmitting)
+                pttTap.Paint(p.Tx, p.OnStrong);
+            else
+                pttTap.Paint(Brushes.Transparent, p.Accent, p.Accent);
             mute.Text = chan.Muted ? "Muted" : "Mute";
             if (chan.Muted)
                 mute.Paint(p.Warn, p.OnStrong);

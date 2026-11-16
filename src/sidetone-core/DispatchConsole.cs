@@ -34,6 +34,17 @@ namespace Sidetone.Core
         public byte TxAlg;
         public byte KeyRequestAlg;
         public ushort KeyId;
+        /// <summary>The codeplug lets the operator switch this channel's transmit between secure and clear.</summary>
+        public bool Selectable;
+        /// <summary>On a selectable channel: transmit in the clear (receive still decrypts).</summary>
+        public volatile bool TxClear;
+
+        /// <summary>Transmit on this channel is encrypted right now.</summary>
+        public bool TxSecure => Encrypted && !(Selectable && TxClear);
+        /// <summary>The algorithm transmit uses right now.</summary>
+        public byte ActiveTxAlg => TxSecure ? TxAlg : P25Defines.P25_ALGO_UNENCRYPT;
+        /// <summary>The key ID transmit uses right now.</summary>
+        public ushort ActiveKeyId => TxSecure ? KeyId : (ushort)0;
 
         public volatile bool Selected;
         public volatile bool Muted;
@@ -153,6 +164,7 @@ namespace Sidetone.Core
                         Tg = tg,
                         IsP25 = p25 && tg != 0,
                         Encrypted = enc,
+                        Selectable = enc && c.SelectableEncryption,
                         TxAlg = enc ? c.GetAlgoId() : P25Defines.P25_ALGO_UNENCRYPT,
                         KeyRequestAlg = enc ? c.GetKeyRequestAlgoId() : (byte)0,
                         KeyId = enc ? c.GetKeyId() : (ushort)0
@@ -217,6 +229,9 @@ namespace Sidetone.Core
             CancelTones(wait: true);
             SaveSettings();     // before the channels are closed below
             StopTx("console closed");
+            keys.SetLocal(null, 0);
+            localKeys?.Dispose();   // wipes the key file's keys from memory
+            localKeys = null;
             micMonitor = false;
             CloseMicIfUnused();
             foreach (Chan c in chans)
@@ -242,6 +257,44 @@ namespace Sidetone.Core
         public KeyStore Keys => keys;
         /// <summary>Whether the key for an encrypted channel has arrived.</summary>
         public bool HasKey(ConsoleChannel c) => c.Encrypted && keys.TryGet(c.KeyRequestAlg, c.KeyId, out _);
+        /// <summary>The channel's key comes from the local key file rather than the FNE.</summary>
+        public bool KeyIsLocal(ConsoleChannel c) => c.Encrypted && keys.IsLocal(c.KeyRequestAlg, c.KeyId);
+
+        /// <summary>The local key file (.ekc) to use, or null. Set it before unlocking with <see cref="LoadKeyFile"/>.</summary>
+        public string KeyFilePath { get; set; }
+        /// <summary>The local key file is unlocked and its keys are in use.</summary>
+        public bool KeyFileLoaded => localKeys != null;
+
+        private LocalKeyFile localKeys;
+
+        /// <summary>
+        /// Unlocks the local key file with its password. Its keys are then used before any from the
+        /// FNE. Returns null, or why it couldn't; <paramref name="wrongPassword"/> says whether trying
+        /// another password is worth it. The password and the keys are never logged.
+        /// </summary>
+        public string LoadKeyFile(string password, out bool wrongPassword)
+        {
+            wrongPassword = false;
+            if (string.IsNullOrWhiteSpace(KeyFilePath))
+                return "no key file is set";
+
+            LocalKeyFile opened = LocalKeyFile.Open(KeyFilePath, password, out string error, out wrongPassword);
+            if (opened == null)
+            {
+                if (!wrongPassword)
+                    AddLog($"warning: key file {Path.GetFileName(KeyFilePath)} wasn't loaded: {error}");
+                return error;
+            }
+
+            localKeys?.Dispose();
+            localKeys = opened;
+            keys.SetLocal(opened.Lookup, opened.Count);
+            int used = chans.Count(c => c.Encrypted && keys.IsLocal(c.KeyRequestAlg, c.KeyId));
+            AddLog($"keys: {opened.Count} from {Path.GetFileName(KeyFilePath)}" +
+                   (opened.Skipped > 0 ? $" ({opened.Skipped} skipped: not traffic keys, or an algorithm that isn't supported)" : string.Empty) +
+                   $"; {used} of this system's channels use one");
+            return null;
+        }
         /// <summary>The channel being transmitted on, or null.</summary>
         public ConsoleChannel TxChannel => txChan;
         /// <summary>The current transmission, or null.</summary>
@@ -527,7 +580,7 @@ namespace Sidetone.Core
         /// Starts transmitting on the focused channel. Returns null on success, or the reason
         /// it didn't (also written to the log).
         /// </summary>
-        internal string StartTx()
+        internal string StartTx(Chan target = null)
         {
             string Refuse(string why)
             {
@@ -535,7 +588,7 @@ namespace Sidetone.Core
                 return why;
             }
 
-            Chan c = chans[cursor];
+            Chan c = target ?? chans[cursor];
             if (!c.IsP25)
                 return Refuse($"{c.Cfg.Name}: can't transmit on a {c.Cfg.Mode} channel");
             if (c.Cfg.RxOnly)
@@ -545,10 +598,10 @@ namespace Sidetone.Core
 
             Select(c);
 
-            P25Transmitter t = new P25Transmitter(peer, keys, peer.ConsoleRid, c.Tg, c.TxAlg, c.KeyId);
+            P25Transmitter t = new P25Transmitter(peer, keys, peer.ConsoleRid, c.Tg, c.ActiveTxAlg, c.ActiveKeyId);
             if (!t.Start(out string error))
             {
-                if (c.Encrypted && KeyStore.IsSupported(c.KeyRequestAlg))
+                if (c.TxSecure && KeyStore.IsSupported(c.KeyRequestAlg))
                     peer.RequestKey(c.KeyRequestAlg, c.KeyId);
                 return Refuse($"{c.Cfg.Name}: not transmitting: {error}");
             }
@@ -566,6 +619,71 @@ namespace Sidetone.Core
                 c.Sink?.Write(TalkPermitPcm());     // played locally once the call has started, as the Windows console does
             AddLog($"{c.Cfg.Name}: TX start as {peer.ConsoleRid}{(t.Encrypted ? $" ({KeyStore.AlgorithmName(t.AlgorithmId)} key 0x{t.KeyId:X4})" : " (clear)")}");
             return null;
+        }
+
+        /// <summary>Starts transmitting on a channel without moving the focus to it, or stops the transmission in progress.</summary>
+        public void ToggleTxOn(ConsoleChannel c)
+        {
+            if (toneJob != null)
+            {
+                CancelTones();
+                return;
+            }
+            if (Transmitting)
+            {
+                StopTx(null);
+                return;
+            }
+            StartTx(c);
+        }
+
+        /// <summary>
+        /// Hold-to-talk on a channel without moving the focus to it: true when its button is
+        /// pressed, false when it's let go.
+        /// </summary>
+        public void HoldToTalkOn(ConsoleChannel c, bool down)
+        {
+            if (!down)
+            {
+                OnDevicePtt(false);
+                return;
+            }
+            if (toneJob != null)
+            {
+                AddLog("tones are being sent; PTT ignored");
+                return;
+            }
+            if (Transmitting)
+            {
+                deviceHold = txChan == c;       // letting go ends a transmission on this channel only
+                if (txChan != c)
+                    AddLog($"{c.Cfg.Name}: already transmitting on {txChan?.Cfg.Name}");
+                return;
+            }
+            deviceHold = StartTx(c) == null;
+        }
+
+        /// <summary>
+        /// Switches a channel's transmit between secure and clear, when the codeplug allows it
+        /// (selectable_encryption). Receive is not affected.
+        /// </summary>
+        public void ToggleTxSecure(ConsoleChannel c)
+        {
+            if (!c.Selectable)
+            {
+                AddLog(c.Encrypted ? $"{c.Cfg.Name}: the codeplug doesn't allow switching this channel to clear"
+                                   : $"{c.Cfg.Name}: this channel has no encryption to switch");
+                return;
+            }
+            if ((txChan == c && Transmitting) || IsSendingTone(c))
+            {
+                AddLog($"{c.Cfg.Name}: can't change encryption while transmitting");
+                return;
+            }
+            c.TxClear = !c.TxClear;
+            AddLog(c.TxClear ? $"{c.Cfg.Name}: transmit is now CLEAR (not encrypted)"
+                             : $"{c.Cfg.Name}: transmit is {KeyStore.AlgorithmName(c.TxAlg)} again");
+            MarkDirty();
         }
 
         public void StopTx(string reason)
@@ -1000,6 +1118,7 @@ namespace Sidetone.Core
                 if (!ss.Channels.TryGetValue(key, out ChannelSettings cs))
                     continue;
                 c.Muted = cs.Muted;
+                c.TxClear = cs.TxClear && c.Selectable;
                 c.Gain = Math.Clamp(cs.Gain, 0.25, 8.0);
                 if (cs.Listening && c.IsP25)
                 {
@@ -1029,7 +1148,7 @@ namespace Sidetone.Core
             ss.PageRid = lastPageRid;
             ss.Focused = ChanKey(chans[cursor]);
             foreach (Chan c in chans)
-                ss.Channels[ChanKey(c)] = new ChannelSettings { Listening = c.Selected, Muted = c.Muted, Gain = Math.Round(c.Gain, 3) };
+                ss.Channels[ChanKey(c)] = new ChannelSettings { Listening = c.Selected, Muted = c.Muted, Gain = Math.Round(c.Gain, 3), TxClear = c.Selectable && c.TxClear };
 
             try { settings.Save(settingsPath); }
             catch (Exception ex) { AddLog($"could not save settings to {settingsPath}: {ex.Message}"); }
@@ -1229,7 +1348,7 @@ namespace Sidetone.Core
             HashSet<Chan> sending = new HashSet<Chan>();
             foreach (Chan c in targets)
             {
-                P25Transmitter t = new P25Transmitter(peer, keys, peer.ConsoleRid, c.Tg, c.TxAlg, c.KeyId);
+                P25Transmitter t = new P25Transmitter(peer, keys, peer.ConsoleRid, c.Tg, c.ActiveTxAlg, c.ActiveKeyId);
                 if (t.Start(out string error))
                 {
                     started.Add((c.Cfg.Name, t));
@@ -1238,7 +1357,7 @@ namespace Sidetone.Core
                 else
                 {
                     AddLog($"{c.Cfg.Name}: no {plan.Name}: {error}");
-                    if (c.Encrypted && KeyStore.IsSupported(c.KeyRequestAlg))
+                    if (c.TxSecure && KeyStore.IsSupported(c.KeyRequestAlg))
                         peer.RequestKey(c.KeyRequestAlg, c.KeyId);
                 }
             }

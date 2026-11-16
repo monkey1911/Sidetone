@@ -83,6 +83,7 @@ namespace Sidetone.Cli
             Console.WriteLine("                  [--marker-interval SECONDS] [--settings FILE | --no-settings]");
             Console.WriteLine("                  [--output DEVICE] [--input DEVICE] [--socket PATH | --no-socket]");
             Console.WriteLine("                  [--ptt-device NAME [--ptt-button BUTTON] [--mute-button BUTTON|none]]");
+            Console.WriteLine("                  [--key-file FILE.ekc]");
             Console.WriteLine("  sidetone-cli devices");
             Console.WriteLine("  sidetone-cli ptt      down | up | toggle | hold | status [--socket PATH]");
             Console.WriteLine("  sidetone-cli selftest");
@@ -269,13 +270,88 @@ namespace Sidetone.Cli
                 _ = new PttDeviceWatcher(opt.PttDevice, opt.PttButton, opt.MuteButton);    // checks the button names
 
             string socket = opt.NoSocket ? null : opt.Socket != null ? Path.GetFullPath(opt.Socket) : ControlServer.DefaultPath;
-            return new Tui(cp, system, TimeSpan.FromSeconds(opt.TxLimitSeconds), logFile, TimeSpan.FromSeconds(opt.MarkerSeconds),
-                           opt.NoSettings ? null : opt.SettingsFile ?? AppSettings.DefaultPath)
+            Tui tui = new Tui(cp, system, TimeSpan.FromSeconds(opt.TxLimitSeconds), logFile, TimeSpan.FromSeconds(opt.MarkerSeconds),
+                              opt.NoSettings ? null : opt.SettingsFile ?? AppSettings.DefaultPath)
             {
                 Audio = audio,
                 ControlSocketPath = socket,
-                PttDevice = opt.PttDevice != null ? (opt.PttDevice, opt.PttButton, opt.MuteButton) : null
-            }.Run();
+                PttDevice = opt.PttDevice != null ? (opt.PttDevice, opt.PttButton, opt.MuteButton) : null,
+                KeyFilePath = LocalKeyFile.Resolve(cp, opt.KeyFile)
+            };
+            if (tui.KeyFilePath != null)
+                UnlockKeyFile(tui);     // before the TUI takes over the terminal
+            return tui.Run();
+        }
+
+        /// <summary>
+        /// Unlocks the local key file: with the password remembered in the keyring, or by asking for it
+        /// (three tries; Enter skips, and the console starts without local keys).
+        /// </summary>
+        private static void UnlockKeyFile(Tui tui)
+        {
+            string file = Path.GetFileName(tui.KeyFilePath);
+            if (!File.Exists(tui.KeyFilePath))
+            {
+                Console.Error.WriteLine($"warning: key file not found: {tui.KeyFilePath}");
+                return;
+            }
+
+            string saved = SecretStore.Lookup(tui.KeyFilePath);
+            if (saved != null && tui.LoadKeyFile(saved, out _) == null)
+            {
+                Console.WriteLine($"keys: {file} unlocked with the password from the keyring");
+                return;
+            }
+
+            for (int attempt = 0; attempt < 3; attempt++)
+            {
+                Console.Write($"Password for {file} (Enter to skip): ");
+                string password = ReadPassword();
+                if (password.Length == 0)
+                {
+                    Console.WriteLine("keys: skipped; the key file isn't loaded");
+                    return;
+                }
+                string error = tui.LoadKeyFile(password, out bool wrong);
+                if (error == null)
+                {
+                    if (SecretStore.Available && !Console.IsInputRedirected)
+                    {
+                        Console.Write("Remember this password in the keyring? [y/N] ");
+                        string answer = Console.ReadLine() ?? string.Empty;
+                        if (answer.Trim().StartsWith("y", StringComparison.OrdinalIgnoreCase))
+                            Console.WriteLine(SecretStore.Store(tui.KeyFilePath, password) ? "keys: password remembered" : "keys: the keyring didn't take it; you'll be asked again next time");
+                    }
+                    return;
+                }
+                Console.Error.WriteLine($"keys: {error}");
+                if (!wrong)
+                    return;
+            }
+        }
+
+        /// <summary>Reads a line without showing it (plainly, when input isn't a terminal).</summary>
+        private static string ReadPassword()
+        {
+            if (Console.IsInputRedirected)
+                return Console.ReadLine() ?? string.Empty;
+
+            System.Text.StringBuilder typed = new System.Text.StringBuilder();
+            while (true)
+            {
+                ConsoleKeyInfo key = Console.ReadKey(intercept: true);
+                if (key.Key == ConsoleKey.Enter)
+                    break;
+                if (key.Key == ConsoleKey.Backspace)
+                {
+                    if (typed.Length > 0)
+                        typed.Length--;
+                }
+                else if (!char.IsControl(key.KeyChar))
+                    typed.Append(key.KeyChar);
+            }
+            Console.WriteLine();
+            return typed.ToString();
         }
 
         /// <summary>
@@ -398,7 +474,7 @@ namespace Sidetone.Cli
             public int MarkerSeconds = 10;
             public string SettingsFile;
             public bool NoSettings;
-            public string Socket, PttDevice, PttButton, MuteButton;
+            public string Socket, PttDevice, PttButton, MuteButton, KeyFile;
             public bool NoSocket;
 
             public static Options Parse(string[] args)
@@ -433,6 +509,7 @@ namespace Sidetone.Cli
                         case "--socket": o.Socket = Next(); break;
                         case "--no-socket": o.NoSocket = true; break;
                         case "--ptt-device": o.PttDevice = Next(); break;
+                        case "--key-file": o.KeyFile = Next(); break;
                         case "--ptt-button": o.PttButton = Next(); break;
                         case "--mute-button": o.MuteButton = Next(); break;
                         case "--marker-interval":

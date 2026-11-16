@@ -2,8 +2,9 @@
 /**
 * Sidetone - an IP dispatch console for DVMProject FNE networks.
 *
-* In-memory store for traffic keys delivered by the FNE (KMM). Keys are held only in
-* memory for the life of the process and are never logged or written to disk.
+* In-memory store for traffic keys: the ones the FNE delivers (KMM), and the ones in a local
+* key file when one is unlocked, which win. Keys are held only in memory for the life of the
+* process and are never logged or written to disk.
 */
 
 using System.Collections.Concurrent;
@@ -21,8 +22,26 @@ namespace Sidetone.Core
         /// <summary>Raised when a key is added or replaced.</summary>
         public event Action<byte, ushort> KeyAdded;
 
-        /// <summary>Number of keys held.</summary>
-        public int Count => keys.Count;
+        private Func<byte, ushort, byte[]> local;
+
+        /// <summary>Number of keys held (from the FNE, plus the local key file's).</summary>
+        public int Count => keys.Count + LocalCount;
+
+        /// <summary>Number of keys in the unlocked local key file.</summary>
+        public int LocalCount { get; private set; }
+
+        /// <summary>
+        /// Uses a local key file's keys first. <paramref name="lookup"/> returns the key for an
+        /// algorithm and key ID, or null. Pass null to stop using local keys.
+        /// </summary>
+        public void SetLocal(Func<byte, ushort, byte[]> lookup, int count)
+        {
+            local = lookup;
+            LocalCount = lookup == null ? 0 : count;
+        }
+
+        /// <summary>The key for this algorithm and key ID comes from the local key file.</summary>
+        public bool IsLocal(byte algId, ushort keyId) => local?.Invoke(algId, keyId) != null;
 
         /// <summary>
         /// Stores a key; returns false if the algorithm is not one P25 voice uses or the key is empty.
@@ -42,6 +61,12 @@ namespace Sidetone.Core
         /// </summary>
         public bool TryGet(byte algId, ushort keyId, out byte[] key)
         {
+            byte[] mine = local?.Invoke(algId, keyId);
+            if (mine != null)
+            {
+                key = (byte[])mine.Clone();
+                return true;
+            }
             if (keys.TryGetValue((algId, keyId), out byte[] stored))
             {
                 key = (byte[])stored.Clone();

@@ -776,6 +776,64 @@ B: MSC=10
             Check(!tui.RadioDialogOpen && tui.Render(120, 40).RowText(1).Contains("RADIO") && tui.Render(120, 40).RowText(1).Contains("T6"),
                   "TUI title bar has T6 and RADIO");
 
+            // local key file (KFDEKC .ekc), and selectable encryption
+            string keyDir = Path.Combine(Path.GetTempPath(), $"sidetone-keys-{Environment.ProcessId}");
+            try
+            {
+                Directory.CreateDirectory(keyDir);
+                Tui keyed = new Tui(cp, sys, TimeSpan.FromSeconds(120), null) { NoAudio = true };
+                ConsoleChannel secure = keyed.Channels.First(ch => ch.Encrypted);
+                ConsoleChannel plain = keyed.Channels.First(ch => ch.IsP25 && !ch.Encrypted);
+                int keyBytes = secure.KeyRequestAlg == 0x84 ? 32 : secure.KeyRequestAlg == 0x81 ? 8 : 5;
+                byte[] material = Enumerable.Range(1, keyBytes).Select(i => (byte)(i * 7)).ToArray();
+                string ekc = Path.Combine(keyDir, "test.ekc");
+                WriteEkc(ekc, "correct horse", new[]
+                {
+                    (Tek: true, Alg: (int)secure.KeyRequestAlg, Id: (int)secure.KeyId, Hex: Convert.ToHexString(material)),
+                    (Tek: true, Alg: 0x84, Id: 0x7001, Hex: new string('A', 64)),
+                    (Tek: false, Alg: 0x84, Id: 0x7002, Hex: new string('B', 64))       // a key-wrapping key: left out
+                });
+
+                LocalKeyFile wrongOne = LocalKeyFile.Open(ekc, "wrong", out string wrongError, out bool wrongPassword);
+                Check(wrongOne == null && wrongPassword && wrongError.Contains("password"), "key file: a wrong password is refused, and says so");
+                LocalKeyFile missing = LocalKeyFile.Open(Path.Combine(keyDir, "nope.ekc"), "x", out string missingError, out bool missingWrong);
+                File.WriteAllText(Path.Combine(keyDir, "keys.txt"), "not a container");
+                LocalKeyFile notEkc = LocalKeyFile.Open(Path.Combine(keyDir, "keys.txt"), "x", out string notEkcError, out bool notEkcWrong);
+                Check(missing == null && !missingWrong && missingError.Contains("found") && notEkc == null && !notEkcWrong && notEkcError.Contains(".ekc"),
+                      "key file: a missing file and a file that isn't an .ekc container are plain errors, not password errors");
+
+                bool before = keyed.HasKey(secure);
+                keyed.KeyFilePath = ekc;
+                string loadError = keyed.LoadKeyFile("correct horse", out _);
+                Check(!before && loadError == null && keyed.KeyFileLoaded && keyed.Keys.LocalCount == 2 && keyed.HasKey(secure) && keyed.KeyIsLocal(secure) &&
+                      keyed.Keys.TryGet(secure.KeyRequestAlg, secure.KeyId, out byte[] got) && got.SequenceEqual(material),
+                      $"key file: unlocks with its password, traffic keys only, and the channel's key comes from it ({loadError})");
+                keyed.Keys.Store(secure.KeyRequestAlg, secure.KeyId, new byte[keyBytes]);
+                Check(keyed.Keys.TryGet(secure.KeyRequestAlg, secure.KeyId, out byte[] still) && still.SequenceEqual(material),
+                      "key file: its key wins over one the FNE sends for the same key ID");
+                string keyLog = string.Join("\n", keyed.SnapshotLog(20));
+                Check(keyLog.Contains("keys: 2 from test.ekc") && !keyLog.Contains("correct horse") && !keyLog.Contains(Convert.ToHexString(material)),
+                      "key file: the log says how many keys were loaded, and never the password or a key");
+                Check(LocalKeyFile.Resolve(cp, "/tmp/x.ekc") == "/tmp/x.ekc" && LocalKeyFile.Resolve(cp, null) == null,
+                      "key file: an option or setting names it; a codeplug without one means none");
+
+                // selectable encryption
+                keyed.ToggleTxSecure(secure);
+                bool fixedStays = !secure.TxClear && secure.TxSecure;
+                keyed.ToggleTxSecure(plain);
+                secure.Selectable = true;
+                keyed.ToggleTxSecure(secure);
+                bool clear = secure.TxClear && !secure.TxSecure && secure.ActiveTxAlg == fnecore.P25.P25Defines.P25_ALGO_UNENCRYPT && secure.ActiveKeyId == 0;
+                keyed.ToggleTxSecure(secure);
+                Check(fixedStays && !plain.TxClear && clear && secure.TxSecure && secure.ActiveTxAlg == secure.TxAlg && secure.ActiveKeyId == secure.KeyId,
+                      "selectable encryption: only a channel the codeplug marks can be switched to clear, and back");
+                secure.Selectable = false;
+            }
+            finally
+            {
+                try { Directory.Delete(keyDir, true); } catch (Exception) { }
+            }
+
             // settings from before the rename are carried over once
             string configRoot = Path.Combine(Path.GetTempPath(), $"sidetone-config-{Environment.ProcessId}");
             try
@@ -1128,5 +1186,41 @@ zones:
         algo: ""aes""
         keyId: 0x561
 ";
+
+        /// <summary>
+        /// Writes a KFDEKC-style key container: a length-prefixed gzip of an XML outer container whose
+        /// inner container is AES-256 encrypted with a PBKDF2 (SHA-512) key from the password.
+        /// </summary>
+        private static void WriteEkc(string path, string password, (bool Tek, int Alg, int Id, string Hex)[] entries)
+        {
+            System.Text.StringBuilder inner = new System.Text.StringBuilder("<InnerContainer version=\"1.0\"><Keys>");
+            foreach (var e in entries)
+                inner.Append($"<KeyItem><KeyTypeAuto>false</KeyTypeAuto><KeyTypeTek>{(e.Tek ? "true" : "false")}</KeyTypeTek><KeyTypeKek>{(e.Tek ? "false" : "true")}</KeyTypeKek>" +
+                             $"<Sln>1</Sln><AlgorithmId>{e.Alg}</AlgorithmId><KeyId>{e.Id}</KeyId><Key>{e.Hex}</Key></KeyItem>");
+            inner.Append("</Keys></InnerContainer>");
+
+            byte[] salt = Enumerable.Range(0, 32).Select(i => (byte)(i + 3)).ToArray();
+            const int iterations = 1000;
+            byte[] derived = System.Security.Cryptography.Rfc2898DeriveBytes.Pbkdf2(password, salt, iterations, System.Security.Cryptography.HashAlgorithmName.SHA512, 32);
+            using System.Security.Cryptography.Aes aes = System.Security.Cryptography.Aes.Create();
+            aes.Key = derived;
+            aes.Mode = System.Security.Cryptography.CipherMode.CBC;
+            byte[] cipher = new System.Security.Cryptography.Xml.EncryptedXml().EncryptData(System.Text.Encoding.UTF8.GetBytes(inner.ToString()), aes);
+            var data = new System.Security.Cryptography.Xml.EncryptedData
+            {
+                Type = System.Security.Cryptography.Xml.EncryptedXml.XmlEncElementUrl,
+                EncryptionMethod = new System.Security.Cryptography.Xml.EncryptionMethod(System.Security.Cryptography.Xml.EncryptedXml.XmlEncAES256Url),
+                CipherData = new System.Security.Cryptography.Xml.CipherData(cipher)
+            };
+            string outer = "<OuterContainer version=\"1.0\"><KeyDerivation><DerivationAlgorithm>PBKDF2</DerivationAlgorithm><HashAlgorithm>SHA512</HashAlgorithm>" +
+                           $"<KeyLength>32</KeyLength><IterationCount>{iterations}</IterationCount><Salt>{Convert.ToBase64String(salt)}</Salt></KeyDerivation>" +
+                           data.GetXml().OuterXml + "</OuterContainer>";
+
+            byte[] plain = System.Text.Encoding.UTF8.GetBytes(outer);
+            using FileStream file = File.Create(path);
+            file.Write(BitConverter.GetBytes(plain.Length));
+            using var gzip = new System.IO.Compression.GZipStream(file, System.IO.Compression.CompressionMode.Compress);
+            gzip.Write(plain);
+        }
     } // public static class SelfTest
 }

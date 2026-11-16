@@ -131,6 +131,7 @@ Channels are shown as cards, up to four across. The mouse works in any terminal 
 | m / M | Mute the focused card / mute everything |
 | + / - | Volume of the focused card |
 | k | Request the focused card's key from the FNE again |
+| e | Switch the focused card's transmit between secure and clear, where the codeplug allows it |
 | q or Ctrl+C | Quit |
 
 Alert tones match the Windows console's built-in tones 1–6 (5 seconds each). A digital page is a P25 call alert from the console's RID to one radio (the Windows console's "Page Subscriber"); call alerts and acknowledgements addressed to the console's RID are logged when the FNE passes them on. A QuickCall II page is tone A for 1 s then tone B for 3 s (250–3000 Hz, as the Windows console's manual page), sent on every listening channel; the last page's tones are filled in next time. On P25, tones travel as IMBE tone frames, which carry the frequency in steps of about 31 Hz, so radios regenerate the nearest step. The channel marker is the console's "channel hold" beep: 0.5 s of 650 Hz every 10 seconds on each listening channel that isn't busy; change the interval with `--marker-interval SECONDS`. Tones are encrypted on secure channels and skipped on channels whose key isn't held. The tone buttons are hidden on terminals narrower than 110 columns; the keys still work.
@@ -143,7 +144,7 @@ The microphone level meter sits in the bottom edge of the title box. It shows wh
 
 Settings are remembered per system in `~/.config/sidetone/settings.json`: which channels you're listening to, the focused card, volumes, mutes, global mute, the talk permit tone and the last page / radio values. Use `--settings FILE` for a different file or `--no-settings` to start fresh without saving. The channel marker always starts off. The file holds no passwords or keys.
 
-Transmit uses the system's `rid` as the source ID, and the default microphone unless you start the TUI with `--input` (see [Audio devices](#audio-devices)). A secure channel never transmits in the clear: without its key, transmit is refused. Transmissions stop automatically after 120 seconds; change that with `--tx-limit SECONDS`. Add `--log FILE` to keep a copy of the log.
+Transmit uses the system's `rid` as the source ID, and the default microphone unless you start the TUI with `--input` (see [Audio devices](#audio-devices)). A secure channel never transmits in the clear by accident: without its key, transmit is refused. The one exception is a channel the codeplug marks as selectable, which you can switch to clear yourself (see [Encryption keys](#encryption-keys)). Transmissions stop automatically after 120 seconds; change that with `--tx-limit SECONDS`. Add `--log FILE` to keep a copy of the log.
 
 ## Graphical console (sidetone)
 
@@ -158,7 +159,8 @@ After the first time, `./sidetone` on its own reopens the last codeplug. With no
 What it has so far:
 
 - a card per channel: talkgroup, encryption and key, what the channel is doing, the last call, and Listen, volume and Mute. Clicking a card focuses it (PTT transmits there) and starts listening, as in the TUI.
-- **PTT** (click to start, click to stop), **MUTE** for all receive audio, **Mute mic**, and **Mic check** with a level meter
+- **PTT**: hold it to talk, let go to stop. Each card also has its own small **PTT**, which keys that channel without moving the focus to it.
+- **MUTE** for all receive audio, **Mute mic**, and **Mic check** with a level meter
 - **Settings** and **Quit** in the top right (Quit is there for desktops without window buttons)
 - a tool bar under the header:
   - **Alert tones 1 to 6**, sent on every listening channel. While a tone is going out, the PTT button reads **STOP TONE**; click it or press Esc to stop.
@@ -177,7 +179,8 @@ What it has so far:
 | Output, Microphone | The audio devices to use, or the system default |
 | PTT device | A desk microphone, footswitch or PTT button that keys the console (see [PTT devices](#ptt-devices)) |
 | PTT button, Mute button | Which of that device's buttons do what. Automatic uses the buttons Sidetone knows for the device, or its only button. |
-| Space key | Hold to talk, or press to start and press again to stop |
+| Space and PTT | Hold to talk, or press to start and press again to stop. Applies to Space and the on-screen PTT buttons. |
+| Key file | A local key file to use, and its unlock state (see [Encryption keys](#encryption-keys)) |
 | Time limit | How long a transmission can last, 5 to 600 seconds |
 | Codeplug | Shows the open codeplug, and opens another one |
 | App launcher | Adds Sidetone to, or removes it from, your desktop's app launcher |
@@ -225,6 +228,7 @@ Keyboard shortcuts (the same keys as the TUI where both have the feature):
 | U | Mute or unmute the microphone |
 | V | Mic check (level meter) on or off |
 | K | Request the focused channel's key from the FNE |
+| E | Switch the focused channel's transmit between secure and clear, where the codeplug allows it |
 | A | Reload the alias file and download aliases again |
 | T | Talk permit tone on or off |
 | 1 to 6 | Send an alert tone on every listening channel |
@@ -236,7 +240,7 @@ Keyboard shortcuts (the same keys as the TUI where both have the feature):
 
 In the page and radio command boxes, Enter sends, Esc closes, and the other shortcut keys are just typing.
 
-Space is hold-to-talk here because a window, unlike a terminal, can tell when a key is let go. If the window loses the keyboard while you're holding it, the transmission ends. To make Space start and stop instead, as in the TUI, choose that in Settings or start with `--space toggle`.
+Space and the on-screen PTT buttons are hold-to-talk here because a window, unlike a terminal, can tell when a key is let go. If the window loses the keyboard while you're holding it, the transmission ends. To make them start and stop instead, as in the TUI, choose that in Settings or start with `--space toggle`.
 
 **Wayland.** On Wayland desktops (Hyprland, GNOME, KDE) the window runs through XWayland by default. `--wayland` uses Avalonia's native Wayland backend instead, which is newer and still missing some features. If the window looks blurry or the wrong size on a high-DPI screen under XWayland, try `--wayland`, or set a scale yourself with `AVALONIA_GLOBAL_SCALE_FACTOR=2 ./sidetone`.
 
@@ -341,6 +345,32 @@ SUBSYSTEM=="input", ATTRS{idVendor}=="1234", ATTRS{idProduct}=="5678", TAG+="uac
 Avoid adding yourself to the `input` group instead: that lets every program you run read every keystroke.
 
 Sidetone doesn't take the device away from other programs, so a footswitch that types a key still types it in the focused window. Pick a key nothing else uses, such as F13 to F24.
+
+## Encryption keys
+
+Keys normally come from the FNE: the console asks for each encrypted channel's key after it logs in. Two things add to that.
+
+### Local key file
+
+If the FNE doesn't deliver keys to your console, Sidetone can read them from a password-protected **KFDEKC key container** (an `.ekc` file), the same kind the Windows console uses. Clear-text key files are not supported.
+
+Sidetone uses the first of these that is set:
+
+1. `--key-file FILE.ekc` on the command line (both programs)
+2. the file chosen under **Key file** in the graphical console's Settings
+3. the codeplug's `keyFile:` entry (a path relative to the codeplug works)
+
+The graphical console asks for the password in a box when it opens the codeplug. The terminal console asks before the TUI starts. Skipping it is fine: the console runs with whatever keys the FNE sends, and you can unlock later from Settings.
+
+**Remembering the password.** If your desktop has a keyring and the `secret-tool` command (GNOME Keyring, KWallet and others provide the keyring; `secret-tool` comes with libsecret), Sidetone offers to remember the password there. Otherwise it asks each time. Sidetone never writes the password or any key to its own files or its log, and keys are wiped from memory when the console closes.
+
+A key from the key file wins over one the FNE sends for the same key ID. Cards show `from key file` next to such a key. Only traffic keys for AES-256, DES and ADP are read; key-wrapping keys and other algorithms are skipped, and the log says how many.
+
+### Selectable encryption
+
+A channel with `selectable_encryption: true` in the codeplug can have its **transmit** switched between secure and clear. In the graphical console, the card's encryption label becomes a button: `TX AES-256` or, in red, `TX CLEAR`. `E` does the same for the focused card, and `e` in the TUI. The choice is remembered per channel.
+
+Receive is not affected: the channel still decrypts what it hears. Channels without that codeplug setting can't be switched, and it can't be changed in the middle of a transmission.
 
 ## Radio aliases
 
