@@ -58,12 +58,16 @@ jobs:
           mkdir -p build/native
           cp "$(find build/vocoder -name 'libvocoder.so' | head -1)" build/native/
 
+      # dvmcli (terminal) and dvmgui (graphical) are published into the same folder; they share the runtime and dvmcore
       - name: Publish dvmcli (self-contained)
         run: dotnet publish src/dvmcli/dvmcli.csproj -c Release -r "$RID" --self-contained true -o "out/dvmcli-$RID"
 
+      - name: Publish dvmgui (self-contained)
+        run: dotnet publish src/dvmgui/dvmgui.csproj -c Release -r "$RID" --self-contained true -o "out/dvmcli-$RID"
+
       - name: Verify binaries match the target architecture
         run: |
-          for f in dvmcli libvocoder.so; do
+          for f in dvmcli dvmgui libvocoder.so; do
             test -f "out/dvmcli-$RID/$f" || { echo "::error::$f missing from publish output"; exit 1; }
             desc="$(file -b "out/dvmcli-$RID/$f")"
             echo "$f: $desc"
@@ -72,6 +76,27 @@ jobs:
 
       - name: Self-test
         run: out/dvmcli-$RID/dvmcli selftest
+
+      # Renders the GUI off-screen (no display needed) in both themes. The PNGs go into the log as
+      # base64 so they can be looked at without downloading an artifact.
+      - name: GUI renders in light and dark
+        run: |
+          out/dvmcli-$RID/dvmgui --version
+          for theme in dark light; do
+            out/dvmcli-$RID/dvmgui --screenshot "out/gui-$theme.png" --demo --theme "$theme" --size 1180x760
+            test -s "out/gui-$theme.png" || { echo "::error::no screenshot for the $theme theme"; exit 1; }
+            file -b "out/gui-$theme.png"
+            echo "-----BEGIN PNG $theme-----"
+            base64 -w 120 "out/gui-$theme.png"
+            echo "-----END PNG $theme-----"
+          done
+
+      - name: Upload GUI screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: gui-screenshots-linux-${{ matrix.arch }}
+          path: out/gui-*.png
+          if-no-files-found: error
 
       - name: Package
         run: |

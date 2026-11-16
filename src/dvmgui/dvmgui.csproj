@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    dvmgui - the graphical front end of the Linux DVM console (Avalonia).
+    The console itself is dvmcore's DispatchConsole; this project is windows, controls and themes.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>dvmgui</AssemblyName>
+    <RootNamespace>dvmgui</RootNamespace>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <AvaloniaVersion>12.1.6</AvaloniaVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\dvmcore\dvmcore.csproj" />
+    <Using Include="dvmcore" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="$(AvaloniaVersion)" />
+    <PackageReference Include="Avalonia.Desktop" Version="$(AvaloniaVersion)" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="$(AvaloniaVersion)" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="$(AvaloniaVersion)" />
+    <!-- opt-in native Wayland backend (the wayland option); XWayland is the default -->
+    <PackageReference Include="Avalonia.Wayland" Version="$(AvaloniaVersion)" />
+    <!-- off-screen rendering for the screenshot option (CI uses it to check the window in both themes) -->
+    <PackageReference Include="Avalonia.Headless" Version="$(AvaloniaVersion)" />
+  </ItemGroup>
+
+  <!-- libvocoder.so built by CMake (see CI) is copied next to dvmgui when present -->
+  <ItemGroup>
+    <None Include="..\..\build\native\libvocoder.so" Condition="Exists('..\..\build\native\libvocoder.so')">
+      <Link>libvocoder.so</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>
