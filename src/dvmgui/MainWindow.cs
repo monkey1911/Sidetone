@@ -12,6 +12,8 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
+using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
@@ -51,14 +53,15 @@ namespace dvmgui
         private readonly Border micTrack = new Border { Width = MeterWidth, Height = 10, CornerRadius = new CornerRadius(5), VerticalAlignment = VerticalAlignment.Center };
         private readonly Border micFill = new Border { Height = 10, CornerRadius = new CornerRadius(5), HorizontalAlignment = HorizontalAlignment.Left, Width = 0 };
         private readonly StackPanel micMeter = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
-        private Tap micCheck, micMute, mute, ptt, themeSystem, themeLight, themeDark;
+        private Tap micCheck, micMute, mute, ptt, themeSystem, themeLight, themeDark, quit;
         private readonly StackPanel consoleButtons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
 
         // console view
         private readonly Grid consoleView = new Grid { RowDefinitions = new RowDefinitions("*,Auto,230") };
         private readonly WrapPanel cardPanel = new WrapPanel { Margin = new Thickness(10, 8) };
         private readonly Border txBar = new Border { Padding = new Thickness(16, 7) };
-        private readonly TextBlock txText = new TextBlock { FontSize = 14, FontWeight = FontWeight.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis };
+        private readonly TextBlock txText = new TextBlock { FontSize = 14, FontWeight = FontWeight.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
+        private readonly TextBlock keyHints = new TextBlock { FontSize = 11, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(16, 0, 0, 0) };
         private readonly Border recentPanel = new Border { Margin = new Thickness(12, 8, 6, 12), Padding = new Thickness(12, 8), CornerRadius = new CornerRadius(8), BorderThickness = new Thickness(1) };
         private readonly Border logPanel = new Border { Margin = new Thickness(6, 8, 12, 12), Padding = new Thickness(12, 8), CornerRadius = new CornerRadius(8), BorderThickness = new Thickness(1) };
         private readonly TextBlock recentTitle = new TextBlock { Text = "Recent calls", FontSize = 13, FontWeight = FontWeight.Bold, Margin = new Thickness(0, 0, 0, 6) };
@@ -104,7 +107,17 @@ namespace dvmgui
             timer.Tick += (s, e) => OnTick();
             timer.Start();
             Closing += (s, e) => CloseConsole();
+
+            // keyboard: the window sees every key first, whatever has the focus
+            spaceRelease = new DispatcherTimer { Interval = SpaceReleaseDelay };
+            spaceRelease.Tick += (s, e) => SpaceLetGo();
+            AddHandler(KeyDownEvent, HandleKeyDown, RoutingStrategies.Tunnel);
+            AddHandler(KeyUpEvent, HandleKeyUp, RoutingStrategies.Tunnel);
+            Deactivated += (s, e) => SpaceLetGo();      // the key-up would go to another window
         }
+
+        /// <summary>The console being shown, or null (self-check hook).</summary>
+        internal DispatchConsole ActiveConsole => console;
 
         private static string Normalize(string theme) =>
             theme != null && (theme.Equals("light", StringComparison.OrdinalIgnoreCase) || theme.Equals("dark", StringComparison.OrdinalIgnoreCase))
@@ -146,9 +159,13 @@ namespace dvmgui
             themeRow.Children.Add(themeLight.Root);
             themeRow.Children.Add(themeDark.Root);
 
+            quit = new Tap("Quit", () => Close(), fontSize: 12, padX: 10, padY: 4);
+            quit.Root.Margin = new Thickness(6, 0, 0, 0);
+
             StackPanel right = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right };
             right.Children.Add(consoleButtons);
             right.Children.Add(themeRow);
+            right.Children.Add(quit.Root);
 
             Grid headerGrid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
             Grid.SetColumn(left, 0);
@@ -159,7 +176,13 @@ namespace dvmgui
 
             // console view: cards, transmit bar, recent calls and log
             ScrollViewer cardScroll = new ScrollViewer { Content = cardPanel, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
-            txBar.Child = txText;
+            keyHints.Text = $"Space: PTT ({(opt.SpaceToggle ? "start/stop" : "hold")})    Enter: listen    M: mute    U: mute mic    V: mic check    Ctrl+Q: quit";
+            Grid txGrid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+            Grid.SetColumn(txText, 0);
+            Grid.SetColumn(keyHints, 1);
+            txGrid.Children.Add(txText);
+            txGrid.Children.Add(keyHints);
+            txBar.Child = txGrid;
 
             DockPanel recentDock = new DockPanel();
             DockPanel.SetDock(recentTitle, Dock.Top);
@@ -394,6 +417,7 @@ namespace dvmgui
             welcomeText.Foreground = p.Dim;
             welcomeError.Foreground = p.Tx;
             openCodeplug.Paint(p.Accent, p.OnStrong);
+            quit.Paint(Brushes.Transparent, p.Dim, p.Edge);
 
             Tap active = themeSetting == "light" ? themeLight : themeSetting == "dark" ? themeDark : themeSystem;
             foreach (Tap t in new[] { themeSystem, themeLight, themeDark })
@@ -487,6 +511,7 @@ namespace dvmgui
                 txBar.Background = p.Tx;
                 txText.Foreground = p.OnStrong;
                 txText.Text = $"SENDING {tone.Plan.Name.ToUpperInvariant()} on {string.Join(", ", tone.Channels)}";
+                keyHints.Foreground = p.OnStrong;
                 return;
             }
 
@@ -499,15 +524,139 @@ namespace dvmgui
                 txText.Foreground = p.OnStrong;
                 txText.Text = $"● TRANSMITTING   {on?.Cfg.Name}   tg {t.Talkgroup}   {(t.Encrypted ? KeyStore.AlgorithmName(t.AlgorithmId) : "clear")}   " +
                               $"{DateTime.Now - t.StartedAt:mm\\:ss} / {c.TxLimit:mm\\:ss}{warn}";
+                keyHints.Foreground = p.OnStrong;
                 return;
             }
 
             ConsoleChannel focus = c.Channels[c.FocusIndex];
             txBar.Background = p.Panel;
+            keyHints.Foreground = p.Dim;
             txText.Foreground = c.MicMuted ? p.Tx : p.Dim;
             txText.Text = (focus.IsP25
                 ? $"PTT transmits on {focus.Cfg.Name} (tg {focus.Tg}, {(focus.Encrypted ? KeyStore.AlgorithmName(focus.TxAlg) : "clear")})"
                 : $"{focus.Cfg.Name}: no transmit on {focus.Cfg.Mode}") + (c.MicMuted ? "     MIC MUTED" : string.Empty);
+        }
+
+        /*
+        ** Keyboard
+        */
+
+        /// <summary>
+        /// How long after Space's key-up the release counts. A held key repeats, and on X11 each repeat
+        /// arrives as a key-up followed at once by a key-down; waiting this long tells those from letting go.
+        /// </summary>
+        private static readonly TimeSpan SpaceReleaseDelay = TimeSpan.FromMilliseconds(70);
+
+        private readonly DispatcherTimer spaceRelease;
+        private bool spaceHeld;
+
+        /// <summary>How many times Space has been pressed and let go, repeats not counted (self-check hooks).</summary>
+        internal int SpacePresses { get; private set; }
+        internal int SpaceReleases { get; private set; }
+
+        private void HandleKeyDown(object sender, KeyEventArgs e)
+        {
+            bool ctrl = e.KeyModifiers.HasFlag(KeyModifiers.Control);
+            if (ctrl && e.Key == Key.Q)
+            {
+                e.Handled = true;
+                Close();
+                return;
+            }
+
+            DispatchConsole c = console;
+            if (c == null || ctrl || e.KeyModifiers.HasFlag(KeyModifiers.Alt) || e.KeyModifiers.HasFlag(KeyModifiers.Meta))
+                return;
+            ConsoleChannel focus = c.Channels[c.FocusIndex];
+
+            if (e.Key == Key.Space)
+            {
+                e.Handled = true;
+                spaceRelease.Stop();        // a repeat, not a release
+                if (spaceHeld)
+                    return;
+                spaceHeld = true;
+                SpacePresses++;
+                if (opt.SpaceToggle)
+                    c.ToggleTx();
+                else
+                    c.HoldToTalk(true);
+                RefreshNow();
+                return;
+            }
+
+            bool plus = e.Key == Key.OemPlus || e.Key == Key.Add || e.KeySymbol == "+" || e.KeySymbol == "=";
+            bool minus = e.Key == Key.OemMinus || e.Key == Key.Subtract || e.KeySymbol == "-";
+            if (plus)
+                c.Louder(focus);
+            else if (minus)
+                c.Quieter(focus);
+            else
+            {
+                switch (e.Key)
+                {
+                    case Key.Escape:
+                        if (c.ActiveTone != null)
+                            c.CancelTones();
+                        else if (c.Transmitting)
+                            c.StopTx(null);
+                        break;
+                    case Key.Enter: c.ToggleSelect(focus); break;
+                    case Key.Left: MoveFocus(c, -1); break;
+                    case Key.Right: MoveFocus(c, 1); break;
+                    case Key.Up: MoveFocus(c, -Columns()); break;
+                    case Key.Down: MoveFocus(c, Columns()); break;
+                    case Key.M:
+                        if (e.KeyModifiers.HasFlag(KeyModifiers.Shift))
+                            c.ToggleGlobalMute();
+                        else
+                            c.ToggleMute(focus);
+                        break;
+                    case Key.U: c.ToggleMicMute(); break;
+                    case Key.V: c.ToggleMicMonitor(); break;
+                    case Key.K: c.RequestKey(focus); break;
+                    case Key.A: c.RefreshAliases(); break;
+                    case Key.T: c.ToggleTalkPermit(); break;
+                    default: return;
+                }
+            }
+            e.Handled = true;
+            RefreshNow();
+        }
+
+        private void HandleKeyUp(object sender, KeyEventArgs e)
+        {
+            if (e.Key != Key.Space || !spaceHeld)
+                return;
+            e.Handled = true;
+            spaceRelease.Stop();
+            spaceRelease.Start();   // counts as let go unless a key-down follows at once
+        }
+
+        /// <summary>Space has really been let go (or the window lost the keyboard).</summary>
+        private void SpaceLetGo()
+        {
+            spaceRelease.Stop();
+            if (!spaceHeld)
+                return;
+            spaceHeld = false;
+            SpaceReleases++;
+            if (!opt.SpaceToggle)
+                console?.HoldToTalk(false);
+            RefreshNow();
+        }
+
+        /// <summary>How many cards fit across the window.</summary>
+        private int Columns() => Math.Max(1, (int)(cardPanel.Bounds.Width / (ChannelCard.CardWidth + 12)));
+
+        private void MoveFocus(DispatchConsole c, int delta)
+        {
+            int target = c.FocusIndex + delta;
+            if (target < 0 || target >= c.Channels.Count)
+                return;
+            c.SetFocus(target);
+            if (target < cards.Count)
+                cards[target].Root.BringIntoView();
         }
 
         private void RefreshRecent(DispatchConsole c, Palette p)

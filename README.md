@@ -157,12 +157,32 @@ What it has so far:
 
 - a card per channel: talkgroup, encryption and key, what the channel is doing, the last call, and Listen, volume and Mute. Clicking a card focuses it (PTT transmits there) and starts listening, as in the TUI.
 - **PTT** (click to start, click to stop), **MUTE** for all receive audio, **Mute mic**, and **Mic check** with a level meter
+- **Quit** in the top right, for desktops without window buttons
 - a transmit bar, recent calls and the log
 - **Auto / Light / Dark** in the top right. Auto follows your desktop's light or dark setting. The choice is remembered. `--theme light|dark|system` sets it from the command line.
 
 The audio, PTT device and PTT socket options are the same as `dvmcli tui`: `--output`, `--input`, `--ptt-device`, `--ptt-button`, `--mute-button`, `--socket`, `--no-socket`, `--tx-limit`, `--log`, `--system`, `--settings`, `--no-settings`. `dvmcli ptt down` and friends control whichever console is running.
 
-Not in the GUI yet: alert tones, pages, radio commands, the channel marker and keyboard shortcuts. Use the TUI for those.
+Keyboard shortcuts (the same keys as the TUI where both have the feature):
+
+| Key | What it does |
+|---|---|
+| Space | Push-to-talk on the focused channel: hold to talk, let go to stop |
+| Esc | Stop transmitting |
+| Arrow keys | Move the focus between cards |
+| Enter | Start or stop listening on the focused card |
+| M / Shift+M | Mute the focused channel / mute all receive audio |
+| + / - | Volume of the focused channel |
+| U | Mute or unmute the microphone |
+| V | Mic check (level meter) on or off |
+| K | Request the focused channel's key from the FNE |
+| A | Reload the alias file and download aliases again |
+| T | Talk permit tone on or off |
+| Ctrl+Q | Quit |
+
+Space is hold-to-talk here because a window, unlike a terminal, can tell when a key is let go. If the window loses the keyboard while you're holding it, the transmission ends. To make Space start and stop instead, as in the TUI, start with `--space toggle`.
+
+Not in the GUI yet: alert tones, pages, radio commands and the channel marker. Use the TUI for those.
 
 **Wayland.** On Wayland desktops (Hyprland, GNOME, KDE) the window runs through XWayland by default. `--wayland` uses Avalonia's native Wayland backend instead, which is newer and still missing some features. If the window looks blurry or the wrong size on a high-DPI screen under XWayland, try `--wayland`, or set a scale yourself with `AVALONIA_GLOBAL_SCALE_FACTOR=2 ./dvmgui`.
 

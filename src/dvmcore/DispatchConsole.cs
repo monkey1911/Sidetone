@@ -673,6 +673,12 @@ namespace dvmcore
             w.Start();
         }
 
+        /// <summary>
+        /// Hold-to-talk from a front end's key or button: true when it's pressed, false when it's let go.
+        /// Letting go only ends a transmission that a press is holding.
+        /// </summary>
+        public void HoldToTalk(bool down) => OnDevicePtt(down);
+
         /// <summary>PTT device pressed or released (UI thread).</summary>
         internal void OnDevicePtt(bool down)
         {
@@ -680,7 +686,7 @@ namespace dvmcore
             {
                 if (toneJob != null)
                 {
-                    AddLog("PTT device: tones are being sent; PTT ignored");
+                    AddLog("tones are being sent; PTT ignored");
                     return;
                 }
                 string reply = PttDown(null);       // a refusal is already in the log
