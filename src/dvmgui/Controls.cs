@@ -85,6 +85,7 @@ namespace dvmgui
         private readonly TextBlock name, tg, crypt, keyLine, status, last, vol;
         private readonly Border statusPill;
         private readonly Tap listen, keyTap, quieter, louder, mute;
+        private readonly StackPanel volRow;
 
         public ChannelCard(DispatchConsole console, int index, Action changed)
         {
@@ -114,7 +115,7 @@ namespace dvmgui
             quieter = new Tap("-", () => { console.SetFocus(index); console.Quieter(chan); changed(); }, fontSize: 13, minWidth: 30, padX: 6, padY: 1);
             louder = new Tap("+", () => { console.SetFocus(index); console.Louder(chan); changed(); }, fontSize: 13, minWidth: 30, padX: 6, padY: 1);
             mute = new Tap("Mute", () => { console.SetFocus(index); console.ToggleMute(chan); changed(); }, fontSize: 12, padX: 10, padY: 2);
-            StackPanel volRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Margin = new Thickness(0, 4, 0, 0) };
+            volRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Margin = new Thickness(0, 4, 0, 0) };
             volRow.Children.Add(vol);
             volRow.Children.Add(quieter.Root);
             volRow.Children.Add(louder.Root);
@@ -190,6 +191,7 @@ namespace dvmgui
                 Set(keyLine, string.Empty);
                 keyTap.Root.IsVisible = false;
                 listen.Root.IsVisible = false;
+                volRow.IsVisible = false;       // nothing to hear on a mode that isn't supported yet
             }
             else if (chan.Encrypted)
             {

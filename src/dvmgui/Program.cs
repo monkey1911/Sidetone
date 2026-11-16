@@ -16,6 +16,9 @@ using Avalonia;
 using Avalonia.Headless;
 using Avalonia.Threading;
 
+// Linux only, like dvmcore
+[assembly: System.Runtime.Versioning.SupportedOSPlatform("linux")]
+
 namespace dvmgui
 {
     /// <summary>
@@ -155,7 +158,9 @@ namespace dvmgui
                 return 1;
             }
             string path = Path.GetFullPath(opt.Screenshot);
+#pragma warning disable CS0618 // the simple PNG overload is all this needs
             frame.Save(path);
+#pragma warning restore CS0618
             Console.WriteLine($"dvmgui: wrote {path} ({frame.PixelSize.Width}x{frame.PixelSize.Height})");
             window.CloseConsole();
             return 0;

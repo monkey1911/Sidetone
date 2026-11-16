@@ -1,12 +1,15 @@
-# dvmcli: DVM console proof of concept for Linux
+# dvmconsole-linux: a DVM dispatch console for Linux
 
-A headless test of the [DVM Desktop Dispatch Console](https://github.com/DVMProject/dvmconsole) on Linux, for ARM64 (aarch64) and x86-64. It was built for Omarchy on a Surface Pro 11 and runs the same way on x86-64 PCs. It connects to an FNE as a console peer, follows one P25 talkgroup, decodes clear voice with libvocoder, and plays it through PipeWire.
+The [DVM Desktop Dispatch Console](https://github.com/DVMProject/dvmconsole) for Linux, on ARM64 (aarch64) and x86-64. It was built for Omarchy on a Surface Pro 11 and runs the same way on x86-64 PCs. It connects to an FNE as a console peer using your dvmconsole codeplug, receives and transmits P25 voice with libvocoder, and plays it through PipeWire.
 
-It exists to prove the networking, vocoder and audio work on Linux before any decision about a full desktop port.
+There are two front ends over the same console:
 
-**What works:** FNE login using your dvmconsole codeplug, P25 receive and transmit (clear, AES-256, DES, ADP/ARC4 with keys from the FNE), PipeWire audio, a terminal console (channel cards, mouse support, toggle push-to-talk), and WAV recording.
+- **`dvmcli`**: a terminal console (TUI) that works anywhere, including over SSH, plus the `listen`, `ptt` and `devices` commands.
+- **`dvmgui`**: a graphical console (Avalonia), with light and dark themes. It is new and has fewer features than the TUI so far. See [Graphical console (dvmgui)](#graphical-console-dvmgui).
 
-**Not yet:** DMR/NXDN/analog, and a graphical UI.
+**What works:** FNE login, P25 receive and transmit (clear, AES-256, DES, ADP/ARC4 with keys from the FNE), PipeWire audio, channel cards, push-to-talk from the keyboard, a hotkey or a PTT device, alert tones and pages (TUI), radio aliases, and WAV recording.
+
+**Not yet:** DMR/NXDN/analog.
 
 ## Install
 
@@ -35,7 +38,7 @@ Or the x86-64 build:
 tar -xzf ~/Downloads/dvmcli-*-linux-x64.tar.gz -C ~
 ```
 
-The builds are self-contained, so no .NET install is needed. They are built on Ubuntu 24.04, so any distribution of that age or newer runs them, including current Arch / Omarchy and Fedora. Playback uses `pw-play` and transmit uses `pw-record`, which ship with PipeWire.
+Each download has both programs, `dvmcli` and `dvmgui`. The builds are self-contained, so no .NET install is needed. They are built on Ubuntu 24.04, so any distribution of that age or newer runs them, including current Arch / Omarchy and Fedora. Playback uses `pw-play` and transmit uses `pw-record`, which ship with PipeWire. `dvmgui` also needs the usual desktop libraries (X11 and fontconfig), which any graphical install already has.
 
 ## Codeplug
 
@@ -139,6 +142,31 @@ The microphone level meter sits in the bottom edge of the title box. It shows wh
 Settings are remembered per system in `~/.config/dvmcli/settings.json`: which channels you're listening to, the focused card, volumes, mutes, global mute, the talk permit tone and the last page / radio values. Use `--settings FILE` for a different file or `--no-settings` to start fresh without saving. The channel marker always starts off. The file holds no passwords or keys.
 
 Transmit uses the system's `rid` as the source ID, and the default microphone unless you start the TUI with `--input` (see [Audio devices](#audio-devices)). A secure channel never transmits in the clear: without its key, transmit is refused. Transmissions stop automatically after 120 seconds; change that with `--tx-limit SECONDS`. Add `--log FILE` to keep a copy of the log.
+
+## Graphical console (dvmgui)
+
+`dvmgui` is in the same download as `dvmcli` and uses the same codeplug, settings and options. Start it with a codeplug:
+
+```bash
+./dvmgui --codeplug ~/dvm/codeplug-linux.yml
+```
+
+After the first time, `./dvmgui` on its own reopens the last codeplug. With no codeplug at all it shows an **Open codeplug…** button.
+
+What it has so far:
+
+- a card per channel: talkgroup, encryption and key, what the channel is doing, the last call, and Listen, volume and Mute. Clicking a card focuses it (PTT transmits there) and starts listening, as in the TUI.
+- **PTT** (click to start, click to stop), **MUTE** for all receive audio, **Mute mic**, and **Mic check** with a level meter
+- a transmit bar, recent calls and the log
+- **Auto / Light / Dark** in the top right. Auto follows your desktop's light or dark setting. The choice is remembered. `--theme light|dark|system` sets it from the command line.
+
+The audio, PTT device and PTT socket options are the same as `dvmcli tui`: `--output`, `--input`, `--ptt-device`, `--ptt-button`, `--mute-button`, `--socket`, `--no-socket`, `--tx-limit`, `--log`, `--system`, `--settings`, `--no-settings`. `dvmcli ptt down` and friends control whichever console is running.
+
+Not in the GUI yet: alert tones, pages, radio commands, the channel marker and keyboard shortcuts. Use the TUI for those.
+
+**Wayland.** On Wayland desktops (Hyprland, GNOME, KDE) the window runs through XWayland by default. `--wayland` uses Avalonia's native Wayland backend instead, which is newer and still missing some features. If the window looks blurry or the wrong size on a high-DPI screen under XWayland, try `--wayland`, or set a scale yourself with `AVALONIA_GLOBAL_SCALE_FACTOR=2 ./dvmgui`.
+
+To look around without connecting to anything, `./dvmgui --demo` shows a made-up system.
 
 ## Audio devices
 
@@ -275,13 +303,15 @@ CI builds every push on GitHub's ARM64 and x86-64 Linux runners. To build locall
 git clone --recursive https://github.com/monkey1911/dvmconsole-linux.git
 ```
 
-Then follow the same steps as `.github/workflows/build.yml`, with `linux-arm64` or `linux-x64` as the runtime identifier.
+Then follow the same steps as `.github/workflows/build.yml`, with `linux-arm64` or `linux-x64` as the runtime identifier. `dvmgui --screenshot FILE.png --demo --theme dark` renders the window to a PNG without a display, which is how CI checks both themes.
 
 ## How it is put together
 
-- `extern/dvmconsole` is a submodule of [monkey1911/dvmconsole-ARM64](https://github.com/monkey1911/dvmconsole-ARM64) (`dev` branch). The CLI compiles its Windows-independent sources directly (codeplug, vocoder interop, logging) and uses its `fnecore` networking library.
+- `extern/dvmconsole` is a submodule of [monkey1911/dvmconsole-ARM64](https://github.com/monkey1911/dvmconsole-ARM64) (`dev` branch). `dvmcore` compiles its Windows-independent sources directly (codeplug, vocoder interop, logging) and uses its `fnecore` networking library.
 - `extern/dvmvocoder` is [DVMProject/dvmvocoder](https://github.com/DVMProject/dvmvocoder), built as `libvocoder.so`.
-- `src/dvmcli` is the CLI: the FNE peer, the P25 voice receiver, PipeWire/WAV output, and the self-test.
+- `src/dvmcore` is everything that isn't user interface: the FNE peer, P25 receive and transmit, keys, PipeWire audio, tones, aliases, the PTT socket and PTT devices, settings, and `DispatchConsole`, the console itself.
+- `src/dvmcli` is the terminal front end: the TUI (which derives from `DispatchConsole`), the commands and the self-test.
+- `src/dvmgui` is the graphical front end (Avalonia): windows, cards and themes over a `DispatchConsole`.
 
 ## License
 
