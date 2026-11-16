@@ -888,9 +888,9 @@ B: MSC=10
                 int peak = hot.Max(v => Math.Abs((int)v));
                 Check(peak <= (int)(Math.Pow(10, VoiceProcessor.CeilingDb / 20) * 32768) + 2, $"processing: the limiter keeps a full-scale tone at {20 * Math.Log10(peak / 32768.0):F1} dBFS");
 
-                VoiceProcessor g = new VoiceProcessor(new VoiceProcessing(false, false, true, false));
-                double hissOut = LevelDb(Run(g, Tone(1500, -60, 100)), 8000);
-                double talkOut = LevelDb(Run(g, Tone(1500, -25, 100)), 8000) - LevelDb(Tone(1500, -25, 100), 8000);
+                VoiceProcessor gate = new VoiceProcessor(new VoiceProcessing(false, false, true, false));
+                double hissOut = LevelDb(Run(gate, Tone(1500, -60, 100)), 8000);
+                double talkOut = LevelDb(Run(gate, Tone(1500, -25, 100)), 8000) - LevelDb(Tone(1500, -25, 100), 8000);
                 Check(hissOut < -60 - 18 && Math.Abs(talkOut) < 1, $"processing: the noise gate turns background down ({hissOut:F0} dBFS) and lets speech through ({talkOut:+0.0;-0.0} dB)");
 
                 short[] raw = Tone(700, -30, 20);
@@ -911,8 +911,8 @@ B: MSC=10
                 {
                     using (WavSink w = new WavSink(wavIn))
                         w.Write(Tone(440, -12, 10));
-                    short[] back = WavFile.ReadVoice(wavIn);
-                    Check(back.Length == 1600 && back.SequenceEqual(Tone(440, -12, 10)) && WavFile.Describe(back).Contains("speech -15"),
+                    short[] readBack = WavFile.ReadVoice(wavIn);
+                    Check(readBack.Length == 1600 && readBack.SequenceEqual(Tone(440, -12, 10)) && WavFile.Describe(readBack).Contains("speech -15"),
                           "processing: an 8 kHz WAV reads back exactly, and its levels are described");
                 }
                 finally
