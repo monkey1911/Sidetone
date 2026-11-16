@@ -96,6 +96,8 @@ jobs:
           shot light --theme light
           shot radio --theme dark --show radio
           shot page --theme light --show page
+          shot settings --theme dark --show settings
+          shot settings-light --theme light --show settings
           # the first-run view, with no codeplug
           out/sidetone-$RID/sidetone --screenshot out/gui-welcome.png --no-settings --theme dark --size 1180x760
           echo "-----BEGIN PNG welcome-----"

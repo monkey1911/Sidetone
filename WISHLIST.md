@@ -7,9 +7,11 @@ Things we'd like to do, roughly in the order that makes sense to do them. Nothin
 1. ~~**Rename the project.**~~ Done in 0.17: the project is now **Sidetone**, "an IP dispatch console for DVMProject FNE networks". The programs are `sidetone` and `sidetone-cli`, settings carry over, and the old `dvmcli` and `dvmgui` commands keep working for now.
    - Still to do: remove the old command wrappers after a release or two.
 
-2. **Settings screen in the GUI.** Audio output and input, the PTT device and its buttons, the transmit time limit and what Space does are command-line options today. A launcher has no command line, so they need a screen and need to be remembered.
+2. ~~**Settings screen in the GUI.**~~ Done in 0.18: audio output and microphone, the PTT device and its buttons, the transmit time limit and what Space does are in a Settings box and are remembered.
+   - Still to do: the terminal console (`sidetone-cli`) doesn't read these saved choices yet; it still takes them as options.
 
-3. **Start the GUI from the desktop's launcher.** A `.desktop` file and an icon, so it doesn't have to be started from a terminal. Needs items 1 and 2.
+3. ~~**Start the GUI from the desktop's launcher.**~~ Done in 0.18: Settings can add Sidetone to the app launcher, with an icon (`sidetone --install-launcher` does the same from a terminal).
+   - Still to do: system-wide packaging (see the AUR item below).
 
 ## Console features
 

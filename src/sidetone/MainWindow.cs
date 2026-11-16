@@ -31,7 +31,8 @@ namespace Sidetone.Gui
 
         private readonly GuiOptions opt;
         private readonly string settingsPath;
-        private readonly AppSettings appSettings;
+        private AppSettings appSettings;
+        private string currentPath, currentSystem;     // the open codeplug and system
         private readonly DispatcherTimer timer;
         private readonly FontFamily mono = new FontFamily("JetBrainsMono Nerd Font,JetBrains Mono,DejaVu Sans Mono,Liberation Mono,monospace");
 
@@ -53,7 +54,7 @@ namespace Sidetone.Gui
         private readonly Border micTrack = new Border { Width = MeterWidth, Height = 10, CornerRadius = new CornerRadius(5), VerticalAlignment = VerticalAlignment.Center };
         private readonly Border micFill = new Border { Height = 10, CornerRadius = new CornerRadius(5), HorizontalAlignment = HorizontalAlignment.Left, Width = 0 };
         private readonly StackPanel micMeter = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
-        private Tap micCheck, micMute, mute, ptt, themeSystem, themeLight, themeDark, quit;
+        private Tap micCheck, micMute, mute, ptt, themeSystem, themeLight, themeDark, settingsTap, quit;
         private readonly StackPanel consoleButtons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
 
         // console view
@@ -63,6 +64,7 @@ namespace Sidetone.Gui
         private readonly List<Tap> alertTaps = new List<Tap>();
         private Tap pageTap, radioTap, markerTap;
         private CommandOverlay overlay;
+        private SettingsOverlay settingsBox;
         private readonly WrapPanel cardPanel = new WrapPanel { Margin = new Thickness(10, 8) };
         private readonly Border txBar = new Border { Padding = new Thickness(16, 7) };
         private readonly TextBlock txText = new TextBlock { FontSize = 14, FontWeight = FontWeight.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
@@ -98,6 +100,16 @@ namespace Sidetone.Gui
             if (Application.Current != null)
                 Application.Current.RequestedThemeVariant = App.VariantFor(themeSetting);
 
+            try
+            {
+                using Stream icon = Launcher.OpenIcon("sidetone-256.png");
+                if (icon != null)
+                    Icon = new WindowIcon(icon);
+            }
+            catch (Exception) { /* a window without an icon is fine */ }
+            if (!offline)
+                Launcher.Refresh(Launcher.DataHome, Environment.ProcessPath);      // a new version in a new folder keeps its launcher entry
+
             BuildShell();
             ActualThemeVariantChanged += (s, e) => ApplyTheme();
 
@@ -127,6 +139,15 @@ namespace Sidetone.Gui
         /// <summary>The page and radio-command boxes (self-check hook).</summary>
         internal CommandOverlay Overlay => overlay;
 
+        /// <summary>The Settings box (self-check hook).</summary>
+        internal SettingsOverlay SettingsBox => settingsBox;
+
+        /// <summary>Space starts and stops transmit instead of hold-to-talk: the command line's choice, or the saved one.</summary>
+        internal bool SpaceIsToggle => opt.SpaceToggle ?? appSettings.SpaceToggle;
+
+        /// <summary>The transmit time limit in effect, in seconds.</summary>
+        internal int TxLimitSeconds => Math.Clamp(opt.TxLimit ?? appSettings.TxLimitSeconds ?? 120, SettingsOverlay.MinTxLimit, SettingsOverlay.MaxTxLimit);
+
         /// <summary>Opens a box by name: page, digital or radio (for screenshots).</summary>
         internal void OpenBox(string which)
         {
@@ -135,6 +156,7 @@ namespace Sidetone.Gui
                 case "page": overlay.ShowPage(false); break;
                 case "digital": overlay.ShowPage(true); break;
                 case "radio": overlay.ShowRadio(); break;
+                case "settings": ShowSettings(); break;
             }
         }
 
@@ -178,12 +200,14 @@ namespace Sidetone.Gui
             themeRow.Children.Add(themeLight.Root);
             themeRow.Children.Add(themeDark.Root);
 
+            settingsTap = new Tap("Settings", ShowSettings, fontSize: 12, padX: 10, padY: 4);
+            settingsTap.Root.Margin = new Thickness(6, 0, 0, 0);
             quit = new Tap("Quit", () => Close(), fontSize: 12, padX: 10, padY: 4);
-            quit.Root.Margin = new Thickness(6, 0, 0, 0);
 
             StackPanel right = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right };
             right.Children.Add(consoleButtons);
             right.Children.Add(themeRow);
+            right.Children.Add(settingsTap.Root);
             right.Children.Add(quit.Root);
 
             Grid headerGrid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
@@ -214,10 +238,11 @@ namespace Sidetone.Gui
             toolBar.Child = tools;
 
             overlay = new CommandOverlay(() => console, RefreshNow, () => root.Focus());
+            settingsBox = new SettingsOverlay(SaveSettings, () => _ = PickCodeplug(), LauncherAction, () => root.Focus());
 
             // console view: cards, transmit bar, recent calls and log
             ScrollViewer cardScroll = new ScrollViewer { Content = cardPanel, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
-            keyHints.Text = $"Space: PTT ({(opt.SpaceToggle ? "start/stop" : "hold")})    Enter: listen    M: mute    U: mute mic    V: mic check    Ctrl+Q: quit";
+            UpdateKeyHints();
             Grid txGrid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
             Grid.SetColumn(txText, 0);
             Grid.SetColumn(keyHints, 1);
@@ -265,12 +290,17 @@ namespace Sidetone.Gui
             Grid.SetRow(consoleView, 1);
             Grid.SetRow(welcome, 1);
             Grid.SetRow(overlay.Root, 1);
+            Grid.SetRow(settingsBox.Root, 1);
             root.Children.Add(header);
             root.Children.Add(consoleView);
             root.Children.Add(welcome);
-            root.Children.Add(overlay.Root);     // last, so it's on top
+            root.Children.Add(overlay.Root);     // last, so they're on top
+            root.Children.Add(settingsBox.Root);
             Content = root;
         }
+
+        private void UpdateKeyHints() =>
+            keyHints.Text = $"Space: PTT ({(SpaceIsToggle ? "start/stop" : "hold")})    Enter: listen    M: mute    U: mute mic    V: mic check    Ctrl+Q: quit";
 
         /// <summary>Runs a console action from a button and redraws straight away.</summary>
         private void Do(Action<DispatchConsole> action)
@@ -332,6 +362,8 @@ namespace Sidetone.Gui
         private void OpenCodeplug(string path, string wantedSystem)
         {
             CloseConsole();
+            if (settingsPath != null)
+                appSettings = AppSettings.Load(settingsPath, out _);    // the console that just closed may have saved since
             try
             {
                 Codeplug cp = CodeplugLoader.Load(path);
@@ -339,9 +371,27 @@ namespace Sidetone.Gui
                 try { system = CodeplugLoader.FindSystem(cp, wantedSystem); }
                 catch (ArgumentException) when (wantedSystem != null && opt.SystemName == null) { system = cp.Systems[0]; }   // a remembered system that's gone
 
+                // the command line wins; otherwise what Settings saved; otherwise the defaults
+                List<string> notes = new List<string>();
+                (string Device, string Button, string Mute)? pttDevice = null;
                 if (opt.PttDevice != null)
+                {
                     _ = new PttDeviceWatcher(opt.PttDevice, opt.PttButton, opt.MuteButton);    // checks the button names
-                AudioSelection audio = offline ? null : AudioSelection.Choose(opt.Output, opt.Input);
+                    pttDevice = (opt.PttDevice, opt.PttButton, opt.MuteButton);
+                }
+                else if (!string.IsNullOrWhiteSpace(appSettings.PttDeviceName))
+                {
+                    try
+                    {
+                        _ = new PttDeviceWatcher(appSettings.PttDeviceName, appSettings.PttButton, appSettings.MuteButton);
+                        pttDevice = (appSettings.PttDeviceName, appSettings.PttButton, appSettings.MuteButton);
+                    }
+                    catch (ArgumentException ex)
+                    {
+                        notes.Add($"warning: the saved PTT device isn't being used: {ex.Message}");
+                    }
+                }
+                AudioSelection audio = offline ? null : ChooseAudio(notes);
 
                 if (settingsPath != null)
                 {
@@ -351,15 +401,17 @@ namespace Sidetone.Gui
                     try { appSettings.Save(settingsPath); } catch { /* not worth stopping for */ }
                 }
 
-                DispatchConsole c = new DispatchConsole(cp, system, TimeSpan.FromSeconds(opt.TxLimitSeconds),
+                DispatchConsole c = new DispatchConsole(cp, system, TimeSpan.FromSeconds(TxLimitSeconds),
                                                         string.IsNullOrWhiteSpace(opt.LogFile) ? null : Path.GetFullPath(opt.LogFile),
                                                         null, settingsPath)
                 {
                     Audio = audio,
                     NoAudio = offline,
                     ControlSocketPath = offline || opt.NoSocket ? null : opt.Socket != null ? Path.GetFullPath(opt.Socket) : ControlServer.DefaultPath,
-                    PttDevice = !offline && opt.PttDevice != null ? (opt.PttDevice, opt.PttButton, opt.MuteButton) : null
+                    PttDevice = !offline && pttDevice != null ? (pttDevice.Value.Device, pttDevice.Value.Button, pttDevice.Value.Mute) : null
                 };
+                foreach (string line in notes)
+                    c.AddLog(line);
 
                 if (offline)
                     DemoCodeplug.Populate(c);
@@ -379,6 +431,8 @@ namespace Sidetone.Gui
                     c.Start();
                 }
                 console = c;
+                currentPath = Path.GetFullPath(path);
+                currentSystem = system.Name;
 
                 cards.Clear();
                 cardPanel.Children.Clear();
@@ -399,6 +453,167 @@ namespace Sidetone.Gui
             {
                 console = null;
                 ShowWelcome($"{Path.GetFileName(path)}: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// The audio devices to use. A saved device that isn't connected right now falls back to the
+        /// system default with a warning; one named on the command line is still an error.
+        /// </summary>
+        private AudioSelection ChooseAudio(List<string> notes)
+        {
+            string output = opt.Output ?? appSettings.AudioOutput, input = opt.Input ?? appSettings.AudioInput;
+            bool savedOutput = opt.Output == null && !string.IsNullOrWhiteSpace(output);
+            bool savedInput = opt.Input == null && !string.IsNullOrWhiteSpace(input);
+            if (savedOutput || savedInput)
+            {
+                AudioDeviceList list = null;
+                try { list = AudioDeviceList.Query(); }
+                catch (Exception) { /* can't check; PipeWire gets the name as saved */ }
+                if (list != null && savedOutput && !Connected(list.Outputs, output))
+                {
+                    notes.Add($"warning: the saved audio output '{output}' isn't connected; using the system default");
+                    output = null;
+                }
+                if (list != null && savedInput && !Connected(list.Inputs, input))
+                {
+                    notes.Add($"warning: the saved microphone '{input}' isn't connected; using the system default");
+                    input = null;
+                }
+            }
+            return AudioSelection.Choose(string.IsNullOrWhiteSpace(output) ? null : output, string.IsNullOrWhiteSpace(input) ? null : input);
+        }
+
+        private static bool Connected(List<AudioDevice> devices, string name)
+        {
+            try
+            {
+                AudioDeviceList.Resolve(devices, name, "--output");
+                return true;
+            }
+            catch (ArgumentException)
+            {
+                return false;
+            }
+        }
+
+        /*
+        ** Settings
+        */
+
+        /// <summary>Changes remembered settings, wherever they are being kept right now.</summary>
+        private void ChangeSettings(Action<AppSettings> change)
+        {
+            change(appSettings);
+            if (console != null && !offline)
+            {
+                change(console.Settings);       // the console saves its own copy
+                console.SettingsChanged();
+            }
+            else if (settingsPath != null)
+            {
+                try { appSettings.Save(settingsPath); } catch { /* not worth stopping for */ }
+            }
+        }
+
+        /// <summary>Options given on the command line that Settings can't change for this run, or null.</summary>
+        private string CommandLineOverrides()
+        {
+            List<string> given = new List<string>();
+            if (opt.Output != null) given.Add("--output");
+            if (opt.Input != null) given.Add("--input");
+            if (opt.PttDevice != null) given.Add("--ptt-device");
+            if (opt.TxLimit != null) given.Add("--tx-limit");
+            if (opt.SpaceToggle != null) given.Add("--space");
+            return given.Count == 0 ? null : string.Join(", ", given);
+        }
+
+        private void ShowSettings()
+        {
+            overlay.Close();
+            AudioDeviceList audio = null;
+            List<InputDeviceInfo> inputs;
+            if (offline)
+            {
+                audio = DemoCodeplug.AudioDevices();
+                inputs = DemoCodeplug.PttDevices();
+            }
+            else
+            {
+                try { audio = AudioDeviceList.Query(); }
+                catch (Exception) { /* the lists just show what's saved */ }
+                inputs = InputDevices.List();
+            }
+
+            settingsBox.Show(new SettingsOverlay.Values
+            {
+                Output = appSettings.AudioOutput,
+                Input = appSettings.AudioInput,
+                PttDevice = appSettings.PttDeviceName,
+                PttButton = appSettings.PttButton,
+                MuteButton = appSettings.MuteButton,
+                TxLimit = Math.Clamp(appSettings.TxLimitSeconds ?? 120, SettingsOverlay.MinTxLimit, SettingsOverlay.MaxTxLimit),
+                SpaceToggle = appSettings.SpaceToggle
+            }, audio, inputs, opt.Demo ? "The demo system (no codeplug file)." : currentPath, CommandLineOverrides(),
+               !offline && Launcher.IsInstalled(Launcher.DataHome));
+            settingsBox.Refresh(palette);
+        }
+
+        /// <summary>Applies the Settings box. Returns null, or why it can't right now.</summary>
+        private string SaveSettings(SettingsOverlay.Values v)
+        {
+            DispatchConsole c = console;
+            if (c != null && (c.Transmitting || c.ActiveTone != null))
+                return "Stop transmitting first.";
+            if (v.PttDevice != null)
+            {
+                try { _ = new PttDeviceWatcher(v.PttDevice, v.PttButton, v.MuteButton); }
+                catch (ArgumentException ex) { return ex.Message; }
+            }
+
+            static bool Same(string a, string b) => string.Equals(a ?? string.Empty, b ?? string.Empty, StringComparison.Ordinal);
+            bool reconnect = !Same(appSettings.AudioOutput, v.Output) || !Same(appSettings.AudioInput, v.Input) ||
+                             !Same(appSettings.PttDeviceName, v.PttDevice) || !Same(appSettings.PttButton, v.PttButton) ||
+                             !Same(appSettings.MuteButton, v.MuteButton) || (appSettings.TxLimitSeconds ?? 120) != v.TxLimit;
+
+            ChangeSettings(s =>
+            {
+                s.AudioOutput = v.Output;
+                s.AudioInput = v.Input;
+                s.PttDeviceName = v.PttDevice;
+                s.PttButton = v.PttButton;
+                s.MuteButton = v.MuteButton;
+                s.TxLimitSeconds = v.TxLimit == 120 ? null : v.TxLimit;
+                s.SpaceToggle = v.SpaceToggle;
+            });
+            UpdateKeyHints();
+
+            if (reconnect && c != null && !offline && currentPath != null)
+            {
+                OpenCodeplug(currentPath, currentSystem);
+                ApplyTheme();
+            }
+            return null;
+        }
+
+        /// <summary>Adds or removes the app launcher entry; returns what happened, as a sentence.</summary>
+        private string LauncherAction(bool add)
+        {
+            if (offline)
+                return "Not available in the demo.";
+            try
+            {
+                if (add)
+                {
+                    Launcher.Install(Launcher.DataHome, Environment.ProcessPath);
+                    return "Added. Look for Sidetone in your app launcher.";
+                }
+                Launcher.Remove(Launcher.DataHome);
+                return "Removed from your app launcher.";
+            }
+            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
+            {
+                return $"Couldn't do that: {ex.Message}";
             }
         }
 
@@ -468,6 +683,7 @@ namespace Sidetone.Gui
             welcomeError.Foreground = p.Tx;
             openCodeplug.Paint(p.Accent, p.OnStrong);
             quit.Paint(Brushes.Transparent, p.Dim, p.Edge);
+            settingsTap.Paint(Brushes.Transparent, p.Dim, p.Edge);
 
             Tap active = themeSetting == "light" ? themeLight : themeSetting == "dark" ? themeDark : themeSystem;
             foreach (Tap t in new[] { themeSystem, themeLight, themeDark })
@@ -497,6 +713,7 @@ namespace Sidetone.Gui
         {
             DispatchConsole c = console;
             Palette p = palette;
+            settingsBox?.Refresh(p);
             if (c == null || ptt == null)
                 return;
 
@@ -631,6 +848,24 @@ namespace Sidetone.Gui
                 return;
             }
 
+            if (ctrl && e.Key == Key.OemComma && !settingsBox.IsOpen)
+            {
+                e.Handled = true;
+                ShowSettings();
+                return;
+            }
+
+            // Settings is open: Esc closes it (or just an open list); everything else belongs to its controls
+            if (settingsBox.IsOpen)
+            {
+                if (e.Key == Key.Escape && !settingsBox.DropDownOpen)
+                {
+                    e.Handled = true;
+                    settingsBox.Close();
+                }
+                return;
+            }
+
             // a box is open: Esc and Enter are its; everything else is typing
             if (overlay.Open != CommandOverlay.Kind.None)
             {
@@ -670,7 +905,7 @@ namespace Sidetone.Gui
                     return;
                 spaceHeld = true;
                 SpacePresses++;
-                if (opt.SpaceToggle)
+                if (SpaceIsToggle)
                     c.ToggleTx();
                 else
                     c.HoldToTalk(true);
@@ -738,7 +973,7 @@ namespace Sidetone.Gui
                 return;
             spaceHeld = false;
             SpaceReleases++;
-            if (!opt.SpaceToggle)
+            if (!SpaceIsToggle)
                 console?.HoldToTalk(false);
             RefreshNow();
         }
@@ -882,5 +1117,23 @@ zones:
             c.AddRecent("Tac 1", "9000001", "3 s, clear", tx: true);
             c.AddRecent("Tac 1", "Unit 12", "6 s, clear", tx: false);
         }
+
+        /// <summary>Made-up audio devices for the demo's Settings box.</summary>
+        public static AudioDeviceList AudioDevices()
+        {
+            AudioDeviceList list = new AudioDeviceList { DefaultOutputName = "demo.speakers", DefaultInputName = "demo.headset.mic" };
+            list.Outputs.Add(new AudioDevice { Id = 51, Name = "demo.speakers", Description = "Built-in Speakers" });
+            list.Outputs.Add(new AudioDevice { Id = 62, Name = "demo.headset", Description = "USB Headset" });
+            list.Inputs.Add(new AudioDevice { Id = 63, Name = "demo.headset.mic", Description = "USB Headset Microphone" });
+            list.Inputs.Add(new AudioDevice { Id = 70, Name = "demo.deskmic", Description = "Desktop Microphone" });
+            return list;
+        }
+
+        /// <summary>Made-up PTT devices for the demo's Settings box.</summary>
+        public static List<InputDeviceInfo> PttDevices() => new List<InputDeviceInfo>
+        {
+            new InputDeviceInfo { Name = "Desktop Microphone", EventPath = "/dev/input/event90", Keys = new List<int> { 0x120, 0x121 } },
+            new InputDeviceInfo { Name = "USB Footswitch", EventPath = "/dev/input/event91", Keys = new List<int> { 0x120 } }
+        };
     } // public static class DemoCodeplug
 }

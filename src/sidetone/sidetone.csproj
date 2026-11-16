@@ -28,6 +28,12 @@
     <PackageReference Include="Avalonia.Headless" Version="$(AvaloniaVersion)" />
   </ItemGroup>
 
+  <!-- the icon: used for the window and written out when Sidetone is added to the app launcher -->
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\packaging\icons\sidetone.svg" LogicalName="sidetone.svg" />
+    <EmbeddedResource Include="..\..\packaging\icons\sidetone-256.png" LogicalName="sidetone-256.png" />
+  </ItemGroup>
+
   <!-- libvocoder.so built by CMake (see CI) is copied next to sidetone when present -->
   <ItemGroup>
     <None Include="..\..\build\native\libvocoder.so" Condition="Exists('..\..\build\native\libvocoder.so')">

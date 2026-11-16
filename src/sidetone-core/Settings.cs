@@ -45,6 +45,20 @@ namespace Sidetone.Core
         public bool TalkPermitTone { get; set; } = true;
         /// <summary>The graphical console's theme: "light", "dark", or null to follow the desktop.</summary>
         public string Theme { get; set; }
+        /// <summary>Audio output chosen in the graphical console's Settings (a PipeWire node name), or null for the system default.</summary>
+        public string AudioOutput { get; set; }
+        /// <summary>Microphone chosen in Settings (a PipeWire node name), or null for the system default.</summary>
+        public string AudioInput { get; set; }
+        /// <summary>PTT device chosen in Settings (its name), or null for none.</summary>
+        public string PttDeviceName { get; set; }
+        /// <summary>PTT button on that device (like BTN_THUMB), or null to choose automatically.</summary>
+        public string PttButton { get; set; }
+        /// <summary>Mute button on that device, "none", or null to choose automatically.</summary>
+        public string MuteButton { get; set; }
+        /// <summary>Transmit time limit in seconds, or null for the default.</summary>
+        public int? TxLimitSeconds { get; set; }
+        /// <summary>Space starts and stops transmit instead of hold-to-talk.</summary>
+        public bool SpaceToggle { get; set; }
         /// <summary>The codeplug the graphical console opened last.</summary>
         public string LastCodeplug { get; set; }
         /// <summary>The system the graphical console used last.</summary>

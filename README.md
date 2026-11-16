@@ -159,7 +159,7 @@ What it has so far:
 
 - a card per channel: talkgroup, encryption and key, what the channel is doing, the last call, and Listen, volume and Mute. Clicking a card focuses it (PTT transmits there) and starts listening, as in the TUI.
 - **PTT** (click to start, click to stop), **MUTE** for all receive audio, **Mute mic**, and **Mic check** with a level meter
-- **Quit** in the top right, for desktops without window buttons
+- **Settings** and **Quit** in the top right (Quit is there for desktops without window buttons)
 - a tool bar under the header:
   - **Alert tones 1 to 6**, sent on every listening channel. While a tone is going out, the PTT button reads **STOP TONE**; click it or press Esc to stop.
   - **Page…** opens a box for a two-tone (QuickCall II) page on every listening channel, or a digital page (P25 call alert) to one radio. The last values are filled in.
@@ -167,6 +167,48 @@ What it has so far:
   - **Channel marker** turns the periodic beep on idle listening channels on and off
 - a transmit bar, recent calls and the log
 - **Auto / Light / Dark** in the top right. Auto follows your desktop's light or dark setting. The choice is remembered. `--theme light|dark|system` sets it from the command line.
+
+### Settings
+
+**Settings** in the top right, or Ctrl+comma, opens a box for the things that were command-line options only:
+
+| Setting | What it does |
+|---|---|
+| Output, Microphone | The audio devices to use, or the system default |
+| PTT device | A desk microphone, footswitch or PTT button that keys the console (see [PTT devices](#ptt-devices)) |
+| PTT button, Mute button | Which of that device's buttons do what. Automatic uses the buttons Sidetone knows for the device, or its only button. |
+| Space key | Hold to talk, or press to start and press again to stop |
+| Time limit | How long a transmission can last, 5 to 600 seconds |
+| Codeplug | Shows the open codeplug, and opens another one |
+| App launcher | Adds Sidetone to, or removes it from, your desktop's app launcher |
+
+**Save** remembers them in the settings file. Changing audio, the PTT device or the time limit reconnects the console, which takes a moment. You can't save while transmitting.
+
+If a saved audio device isn't connected when Sidetone starts, it uses the system default and says so in the log. The saved choice is kept for next time.
+
+A command-line option still wins for the run it was given on, and Settings says so when one is in effect.
+
+### App launcher
+
+To start Sidetone from your desktop's launcher instead of a terminal, open **Settings** and click **Add to app launcher**. This writes a launcher entry and the icon into your own data folder (`~/.local/share`), which GNOME, KDE and the launchers used with Hyprland and Sway all read. Nothing is installed system-wide.
+
+It can also be done from a terminal:
+
+```bash
+./sidetone --install-launcher
+```
+
+To take it out again:
+
+```bash
+./sidetone --remove-launcher
+```
+
+The entry points at the folder Sidetone is in. When you extract a newer version to a different folder and start it once, the entry follows it.
+
+Started from the launcher, Sidetone reopens the last codeplug, or shows **Open codeplug…** the first time.
+
+### Command-line options
 
 The audio, PTT device and PTT socket options are the same as `sidetone-cli tui`: `--output`, `--input`, `--ptt-device`, `--ptt-button`, `--mute-button`, `--socket`, `--no-socket`, `--tx-limit`, `--log`, `--system`, `--settings`, `--no-settings`. `sidetone-cli ptt down` and friends control whichever console is running.
 
@@ -189,12 +231,12 @@ Keyboard shortcuts (the same keys as the TUI where both have the feature):
 | P / D | Open the page box: two-tone / digital |
 | R | Open the radio command box |
 | C | Channel marker on or off |
+| Ctrl+, | Open Settings |
 | Ctrl+Q | Quit |
 
 In the page and radio command boxes, Enter sends, Esc closes, and the other shortcut keys are just typing.
 
-Space is hold-to-talk here because a window, unlike a terminal, can tell when a key is let go. If the window loses the keyboard while you're holding it, the transmission ends. To make Space start and stop instead, as in the TUI, start with `--space toggle`.
-
+Space is hold-to-talk here because a window, unlike a terminal, can tell when a key is let go. If the window loses the keyboard while you're holding it, the transmission ends. To make Space start and stop instead, as in the TUI, choose that in Settings or start with `--space toggle`.
 
 **Wayland.** On Wayland desktops (Hyprland, GNOME, KDE) the window runs through XWayland by default. `--wayland` uses Avalonia's native Wayland backend instead, which is newer and still missing some features. If the window looks blurry or the wrong size on a high-DPI screen under XWayland, try `--wayland`, or set a scale yourself with `AVALONIA_GLOBAL_SCALE_FACTOR=2 ./sidetone`.
 

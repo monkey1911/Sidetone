@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!-- Sidetone: a dispatch headset with the operator's own voice between the ear cups -->
+  <rect x="12" y="12" width="232" height="232" rx="52" fill="#1b1e25"/>
+  <rect x="12" y="12" width="232" height="232" rx="52" fill="none" stroke="#363c49" stroke-width="4"/>
+  <!-- headband -->
+  <path d="M58 150 V122 a70 70 0 0 1 140 0 V150" fill="none" stroke="#e7e9ee" stroke-width="14" stroke-linecap="round"/>
+  <!-- ear cups -->
+  <rect x="40" y="136" width="36" height="62" rx="14" fill="#e7e9ee"/>
+  <rect x="180" y="136" width="36" height="62" rx="14" fill="#e7e9ee"/>
+  <!-- voice: five level bars -->
+  <g fill="#45c1ff">
+    <rect x="97" y="156" width="10" height="22" rx="5"/>
+    <rect x="110" y="142" width="10" height="50" rx="5"/>
+    <rect x="123" y="128" width="10" height="78" rx="5"/>
+    <rect x="136" y="142" width="10" height="50" rx="5"/>
+    <rect x="149" y="156" width="10" height="22" rx="5"/>
+  </g>
+</svg>

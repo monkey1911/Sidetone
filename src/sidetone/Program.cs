@@ -30,8 +30,10 @@ namespace Sidetone.Gui
     public sealed class GuiOptions
     {
         public string Codeplug, SystemName, Output, Input, PttDevice, PttButton, MuteButton, Socket, LogFile, Theme, Screenshot, SettingsFile, Show;
-        public bool NoSocket, Wayland, Demo, NoSettings, SpaceToggle, SelfCheck;
-        public int TxLimitSeconds = 120;
+        public bool NoSocket, Wayland, Demo, NoSettings, SelfCheck;
+        /// <summary>Given on the command line; null leaves it to the saved settings.</summary>
+        public bool? SpaceToggle;
+        public int? TxLimit;
         public int Width = 1280, Height = 800;
 
         public static GuiOptions Parse(string[] args)
@@ -60,8 +62,8 @@ namespace Sidetone.Gui
                     case "--selfcheck": o.SelfCheck = true; break;
                     case "--show":
                         o.Show = Next().ToLowerInvariant();
-                        if (o.Show is not ("page" or "digital" or "radio"))
-                            throw new ArgumentException("--show must be page, digital or radio");
+                        if (o.Show is not ("page" or "digital" or "radio" or "settings"))
+                            throw new ArgumentException("--show must be page, digital, radio or settings");
                         break;
                     case "--space":
                     {
@@ -77,9 +79,12 @@ namespace Sidetone.Gui
                             throw new ArgumentException("--theme must be system, light or dark");
                         break;
                     case "--tx-limit":
-                        if (!int.TryParse(Next(), out o.TxLimitSeconds) || o.TxLimitSeconds < 5 || o.TxLimitSeconds > 600)
+                    {
+                        if (!int.TryParse(Next(), out int limit) || limit < SettingsOverlay.MinTxLimit || limit > SettingsOverlay.MaxTxLimit)
                             throw new ArgumentException("--tx-limit must be 5-600 seconds");
+                        o.TxLimit = limit;
                         break;
+                    }
                     case "--size":
                     {
                         string[] wh = Next().ToLowerInvariant().Split('x');
@@ -114,6 +119,9 @@ namespace Sidetone.Gui
                 PrintUsage();
                 return 0;
             }
+
+            if (args.Length == 1 && (args[0] == "--install-launcher" || args[0] == "--remove-launcher"))
+                return LauncherCommand(args[0] == "--install-launcher");
 
             GuiOptions opt;
             try
@@ -163,6 +171,29 @@ namespace Sidetone.Gui
                 .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false })
                 .WithInterFont()
                 .SetupWithoutStarting();
+
+        /// <summary>sidetone --install-launcher / --remove-launcher: the app launcher entry, without opening a window.</summary>
+        private static int LauncherCommand(bool install)
+        {
+            try
+            {
+                if (install)
+                {
+                    string entry = Launcher.Install(Launcher.DataHome, Environment.ProcessPath);
+                    Console.WriteLine($"sidetone: added to the app launcher ({entry})");
+                }
+                else
+                {
+                    Console.WriteLine(Launcher.Remove(Launcher.DataHome) ? "sidetone: removed from the app launcher" : "sidetone: it wasn't in the app launcher");
+                }
+                return 0;
+            }
+            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
+            {
+                Console.Error.WriteLine($"error: {ex.Message}");
+                return 1;
+            }
+        }
 
         private static int Screenshot(GuiOptions opt)
         {
@@ -328,6 +359,60 @@ namespace Sidetone.Gui
             Press(PhysicalKey.Escape);
             Check(box.Open == CommandOverlay.Kind.None, "the boxes are closed again");
 
+            // Settings
+            SettingsOverlay set = w.SettingsBox;
+            Press(PhysicalKey.Comma, RawInputModifiers.Control);
+            Check(set.IsOpen && set.Output.ItemCount == 3 && set.Input.ItemCount == 3 && set.PttDevice.ItemCount == 3,
+                  $"Ctrl+, opens Settings with the audio and PTT devices listed ({set.Output.ItemCount} / {set.Input.ItemCount} / {set.PttDevice.ItemCount})");
+            Check(!set.PttButton.IsEnabled && set.PttButton.ItemCount == 1, "with no PTT device chosen, there are no buttons to choose");
+            set.PttDevice.SelectedIndex = 1;
+            Dispatcher.UIThread.RunJobs();
+            Check(set.PttButton.IsEnabled && set.PttButton.ItemCount == 3 && set.MuteButton.ItemCount == 4,
+                  $"choosing a PTT device lists its buttons ({set.PttButton.ItemCount} / {set.MuteButton.ItemCount})");
+            Press(PhysicalKey.M);
+            Check(!focus.Muted && set.IsOpen, "while Settings is open, shortcut keys don't act on the console");
+            set.TxLimit.Text = "3";
+            set.Save();
+            Check(set.IsOpen && set.Message.Contains("time limit"), "a time limit that's too short is refused, and says so");
+            set.TxLimit.Text = "90";
+            set.Output.SelectedIndex = 2;
+            Press(PhysicalKey.Escape);
+            Check(!set.IsOpen && w.TxLimitSeconds == 120, "Esc closes Settings without saving");
+
+            Press(PhysicalKey.Comma, RawInputModifiers.Control);
+            set.TxLimit.Text = "90";
+            set.Save();
+            Check(!set.IsOpen && w.TxLimitSeconds == 90, "Save keeps the new time limit");
+            bool holdBefore = !w.SpaceIsToggle;
+            Press(PhysicalKey.Comma, RawInputModifiers.Control);
+            Check(set.IsOpen && set.TxLimit.Text == "90", "Settings reopens on what was saved");
+            Press(PhysicalKey.Escape);
+
+            // the app launcher entry, in a scratch folder
+            string data = Path.Combine(Path.GetTempPath(), $"sidetone-launcher-{Environment.ProcessId}");
+            try
+            {
+                string entry = Launcher.Install(data, "/opt/side tone/sidetone");
+                string text = File.ReadAllText(entry);
+                Check(Launcher.IsInstalled(data) && text.Contains("Exec=\"/opt/side tone/sidetone\"") && text.Contains("Icon=sidetone") && text.Contains("Name=Sidetone") &&
+                      new FileInfo(Path.Combine(data, "icons", "hicolor", "scalable", "apps", "sidetone.svg")).Length > 200 &&
+                      new FileInfo(Path.Combine(data, "icons", "hicolor", "256x256", "apps", "sidetone.png")).Length > 1000,
+                      "launcher: the entry and both icons are written, with the program path quoted");
+                bool same = Launcher.Refresh(data, "/opt/side tone/sidetone");
+                bool moved = Launcher.Refresh(data, "/opt/sidetone-next/sidetone");
+                Check(!same && moved && File.ReadAllText(entry).Contains("Exec=\"/opt/sidetone-next/sidetone\""),
+                      "launcher: an entry follows the program to a new folder, and is left alone otherwise");
+                File.WriteAllText(entry, "[Desktop Entry]\nName=Mine\n");
+                Check(!Launcher.Refresh(data, "/opt/elsewhere/sidetone"), "launcher: an entry someone else wrote is left alone");
+                Check(Launcher.Remove(data) && !Launcher.IsInstalled(data) && !Launcher.Remove(data), "launcher: removing takes the entry and icons away");
+                Check(Launcher.QuoteExec("/a/50% \"x\" $y") == "\"/a/50%% \\\\\"x\\\\\" \\\\$y\"", "launcher: reserved characters in the path are escaped");
+            }
+            finally
+            {
+                try { Directory.Delete(data, true); } catch (Exception) { }
+            }
+            Check(holdBefore, "Space is hold-to-talk unless Settings or --space says otherwise");
+
             w.KeyPressQwerty(PhysicalKey.Q, RawInputModifiers.Control);
             Dispatcher.UIThread.RunJobs();
             Check(closed, "Ctrl+Q closes the window");
@@ -345,8 +430,9 @@ namespace Sidetone.Gui
             Console.WriteLine("         [--ptt-device NAME [--ptt-button BUTTON] [--mute-button BUTTON|none]]");
             Console.WriteLine("         [--socket PATH | --no-socket] [--tx-limit SECONDS] [--log FILE]");
             Console.WriteLine("         [--settings FILE | --no-settings] [--space hold|toggle]");
+            Console.WriteLine("  sidetone --install-launcher | --remove-launcher");
             Console.WriteLine("  sidetone --demo");
-            Console.WriteLine("  sidetone --screenshot FILE.png [--demo] [--theme light|dark] [--size 1280x800] [--show page|digital|radio]");
+            Console.WriteLine("  sidetone --screenshot FILE.png [--demo] [--theme light|dark] [--size 1280x800] [--show page|digital|radio|settings]");
             Console.WriteLine();
             Console.WriteLine("Without --codeplug, the codeplug opened last time is used. --demo shows a made-up system");
             Console.WriteLine("without connecting to anything. The options are the same as 'sidetone-cli tui'; see the README.");
