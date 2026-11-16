@@ -46,6 +46,9 @@ namespace Sidetone.Core
         /// <summary>The key ID transmit uses right now.</summary>
         public ushort ActiveKeyId => TxSecure ? KeyId : (ushort)0;
 
+        /// <summary>Evens out received levels on this channel, when that is on (network thread only).</summary>
+        public volatile VoiceProcessor RxLevel;
+
         /// <summary>Calls on this channel are written to disk as they end.</summary>
         public volatile bool Record;
 
@@ -204,6 +207,7 @@ namespace Sidetone.Core
                 AddLog(Audio.OutputReport);
                 AddLog(Audio.InputReport);
             }
+            ReloadAudioProcessing(log: true);
             AddLog($"connecting to {system.Name} ({system.Address}:{system.Port}) as peer {system.PeerId}");
             if (settingsError != null)
                 AddLog(settingsError);
@@ -459,6 +463,7 @@ namespace Sidetone.Core
                 PipeWireSink sink = c.Sink;
                 if (sink == null || c.Muted || globalMute || (txChan == c && tx?.IsTransmitting == true) || toneChans.Contains(c))
                     return;
+                c.RxLevel?.Process(samples);
                 AudioMath.ApplyGain(samples, c.Gain);
                 sink.Write(samples);
             };
@@ -975,7 +980,58 @@ namespace Sidetone.Core
             micLevel.Push(samples);
             if (RmsDb(samples) > NoAudioDb)
                 Interlocked.Exchange(ref lastVoiceTicks, DateTime.UtcNow.Ticks);
-            txFeed?.PushAudio(MicToTx(samples));
+            P25Transmitter feed = txFeed;
+            if (feed == null)
+                return;
+            short[] tx = MicToTx(samples);
+            micProcessor?.Process(tx);
+            feed.PushAudio(tx);
+        }
+
+        /*
+        ** Audio processing
+        */
+
+        private volatile VoiceProcessor micProcessor;
+        private bool rxLevelingWas;
+
+        /// <summary>Turns all processing off for this run (a command line option), whatever the settings say.</summary>
+        public bool ProcessingOff { get; set; }
+
+        /// <summary>The microphone stages in effect.</summary>
+        public VoiceProcessing MicProcessing
+        {
+            get
+            {
+                if (ProcessingOff)
+                    return VoiceProcessing.Off;
+                AppSettings s = Settings;
+                VoiceProcessing d = VoiceProcessing.MicDefault;
+                return new VoiceProcessing(s?.MicLowCut ?? d.LowCut, s?.MicAutoLevel ?? d.AutoLevel, s?.MicNoiseGate ?? d.NoiseGate, s?.MicLimiter ?? d.Limiter);
+            }
+        }
+
+        /// <summary>Received audio is evened out between talkers.</summary>
+        public bool RxLeveling => !ProcessingOff && Settings?.RxAutoLevel == true;
+
+        /// <summary>Picks up changed processing settings (call after changing them).</summary>
+        public void ReloadAudioProcessing(bool log = false)
+        {
+            VoiceProcessing mic = MicProcessing;
+            bool rx = RxLeveling;
+            bool changed = (micProcessor?.Stages ?? VoiceProcessing.Off) != mic || rx != rxLevelingWas;
+            rxLevelingWas = rx;
+            if ((micProcessor?.Stages ?? VoiceProcessing.Off) != mic)
+                micProcessor = mic.Any ? new VoiceProcessor(mic) : null;
+            foreach (Chan c in chans)
+            {
+                if (!rx)
+                    c.RxLevel = null;
+                else if (c.RxLevel == null)
+                    c.RxLevel = new VoiceProcessor(VoiceProcessing.Receive);
+            }
+            if (log || changed)
+                AddLog($"audio processing: microphone {mic}; receive leveling {(rx ? "on" : "off")}");
         }
 
         /*

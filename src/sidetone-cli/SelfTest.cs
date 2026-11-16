@@ -841,6 +841,86 @@ B: MSC=10
                 Check(left && calling.Patch == 0, "patch: a channel that stops listening leaves its patch; clearing empties them all");
             }
 
+            // audio processing
+            {
+                short[] Tone(double hz, double dbfs, int blocks, int seed = 0)
+                {
+                    double amp = Math.Pow(10, dbfs / 20) * 32767;
+                    short[] t = new short[blocks * 160];
+                    for (int i = 0; i < t.Length; i++)
+                        t[i] = (short)Math.Round(amp * Math.Sin(2 * Math.PI * hz * (i + seed) / 8000.0));
+                    return t;
+                }
+                double LevelDb(short[] x, int from)
+                {
+                    double sum = 0;
+                    for (int i = from; i < x.Length; i++) sum += (double)x[i] * x[i];
+                    return 20 * Math.Log10(Math.Sqrt(sum / (x.Length - from)) / 32768.0);
+                }
+                short[] Run(VoiceProcessor p, short[] x)
+                {
+                    short[] y = (short[])x.Clone();
+                    for (int i = 0; i + 160 <= y.Length; i += 160)
+                    {
+                        short[] b = y.AsSpan(i, 160).ToArray();
+                        p.Process(b);
+                        b.CopyTo(y, i);
+                    }
+                    return y;
+                }
+
+                VoiceProcessing lowOnly = new VoiceProcessing(true, false, false, false);
+                double hum = LevelDb(Run(new VoiceProcessor(lowOnly), Tone(60, -20, 100)), 8000) - LevelDb(Tone(60, -20, 100), 8000);
+                double voice = LevelDb(Run(new VoiceProcessor(lowOnly), Tone(1000, -20, 100)), 8000) - LevelDb(Tone(1000, -20, 100), 8000);
+                Check(hum < -18 && Math.Abs(voice) < 0.5, $"processing: the low cut takes 60 Hz hum down {-hum:F0} dB and leaves 1 kHz alone ({voice:+0.0;-0.0} dB)");
+
+                VoiceProcessor agc = new VoiceProcessor(new VoiceProcessing(false, true, false, false));
+                double quietOut = LevelDb(Run(agc, Tone(800, -34, 250)), 30000);
+                VoiceProcessor agc2 = new VoiceProcessor(new VoiceProcessing(false, true, false, false));
+                double loudOut = LevelDb(Run(agc2, Tone(800, -8, 250)), 30000);
+                VoiceProcessor agc3 = new VoiceProcessor(new VoiceProcessing(false, true, false, false));
+                double faintOut = LevelDb(Run(agc3, Tone(800, -50, 250)), 30000) - LevelDb(Tone(800, -50, 250), 30000);
+                Check(Math.Abs(quietOut - VoiceProcessor.TargetDb) < 2.5 && loudOut < -15 && loudOut > -21 && Math.Abs(faintOut) < 0.5,
+                      $"processing: auto level brings quiet speech up ({quietOut:F1} dBFS) and loud speech down ({loudOut:F1}), and leaves near-silence alone ({faintOut:+0.0;-0.0} dB)");
+
+                VoiceProcessor lim = new VoiceProcessor(new VoiceProcessing(false, false, false, true));
+                short[] hot = Run(lim, Tone(500, 0, 50));
+                int peak = hot.Max(v => Math.Abs((int)v));
+                Check(peak <= (int)(Math.Pow(10, VoiceProcessor.CeilingDb / 20) * 32768) + 2, $"processing: the limiter keeps a full-scale tone at {20 * Math.Log10(peak / 32768.0):F1} dBFS");
+
+                VoiceProcessor g = new VoiceProcessor(new VoiceProcessing(false, false, true, false));
+                double hissOut = LevelDb(Run(g, Tone(1500, -60, 100)), 8000);
+                double talkOut = LevelDb(Run(g, Tone(1500, -25, 100)), 8000) - LevelDb(Tone(1500, -25, 100), 8000);
+                Check(hissOut < -60 - 18 && Math.Abs(talkOut) < 1, $"processing: the noise gate turns background down ({hissOut:F0} dBFS) and lets speech through ({talkOut:+0.0;-0.0} dB)");
+
+                short[] raw = Tone(700, -30, 20);
+                short[] same = Run(new VoiceProcessor(VoiceProcessing.Off), raw);
+                Check(same.SequenceEqual(raw), "processing: with every stage off, audio passes through untouched");
+
+                // the console uses it on the way to the transmitter, as the settings say
+                Tui pc = new Tui(cp, sys, TimeSpan.FromSeconds(120), null) { NoAudio = true };
+                pc.ReloadAudioProcessing();
+                bool defaults = pc.MicProcessing == VoiceProcessing.MicDefault && !pc.RxLeveling;
+                pc.ProcessingOff = true;
+                pc.ReloadAudioProcessing();
+                Check(defaults && !pc.MicProcessing.Any && pc.Channels.All(ch => ch.RxLevel == null),
+                      "processing: the console starts with the microphone defaults, and --no-processing turns it all off");
+
+                string wavIn = Path.Combine(Path.GetTempPath(), $"sidetone-proc-{Environment.ProcessId}.wav");
+                try
+                {
+                    using (WavSink w = new WavSink(wavIn))
+                        w.Write(Tone(440, -12, 10));
+                    short[] back = WavFile.ReadVoice(wavIn);
+                    Check(back.Length == 1600 && back.SequenceEqual(Tone(440, -12, 10)) && WavFile.Describe(back).Contains("speech -15"),
+                          "processing: an 8 kHz WAV reads back exactly, and its levels are described");
+                }
+                finally
+                {
+                    try { File.Delete(wavIn); } catch (Exception) { }
+                }
+            }
+
             // instant recall, recording and page notifications
             {
                 const uint consoleRid = 9000001, radio = 1234;

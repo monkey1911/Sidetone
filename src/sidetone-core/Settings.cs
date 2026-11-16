@@ -59,6 +59,13 @@ namespace Sidetone.Core
         public string PttButton { get; set; }
         /// <summary>Mute button on that device, "none", or null to choose automatically.</summary>
         public string MuteButton { get; set; }
+        /// <summary>Microphone processing stages; null means the default (on for all but the noise gate).</summary>
+        public bool? MicLowCut { get; set; }
+        public bool? MicAutoLevel { get; set; }
+        public bool? MicNoiseGate { get; set; }
+        public bool? MicLimiter { get; set; }
+        /// <summary>Even out the level of received audio between talkers.</summary>
+        public bool RxAutoLevel { get; set; }
         /// <summary>Folder for talkgroup recordings, or null for the default (~/.local/share/sidetone/recordings).</summary>
         public string RecordingsFolder { get; set; }
         /// <summary>Show a desktop notification when the console is paged (null means yes).</summary>

@@ -27,6 +27,8 @@ namespace Sidetone.Gui
             public double? Scale;
             /// <summary>Desktop notifications when the console is paged.</summary>
             public bool Notifications = true;
+            /// <summary>Microphone processing stages, and receive leveling.</summary>
+            public bool LowCut = true, AutoLevel = true, NoiseGate, Limiter = true, RxLevel;
         }
 
         /// <summary>One line in a drop-down list.</summary>
@@ -75,6 +77,23 @@ namespace Sidetone.Gui
         private readonly TextBlock keyFileText = new TextBlock { FontSize = 12, TextWrapping = TextWrapping.Wrap };
         private readonly TextBlock recordingsText = new TextBlock { FontSize = 12, TextWrapping = TextWrapping.Wrap };
         private Tap recChoose, recOpen, recDefault, notifyOn, notifyOff;
+        private readonly Tap lowCutTap, autoLevelTap, gateTap, limiterTap, rxLevelTap;
+        private bool lowCut, autoLevel, gate, limiter, rxLevel;
+        /// <summary>The processing switches as they are in the box: low cut, auto level, gate, limiter, receive leveling (self-check hook).</summary>
+        public (bool LowCut, bool AutoLevel, bool Gate, bool Limiter, bool RxLevel) Processing => (lowCut, autoLevel, gate, limiter, rxLevel);
+        /// <summary>Flips one processing switch: 0 low cut, 1 auto level, 2 gate, 3 limiter, 4 receive leveling (self-check hook).</summary>
+        public void FlipProcessing(int which)
+        {
+            switch (which)
+            {
+                case 0: lowCut = !lowCut; break;
+                case 1: autoLevel = !autoLevel; break;
+                case 2: gate = !gate; break;
+                case 3: limiter = !limiter; break;
+                case 4: rxLevel = !rxLevel; break;
+            }
+            message.Text = string.Empty;
+        }
         /// <summary>Desktop notifications, as chosen in the box.</summary>
         public bool Notify { get; private set; } = true;
         private readonly Tap spaceHold, spaceToggle, openCodeplug, launcherTap, cancel, saveTap, keyChoose, keyNone, keyUnlock;
@@ -104,6 +123,18 @@ namespace Sidetone.Gui
                                Action pickKeyFile, Action clearKeyFile, Action unlockKeyFile,
                                Action pickRecordings, Action defaultRecordings, Action openRecordings)
         {
+            lowCutTap = new Tap("Low cut", () => FlipProcessing(0), fontSize: 12, padX: 10, padY: 5);
+            autoLevelTap = new Tap("Auto level", () => FlipProcessing(1), fontSize: 12, padX: 10, padY: 5);
+            gateTap = new Tap("Noise gate", () => FlipProcessing(2), fontSize: 12, padX: 10, padY: 5);
+            limiterTap = new Tap("Limiter", () => FlipProcessing(3), fontSize: 12, padX: 10, padY: 5);
+            rxLevelTap = new Tap("Even out talkers' levels", () => FlipProcessing(4), fontSize: 12, padX: 10, padY: 5);
+            WrapPanel micRow = new WrapPanel { Orientation = Orientation.Horizontal };
+            foreach (Tap t in new[] { lowCutTap, autoLevelTap, gateTap, limiterTap })
+            {
+                t.Root.Margin = new Thickness(0, 0, 4, 0);
+                micRow.Children.Add(t.Root);
+            }
+            rxLevelTap.Root.HorizontalAlignment = HorizontalAlignment.Left;
             recChoose = new Tap("Choose…", () => { Close(); pickRecordings(); }, fontSize: 12, padX: 10, padY: 5);
             recOpen = new Tap("Open", openRecordings, fontSize: 12, padX: 10, padY: 5);
             recDefault = new Tap("Use the default", () => { defaultRecordings(); Close(); }, fontSize: 12, padX: 10, padY: 5);
@@ -183,6 +214,8 @@ namespace Sidetone.Gui
             stack.Children.Add(Heading("Audio"));
             stack.Children.Add(Field("Output", Output));
             stack.Children.Add(Field("Microphone", Input));
+            stack.Children.Add(Field("Mic processing", micRow));
+            stack.Children.Add(Field("Receive", rxLevelTap.Root));
             stack.Children.Add(Heading("Push to talk"));
             stack.Children.Add(Field("PTT device", PttDevice));
             stack.Children.Add(Field("PTT button", PttButton));
@@ -262,6 +295,7 @@ namespace Sidetone.Gui
             recordingsText.Text = $"Recordings go to {recordings}";
             recDefault.Root.IsVisible = recordingsChosen;
             Notify = current.Notifications;
+            (lowCut, autoLevel, gate, limiter, rxLevel) = (current.LowCut, current.AutoLevel, current.NoiseGate, current.Limiter, current.RxLevel);
             keyFileText.Text = keyFile;
             filling = true;
             Fill(Scale, current.Scale?.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture), "Automatic",
@@ -397,7 +431,12 @@ namespace Sidetone.Gui
                 MuteButton = device == null ? null : Selected(MuteButton),
                 TxLimit = limit,
                 SpaceToggle = SpaceToggle,
-                Notifications = Notify
+                Notifications = Notify,
+                LowCut = lowCut,
+                AutoLevel = autoLevel,
+                NoiseGate = gate,
+                Limiter = limiter,
+                RxLevel = rxLevel
             };
             string error = save(v);
             if (error != null)
@@ -441,6 +480,11 @@ namespace Sidetone.Gui
             recOpen.Paint(Brushes.Transparent, p.Text, p.Edge);
             recDefault.Paint(Brushes.Transparent, p.Text, p.Edge);
             Paint(notifyOn, Notify, p);
+            Paint(lowCutTap, lowCut, p);
+            Paint(autoLevelTap, autoLevel, p);
+            Paint(gateTap, gate, p);
+            Paint(limiterTap, limiter, p);
+            Paint(rxLevelTap, rxLevel, p);
             Paint(notifyOff, !Notify, p);
             keyChoose.Paint(Brushes.Transparent, p.Text, p.Edge);
             keyNone.Paint(Brushes.Transparent, p.Text, p.Edge);

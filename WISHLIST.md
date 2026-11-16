@@ -32,6 +32,11 @@ Things we'd like to do, roughly in the order that makes sense to do them. Nothin
 9. ~~**Desktop notifications.**~~ Done in 0.21, for pages (call alerts) to the console.
    - Still to do: emergency alarms, once the console decodes them.
 
+## Audio
+
+- ~~**Microphone processing.**~~ Done in 0.22: low cut, noise gate, automatic level and limiter in C#, plus optional receive leveling.
+- **An audio device layer.** One internal interface for playing and recording, with PipeWire as the first implementation, so Windows (WASAPI) and macOS (Core Audio) can be added without touching the rest. Next.
+
 ## Project plumbing
 
 10. **An automated network test.** Run a real dvmfne in CI with two console instances and check login, voice in both directions and encryption. Today every on-air check is done by hand.

@@ -30,7 +30,7 @@ namespace Sidetone.Gui
     public sealed class GuiOptions
     {
         public string Codeplug, SystemName, Output, Input, PttDevice, PttButton, MuteButton, Socket, LogFile, Theme, Screenshot, SettingsFile, Show, KeyFile;
-        public bool NoSocket, Wayland, Demo, NoSettings, SelfCheck, NoNotify;
+        public bool NoSocket, Wayland, Demo, NoSettings, SelfCheck, NoNotify, NoProcessing;
         public string RecordDir;
         /// <summary>Given on the command line; null leaves it to the saved settings.</summary>
         public bool? SpaceToggle;
@@ -54,6 +54,7 @@ namespace Sidetone.Gui
                     case "--key-file": o.KeyFile = Next(); break;
                     case "--record-dir": o.RecordDir = Next(); break;
                     case "--no-notify": o.NoNotify = true; break;
+                    case "--no-processing": o.NoProcessing = true; break;
                     case "--scale":
                     {
                         string text = Next().TrimEnd('%');
@@ -475,6 +476,15 @@ namespace Sidetone.Gui
             set.Save();
             Check(!set.IsOpen && w.TxLimitSeconds == 90, "Save keeps the new time limit");
             Press(PhysicalKey.Comma, RawInputModifiers.Control);
+            bool defaults = set.Processing == (true, true, false, true, false);
+            set.FlipProcessing(2);
+            set.FlipProcessing(4);
+            set.Save();
+            VoiceProcessing mic = c.MicProcessing;
+            Check(defaults && !set.IsOpen && mic.NoiseGate && mic.LowCut && mic.AutoLevel && mic.Limiter && c.RxLeveling &&
+                  c.Channels.All(ch => ch.RxLevel != null) && c.SnapshotLog(3).Any(l => l.Contains("audio processing: microphone low cut, noise gate, auto level, limiter; receive leveling on")),
+                  "mic processing starts at its defaults; turning on the gate and receive leveling applies at once");
+            Press(PhysicalKey.Comma, RawInputModifiers.Control);
             bool automatic = set.Scale.SelectedIndex == 0 && w.SavedScale == null;
             set.Scale.SelectedIndex = 5;        // 200%
             set.Save();
@@ -527,7 +537,7 @@ namespace Sidetone.Gui
             Console.WriteLine("         [--ptt-device NAME [--ptt-button BUTTON] [--mute-button BUTTON|none]]");
             Console.WriteLine("         [--socket PATH | --no-socket] [--tx-limit SECONDS] [--log FILE]");
             Console.WriteLine("         [--settings FILE | --no-settings] [--space hold|toggle]");
-            Console.WriteLine("                  [--scale FACTOR] [--key-file FILE.ekc] [--record-dir DIR] [--no-notify]");
+            Console.WriteLine("                  [--scale FACTOR] [--key-file FILE.ekc] [--record-dir DIR] [--no-notify] [--no-processing]");
             Console.WriteLine("  sidetone --install-launcher | --remove-launcher");
             Console.WriteLine("  sidetone --demo");
             Console.WriteLine("  sidetone --screenshot FILE.png [--demo] [--theme light|dark] [--size 1280x800] [--show page|digital|radio|settings|keyfile|patch|recall]");

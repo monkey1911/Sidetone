@@ -184,6 +184,8 @@ What it has so far:
 |---|---|
 | Scale | The size of everything in the window, for high-DPI screens. Automatic, or 100% to 300%. Takes effect the next time Sidetone starts. |
 | Output, Microphone | The audio devices to use, or the system default |
+| Mic processing | Low cut, Auto level, Noise gate and Limiter on your transmit audio (see [Audio processing](#audio-processing)) |
+| Receive | Even out the level of received audio between talkers |
 | PTT device | A desk microphone, footswitch or PTT button that keys the console (see [PTT devices](#ptt-devices)) |
 | PTT button, Mute button | Which of that device's buttons do what. Automatic uses the buttons Sidetone knows for the device, or its only button. |
 | Space and PTT | Hold to talk, or press to start and press again to stop. Applies to Space and the on-screen PTT buttons. |
@@ -368,6 +370,31 @@ SUBSYSTEM=="input", ATTRS{idVendor}=="1234", ATTRS{idProduct}=="5678", TAG+="uac
 Avoid adding yourself to the `input` group instead: that lets every program you run read every keystroke.
 
 Sidetone doesn't take the device away from other programs, so a footswitch that types a key still types it in the focused window. Pick a key nothing else uses, such as F13 to F24.
+
+## Audio processing
+
+Your microphone audio is cleaned up before it reaches the vocoder, so it codes well whatever microphone you use:
+
+| Stage | What it does | Default |
+|---|---|---|
+| Low cut | Removes rumble, hum and handling noise below about 200 Hz | on |
+| Noise gate | Turns background noise down 24 dB between words | off |
+| Auto level | Brings speech to a steady level: up to 18 dB louder for a quiet microphone, up to 10 dB quieter for a loud one. It only reacts to speech, so it doesn't raise the noise in pauses. | on |
+| Limiter | Keeps peaks just below full scale, so loud syllables don't clip | on |
+
+**Even out talkers' levels** does the same levelling (without the low cut or gate) on received audio, so quiet and loud radios come out closer together. It's off by default. Recordings are always saved as they came over the air.
+
+Turn stages on and off under **Mic processing** and **Receive** in Settings; changes take effect immediately. The terminal console uses the same saved choices. `--no-processing` turns everything off for one run, in either program.
+
+**Hearing the difference.** `sidetone-cli process` runs a recording through the same processing, and with `--vocoder` through IMBE and back, so you hear roughly what goes on the air:
+
+```bash
+./sidetone-cli process mic-test.wav processed.wav --vocoder
+```
+
+It prints the speech and peak levels before and after. The same switches as Settings are available: `--gate`, `--no-low-cut`, `--no-auto-level` and `--no-limiter`. The input must be 8 kHz mono 16-bit WAV; the error message says how to convert other files with ffmpeg.
+
+All of this is plain C# inside Sidetone, independent of PipeWire, so it will behave the same on other platforms.
 
 ## Instant recall and recording
 

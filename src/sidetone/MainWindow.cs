@@ -497,6 +497,7 @@ namespace Sidetone.Gui
                     NoAudio = offline,
                     RecordingsFolder = opt.RecordDir != null ? Path.GetFullPath(opt.RecordDir) : null,
                     Notifications = !opt.NoNotify && appSettings.Notifications != false,
+                    ProcessingOff = opt.NoProcessing,
                     ControlSocketPath = offline || opt.NoSocket ? null : opt.Socket != null ? Path.GetFullPath(opt.Socket) : ControlServer.DefaultPath,
                     PttDevice = !offline && pttDevice != null ? (pttDevice.Value.Device, pttDevice.Value.Button, pttDevice.Value.Mute) : null
                 };
@@ -675,9 +676,14 @@ namespace Sidetone.Gui
                 change(console.Settings);       // the console saves its own copy
                 console.SettingsChanged();
             }
-            else if (settingsPath != null)
+            else
             {
-                try { appSettings.Save(settingsPath); } catch { /* not worth stopping for */ }
+                if (console != null && console.Settings != null && !ReferenceEquals(console.Settings, appSettings))
+                    change(console.Settings);   // the demo: nothing is saved, but the console still follows
+                if (settingsPath != null)
+                {
+                    try { appSettings.Save(settingsPath); } catch { /* not worth stopping for */ }
+                }
             }
         }
 
@@ -770,6 +776,7 @@ namespace Sidetone.Gui
             if (opt.PttDevice != null) given.Add("--ptt-device");
             if (opt.KeyFile != null) given.Add("--key-file");
             if (opt.Scale != null) given.Add("--scale");
+            if (opt.NoProcessing) given.Add("--no-processing");
             if (opt.TxLimit != null) given.Add("--tx-limit");
             if (opt.SpaceToggle != null) given.Add("--space");
             return given.Count == 0 ? null : string.Join(", ", given);
@@ -802,7 +809,12 @@ namespace Sidetone.Gui
                 Scale = appSettings.UiScale,
                 TxLimit = Math.Clamp(appSettings.TxLimitSeconds ?? 120, SettingsOverlay.MinTxLimit, SettingsOverlay.MaxTxLimit),
                 SpaceToggle = appSettings.SpaceToggle,
-                Notifications = appSettings.Notifications != false
+                Notifications = appSettings.Notifications != false,
+                LowCut = appSettings.MicLowCut ?? VoiceProcessing.MicDefault.LowCut,
+                AutoLevel = appSettings.MicAutoLevel ?? VoiceProcessing.MicDefault.AutoLevel,
+                NoiseGate = appSettings.MicNoiseGate ?? VoiceProcessing.MicDefault.NoiseGate,
+                Limiter = appSettings.MicLimiter ?? VoiceProcessing.MicDefault.Limiter,
+                RxLevel = appSettings.RxAutoLevel
             }, audio, inputs, opt.Demo ? "The demo system (no codeplug file)." : currentPath, CommandLineOverrides(),
                !offline && AppLauncher.IsInstalled(AppLauncher.DataHome), KeyFileSummary(out bool locked), locked,
                appSettings.KeyFile != null && opt.KeyFile == null,
@@ -840,9 +852,16 @@ namespace Sidetone.Gui
                 s.TxLimitSeconds = v.TxLimit == 120 ? null : v.TxLimit;
                 s.SpaceToggle = v.SpaceToggle;
                 s.Notifications = v.Notifications ? null : false;
+                VoiceProcessing d = VoiceProcessing.MicDefault;
+                s.MicLowCut = v.LowCut == d.LowCut ? null : v.LowCut;
+                s.MicAutoLevel = v.AutoLevel == d.AutoLevel ? null : v.AutoLevel;
+                s.MicNoiseGate = v.NoiseGate == d.NoiseGate ? null : v.NoiseGate;
+                s.MicLimiter = v.Limiter == d.Limiter ? null : v.Limiter;
+                s.RxAutoLevel = v.RxLevel;
             });
             UpdateKeyHints();
 
+            console?.ReloadAudioProcessing();     // takes effect straight away, no reconnect
             if (reconnect)
                 Reconnect();
             if (rescaled)

@@ -36,6 +36,12 @@ namespace Sidetone.Cli
                 return 0;
             }
 
+            if (args[0] == "process")
+            {
+                try { return ProcessFile(args.Skip(1).ToArray()); }
+                catch (ArgumentException ex) { return Usage(ex.Message); }
+            }
+
             if (args[0] == "ptt")
             {
                 try { return Ptt(args.Skip(1).ToArray()); }
@@ -83,8 +89,9 @@ namespace Sidetone.Cli
             Console.WriteLine("                  [--marker-interval SECONDS] [--settings FILE | --no-settings]");
             Console.WriteLine("                  [--output DEVICE] [--input DEVICE] [--socket PATH | --no-socket]");
             Console.WriteLine("                  [--ptt-device NAME [--ptt-button BUTTON] [--mute-button BUTTON|none]]");
-            Console.WriteLine("                  [--key-file FILE.ekc] [--record-dir DIR] [--no-notify]");
+            Console.WriteLine("                  [--key-file FILE.ekc] [--record-dir DIR] [--no-notify] [--no-processing]");
             Console.WriteLine("  sidetone-cli devices");
+            Console.WriteLine("  sidetone-cli process IN.wav OUT.wav [--gate] [--no-low-cut] [--no-auto-level] [--no-limiter] [--vocoder]");
             Console.WriteLine("  sidetone-cli ptt      down | up | toggle | hold | status [--socket PATH]");
             Console.WriteLine("  sidetone-cli selftest");
             Console.WriteLine();
@@ -282,6 +289,7 @@ namespace Sidetone.Cli
                 tui.RecordingsFolder = Path.GetFullPath(opt.RecordDir);
             if (opt.NoNotify)
                 tui.Notifications = false;
+            tui.ProcessingOff = opt.NoProcessing;
             if (tui.KeyFilePath != null)
                 UnlockKeyFile(tui);     // before the TUI takes over the terminal
             return tui.Run();
@@ -411,6 +419,67 @@ namespace Sidetone.Cli
             return reply.StartsWith("ok", StringComparison.Ordinal) ? 0 : 1;
         }
 
+        /// <summary>
+        /// sidetone-cli process: runs a recording through the microphone processing (and, with --vocoder,
+        /// through IMBE and back, as it would sound on the air), to hear what the settings do.
+        /// </summary>
+        private static int ProcessFile(string[] args)
+        {
+            List<string> files = new List<string>();
+            bool lowCut = true, autoLevel = true, gate = false, limiter = true, vocoderPass = false;
+            foreach (string a in args)
+            {
+                switch (a)
+                {
+                    case "--gate": gate = true; break;
+                    case "--no-low-cut": lowCut = false; break;
+                    case "--no-auto-level": autoLevel = false; break;
+                    case "--no-limiter": limiter = false; break;
+                    case "--vocoder": vocoderPass = true; break;
+                    default:
+                        if (a.StartsWith("--"))
+                            throw new ArgumentException($"unknown option '{a}'");
+                        files.Add(a);
+                        break;
+                }
+            }
+            if (files.Count != 2)
+                throw new ArgumentException("process needs an input and an output WAV file");
+
+            short[] input = WavFile.ReadVoice(files[0]);
+            VoiceProcessing stages = new VoiceProcessing(lowCut, autoLevel, gate, limiter);
+            VoiceProcessor proc = new VoiceProcessor(stages);
+            MBEEncoder encoder = vocoderPass ? new MBEEncoder(MBE_MODE.IMBE_88BIT) : null;
+            MBEDecoder decoder = vocoderPass ? new MBEDecoder(MBE_MODE.IMBE_88BIT) : null;
+            List<short[]> output = new List<short[]>();
+            const int block = P25VoiceReceiver.FrameSamples;
+            for (int i = 0; i + block <= input.Length; i += block)
+            {
+                short[] samples = input.AsSpan(i, block).ToArray();
+                proc.Process(samples);
+                if (vocoderPass)
+                {
+                    byte[] imbe = new byte[P25VoiceReceiver.ImbeLength];
+                    encoder.encode(samples, imbe);
+                    samples = new short[block];
+                    decoder.decode(imbe, samples);
+                }
+                output.Add(samples);
+            }
+
+            using (WavSink wav = new WavSink(files[1]))
+            {
+                foreach (short[] s in output)
+                    wav.Write(s);
+            }
+            short[] all = output.SelectMany(s => s).ToArray();
+            Console.WriteLine($"processing: {stages}{(vocoderPass ? ", then through IMBE and back" : string.Empty)}");
+            Console.WriteLine($"in:  {WavFile.Describe(input)}");
+            Console.WriteLine($"out: {WavFile.Describe(all)}");
+            Console.WriteLine($"wrote {files[1]} ({all.Length / (double)PipeWireSink.SampleRate:F1} s)");
+            return 0;
+        }
+
         private static int Devices()
         {
             AudioDeviceList list;
@@ -479,7 +548,7 @@ namespace Sidetone.Cli
             public string SettingsFile;
             public bool NoSettings;
             public string Socket, PttDevice, PttButton, MuteButton, KeyFile, RecordDir;
-            public bool NoNotify;
+            public bool NoNotify, NoProcessing;
             public bool NoSocket;
 
             public static Options Parse(string[] args)
@@ -517,6 +586,7 @@ namespace Sidetone.Cli
                         case "--key-file": o.KeyFile = Next(); break;
                         case "--record-dir": o.RecordDir = Next(); break;
                         case "--no-notify": o.NoNotify = true; break;
+                        case "--no-processing": o.NoProcessing = true; break;
                         case "--ptt-button": o.PttButton = Next(); break;
                         case "--mute-button": o.MuteButton = Next(); break;
                         case "--marker-interval":

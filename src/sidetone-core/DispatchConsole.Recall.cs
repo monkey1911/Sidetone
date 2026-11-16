@@ -457,6 +457,7 @@ namespace Sidetone.Core
             AddLog($"{c.Cfg.Name}: replaying {call.Describe()}");
             bool fast = replaySinkForTest != null;
             double gain = c.Gain;
+            VoiceProcessor level = RxLeveling ? new VoiceProcessor(VoiceProcessing.Receive) : null;
             List<byte[]> frames = call.Frames.ToList();
             job.Clock.Start();
 
@@ -476,6 +477,7 @@ namespace Sidetone.Core
                         }
                         short[] samples = new short[P25VoiceReceiver.FrameSamples];
                         decoder.decode(frames[i], samples);
+                        level?.Process(samples);
                         AudioMath.ApplyGain(samples, gain);
                         sink?.Write(samples);
                     }
