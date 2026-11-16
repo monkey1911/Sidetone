@@ -25,5 +25,5 @@ gh api --allow-escape-sequences "repos/$R/actions/jobs/$j/logs" > /tmp/ci-x64.lo
   || gh api "repos/$R/actions/jobs/$j/logs" > /tmp/ci-x64.log 2>&1
 grep -q "Self-test\|selftest" /tmp/ci-x64.log || { echo "could not download the x64 log:"; head -3 /tmp/ci-x64.log; exit 1; }
 clean() { sed -E 's/^\xEF\xBB\xBF//; s/^[0-9T:.-]+Z //'; }
-grep -E "FAIL|ALL TESTS|TEST\(S\) FAILED|error CS|error NETSDK|error MSB|error NU|error AVLN|Unhandled exception" /tmp/ci-x64.log | clean | sort -u | head -"${ERRS:-25}"
+grep -E "FAIL:|ALL TESTS|TEST\(S\) FAILED|error CS|error NETSDK|error MSB|error NU|error AVLN|Unhandled exception" /tmp/ci-x64.log | clean | sort -u | head -"${ERRS:-25}"
 grep -c "PASS:" /tmp/ci-x64.log | sed 's/^/self-test PASS lines: /'
