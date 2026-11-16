@@ -10,7 +10,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace dvmcli
+namespace dvmcore
 {
     /// <summary>
     /// Settings for one channel card.

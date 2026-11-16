@@ -11,7 +11,7 @@
 using dvmconsole;
 using fnecore;
 
-namespace dvmcli
+namespace dvmcore
 {
     /// <summary>
     /// Resolves radio IDs to names for one system.

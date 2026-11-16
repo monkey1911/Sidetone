@@ -11,7 +11,7 @@ using System.Security.Cryptography;
 using dvmconsole;
 using fnecore.P25;
 
-namespace dvmcli
+namespace dvmcore
 {
     /// <summary>
     /// Receives P25 voice for a single talkgroup and produces decoded PCM.

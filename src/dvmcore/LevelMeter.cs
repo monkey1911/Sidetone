@@ -7,7 +7,7 @@
 * read from the UI thread.
 */
 
-namespace dvmcli
+namespace dvmcore
 {
     /// <summary>
     /// Thread-safe level meter for 16-bit PCM blocks.

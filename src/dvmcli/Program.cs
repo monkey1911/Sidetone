@@ -14,8 +14,6 @@
 using System.Reflection;
 using System.Runtime.InteropServices;
 using dvmconsole;
-using YamlDotNet.Serialization;
-using YamlDotNet.Serialization.NamingConventions;
 
 // Linux only (PipeWire, Unix sockets and file modes)
 [assembly: System.Runtime.Versioning.SupportedOSPlatform("linux")]
@@ -107,29 +105,7 @@ namespace dvmcli
         /// <summary>
         /// Loads a codeplug the same way the console does.
         /// </summary>
-        public static Codeplug LoadCodeplug(string path)
-        {
-            if (string.IsNullOrWhiteSpace(path))
-                throw new ArgumentException("--codeplug is required");
-
-            path = Path.GetFullPath(path);
-            if (!File.Exists(path))
-                throw new ArgumentException($"codeplug not found: {path}");
-
-            IDeserializer deserializer = new DeserializerBuilder()
-                .WithNamingConvention(CamelCaseNamingConvention.Instance)
-                .IgnoreUnmatchedProperties()
-                .Build();
-
-            Codeplug codeplug = deserializer.Deserialize<Codeplug>(File.ReadAllText(path))
-                ?? throw new ArgumentException($"codeplug is empty: {path}");
-            codeplug.SourcePath = path;
-
-            if (codeplug.Systems == null || codeplug.Systems.Count == 0)
-                throw new ArgumentException("codeplug has no systems");
-
-            return codeplug;
-        }
+        public static Codeplug LoadCodeplug(string path) => CodeplugLoader.Load(path);
 
         private static IEnumerable<Codeplug.Channel> AllChannels(Codeplug cp) =>
             (cp.Zones ?? new List<Codeplug.Zone>()).SelectMany(z => z.Channels ?? new List<Codeplug.Channel>());
@@ -400,13 +376,7 @@ namespace dvmcli
         /// <summary>
         /// Applies a linear gain with clipping.
         /// </summary>
-        public static void ApplyGain(short[] samples, double gain)
-        {
-            if (gain == 1.0)
-                return;
-            for (int i = 0; i < samples.Length; i++)
-                samples[i] = (short)Math.Clamp(samples[i] * gain, short.MinValue, short.MaxValue);
-        }
+        public static void ApplyGain(short[] samples, double gain) => AudioMath.ApplyGain(samples, gain);
 
         private static readonly object sayLock = new object();
 

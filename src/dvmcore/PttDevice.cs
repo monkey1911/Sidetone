@@ -11,7 +11,7 @@
 using System.Buffers.Binary;
 using System.Globalization;
 
-namespace dvmcli
+namespace dvmcore
 {
     /// <summary>
     /// One input device as /proc/bus/input/devices lists it.

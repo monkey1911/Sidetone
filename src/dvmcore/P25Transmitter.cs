@@ -11,7 +11,7 @@ using dvmconsole;
 using fnecore;
 using fnecore.P25;
 
-namespace dvmcli
+namespace dvmcore
 {
     /// <summary>
     /// Sends P25 traffic to the FNE; implemented by the FNE peer.

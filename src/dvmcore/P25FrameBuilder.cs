@@ -9,7 +9,7 @@
 using fnecore;
 using fnecore.P25;
 
-namespace dvmcli
+namespace dvmcore
 {
     /// <summary>
     /// Creates network frame headers; implemented by the FNE peer (wraps fnecore's CreateP25MessageHdr).

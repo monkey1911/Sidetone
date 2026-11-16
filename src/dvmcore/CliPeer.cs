@@ -15,7 +15,7 @@ using fnecore.P25;
 using fnecore.P25.KMM;
 using fnecore.P25.LC.TSBK;
 
-namespace dvmcli
+namespace dvmcore
 {
     /// <summary>
     /// FNE console peer for the CLI.

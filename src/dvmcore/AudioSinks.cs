@@ -9,7 +9,7 @@
 
 using System.Diagnostics;
 
-namespace dvmcli
+namespace dvmcore
 {
     /// <summary>
     /// Destination for decoded 8 kHz mono 16-bit PCM.

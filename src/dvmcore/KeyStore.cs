@@ -9,7 +9,7 @@
 using System.Collections.Concurrent;
 using fnecore.P25;
 
-namespace dvmcli
+namespace dvmcore
 {
     /// <summary>
     /// Traffic keys by (algorithm ID, key ID).

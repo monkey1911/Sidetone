@@ -8,7 +8,7 @@
 
 using System.Diagnostics;
 
-namespace dvmcli
+namespace dvmcore
 {
     /// <summary>
     /// Captures 8 kHz mono audio from PipeWire.

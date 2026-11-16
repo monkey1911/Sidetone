@@ -9,7 +9,7 @@
 
 using System.Diagnostics;
 
-namespace dvmcli
+namespace dvmcore
 {
     /// <summary>
     /// A tone as a sequence of 20 ms frames: a frequency, or null for silence.

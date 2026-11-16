@@ -19,7 +19,7 @@
 using System.Net.Sockets;
 using System.Text;
 
-namespace dvmcli
+namespace dvmcore
 {
     /// <summary>
     /// One client connection to the control socket.

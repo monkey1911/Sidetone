@@ -10,7 +10,7 @@
 using System.Diagnostics;
 using System.Text.Json;
 
-namespace dvmcli
+namespace dvmcore
 {
     /// <summary>
     /// One PipeWire audio node.

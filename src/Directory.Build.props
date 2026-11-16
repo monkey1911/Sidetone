@@ -1,0 +1,12 @@
+<Project>
+
+  <!-- Shared by every project under src/ (dvmcore, dvmcli, dvmgui). -->
+  <PropertyGroup>
+    <Version>0.14.0</Version>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+</Project>
