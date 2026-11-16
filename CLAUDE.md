@@ -10,11 +10,15 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
 
 - Version **0.23.0** on `main` (set once, in `src/Directory.Build.props`). The last release the
   owner published is 0.23.0 or about to be; check `gh release list`.
-- CI is green on ARM64 and x86-64: 244 self-test checks plus the GUI self-check and screenshots.
+- CI is green on ARM64 and x86-64: 244 checks (199 in `sidetone-cli selftest`, 45 in the GUI's
+  `--selfcheck`) plus screenshots. The same 244 also pass in a local ARM64 build.
 - **Tested on the air by the owner:** RX/TX clear and AES, key delivery from the FNE, alias sync,
   alert tones, channel marker, QCII and digital pages, radio check (the radio answers; see the FNE
   limitation below), GUI on x86-64 under Hyprland, keyboard shortcuts, instant recall.
-- **Built and self-tested but not yet tried on the air or on real hardware:** patching, recording
+- The owner tests every release on the air and on their hardware after publishing it. The list
+  below is only what the earlier sessions never heard results for, not what is known to be
+  untested. Ask the owner before calling something untested, and move items up once confirmed.
+- **No results reported to the earlier sessions yet:** patching, recording
   to WAV, page notifications, mic processing (on by default!), local KFDtool key files and the
   keyring, selectable encryption on the air, the Settings screen with real devices, the app
   launcher entry, display scaling on a real HiDPI screen, the Motorola desk mic in the GUI, the GUI
@@ -83,9 +87,36 @@ API (only `sidetone-cli` has `InternalsVisibleTo`).
 
 ## Building and testing
 
-Nothing has been built locally so far: the sessions had no .NET SDK, so **CI is the compiler**.
-Locally you need the .NET 10 SDK, CMake and a C++ compiler; follow the steps in `build.yml`
-(build libvocoder with CMake, then `dotnet publish -r linux-x64` or `linux-arm64`, self-contained).
+The claude.ai sessions had no .NET SDK, so CI was their compiler. Claude Code sessions can build
+and test locally (first done 2026-11-16 on ARM64: SDK 10.0.404, the system CMake and g++). Build
+and run the self-tests locally before pushing; CI then covers the other architecture and the
+packaging.
+
+**Build for the machine you're on.** Check `uname -m` first: `aarch64` → `linux-arm64`, `x86_64` →
+`linux-x64`. An x64 build on ARM64 tries to run through qemu-user and fails with
+`Could not open '/lib64/ld-linux-x86-64.so.2'`. The owner has machines of both kinds.
+
+Local build, the same steps as `build.yml` (run from the repository root; `build/` and `out/` are
+git-ignored):
+
+```
+cmake -S extern/dvmvocoder -B build/vocoder -DCMAKE_BUILD_TYPE=Release
+cmake --build build/vocoder -j"$(nproc)"
+mkdir -p build/native && cp "$(find build/vocoder -name libvocoder.so | head -1)" build/native/
+R=linux-arm64   # or linux-x64
+dotnet publish src/sidetone-cli/sidetone-cli.csproj -c Release -r $R --self-contained true -o out/sidetone-$R
+dotnet publish src/sidetone/sidetone.csproj -c Release -r $R --self-contained true -o out/sidetone-$R
+out/sidetone-$R/sidetone-cli selftest     # ends with ALL TESTS PASSED
+out/sidetone-$R/sidetone --selfcheck      # ends with ALL GUI CHECKS PASSED
+```
+
+libvocoder only needs rebuilding when the `extern/dvmvocoder` submodule changes. A screenshot works
+locally too: `out/sidetone-$R/sidetone --screenshot FILE --demo --size 1180x760 --theme dark`
+(add `--show page|radio|settings|keyfile|patch|recall` for a box). Save these to the scratchpad and
+read the PNG directly, with no CI round trip.
+
+Known build warning (not an error): NU1903 on `System.Security.Cryptography.Xml` 10.0.0, pulled in
+by `sidetone-core`.
 
 What CI does on every push to `main` (both architectures):
 1. builds libvocoder, publishes `sidetone-cli` and `sidetone` into one folder;
@@ -97,9 +128,10 @@ What CI does on every push to `main` (both architectures):
    published **release** attaches it (there is deliberately no tag trigger: two runs raced and
    clobbered uploads).
 
-The loop that worked: commit, push, `tools/ci-status.sh` (waits, prints errors and failed tests,
-saves the x64 log), then `tools/ci-screenshots.sh` and look at the PNGs. Add a self-test or
-self-check for every feature; the owner tests on the air afterwards.
+The loop now: build and test locally, commit, push, then `tools/ci-status.sh` (waits, prints
+errors and failed tests, saves the x64 log) to confirm the other architecture. `tools/ci-screenshots.sh`
+still pulls the CI PNGs if wanted. Add a self-test or self-check for every feature. The owner tests
+every release on the air and on their hardware after publishing it.
 
 ### Things that bit before
 
