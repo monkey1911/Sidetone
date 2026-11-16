@@ -148,6 +148,11 @@ every release on the air and on their hardware after publishing it.
 
 ## Domain facts worth knowing
 
+- **Upstream DVMConsole's live branch is `r01a02_dev`.** `main` on DVMProject/dvmconsole is
+  essentially abandoned (still net8.0, last commit 2026-03). The owner's fork
+  (monkey1911/dvmconsole-ARM64, our submodule) follows `r01a02_dev` on its `dev` branch. Compare
+  against `r01a02_dev` when checking what the Windows console does, never `main`.
+
 - **The FNE version CTRS runs does not pass extended-function replies (radio check acks) back to
   the peer that sent them.** The radio does answer over the air. Don't ask the owner about it again;
   Sidetone already decodes and logs replies if a newer FNE sends them.
