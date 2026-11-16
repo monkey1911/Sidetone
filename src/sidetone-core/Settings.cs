@@ -57,6 +57,8 @@ namespace Sidetone.Core
         public string PttButton { get; set; }
         /// <summary>Mute button on that device, "none", or null to choose automatically.</summary>
         public string MuteButton { get; set; }
+        /// <summary>Display scale for the graphical console (1.0 = 100%), or null to work it out.</summary>
+        public double? UiScale { get; set; }
         /// <summary>Local key file (.ekc) chosen in Settings, or null to use the codeplug's, if it names one.</summary>
         public string KeyFile { get; set; }
         /// <summary>Transmit time limit in seconds, or null for the default.</summary>

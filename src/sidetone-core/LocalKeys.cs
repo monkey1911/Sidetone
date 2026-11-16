@@ -2,7 +2,7 @@
 /**
 * Sidetone - an IP dispatch console for DVMProject FNE networks.
 *
-* Local key files: traffic keys from a password-protected KFDEKC container (.ekc), for systems
+* Local key files: traffic keys from a password-protected KFDtool key container (.ekc), for systems
 * where the FNE doesn't deliver keys to the console. The container format is read by dvmconsole's
 * own EkcKeyStore; this wraps it with plain error messages, and SecretStore optionally remembers
 * the password in the desktop's keyring. Neither passwords nor keys are ever logged or written
@@ -70,7 +70,7 @@ namespace Sidetone.Core
             }
             catch (InvalidDataException ex)
             {
-                error = ex.Message;     // EkcKeyStore's own messages; they never include file contents
+                error = ex.Message.Replace("KFDEKC", "KFDtool");    // EkcKeyStore's own messages; they never include file contents
             }
             catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
             {
@@ -79,7 +79,7 @@ namespace Sidetone.Core
             catch (Exception)
             {
                 // anything else could quote decrypted text; say nothing specific
-                error = "the key file couldn't be read; check it in KFDEKC";
+                error = "the key file couldn't be read; check it in KFDtool";
             }
             return null;
         }

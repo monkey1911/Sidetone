@@ -34,6 +34,7 @@ namespace Sidetone.Gui
         /// <summary>Given on the command line; null leaves it to the saved settings.</summary>
         public bool? SpaceToggle;
         public int? TxLimit;
+        public double? Scale;
         public int Width = 1280, Height = 800;
 
         public static GuiOptions Parse(string[] args)
@@ -50,6 +51,18 @@ namespace Sidetone.Gui
                     case "--input": o.Input = Next(); break;
                     case "--ptt-device": o.PttDevice = Next(); break;
                     case "--key-file": o.KeyFile = Next(); break;
+                    case "--scale":
+                    {
+                        string text = Next().TrimEnd('%');
+                        if (!double.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double scale))
+                            throw new ArgumentException("--scale must be a number, like 2 or 1.5 (or a percentage, like 150%)");
+                        if (scale > DisplayScale.Max)
+                            scale /= 100;       // 150 means 150%
+                        if (scale < DisplayScale.Min || scale > DisplayScale.Max)
+                            throw new ArgumentException("--scale must be 0.5 to 4 (50% to 400%)");
+                        o.Scale = scale;
+                        break;
+                    }
                     case "--ptt-button": o.PttButton = Next(); break;
                     case "--mute-button": o.MuteButton = Next(); break;
                     case "--socket": o.Socket = Next(); break;
@@ -141,6 +154,10 @@ namespace Sidetone.Gui
                 return SelfCheck(opt);
             if (opt.Screenshot != null)
                 return Screenshot(opt);
+
+            // high-DPI screens: decided before the window system starts
+            string settingsFile = opt.NoSettings || opt.Demo ? null : opt.SettingsFile ?? AppSettings.DefaultPath;
+            DisplayScale.Apply(opt.Scale, AppSettings.Load(settingsFile, out _).UiScale, opt.Wayland);
 
             if (opt.Wayland && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WAYLAND_DISPLAY")))
             {
@@ -391,6 +408,15 @@ namespace Sidetone.Gui
             Press(PhysicalKey.Escape);
             Check(needsPassword && !w.KeyBox.IsOpen, "the key file box wants a password; Esc is 'not now'");
 
+            // display scale
+            const string monitors = "[{\"name\":\"eDP-1\",\"scale\":2.44,\"focused\":true},{\"name\":\"DP-1\",\"scale\":1.0,\"focused\":false}]";
+            Check(DisplayScale.FromHyprland("{\"option\":\"xwayland:force_zero_scaling\",\"int\":1,\"set\":true}", monitors) == 2.44 &&
+                  DisplayScale.FromHyprland("{\"option\":\"xwayland:force_zero_scaling\",\"bool\":true}", monitors) == 2.44 &&
+                  DisplayScale.FromHyprland("{\"option\":\"xwayland:force_zero_scaling\",\"int\":0,\"set\":false}", monitors) == null &&
+                  DisplayScale.FromHyprland("{\"int\":1}", "[{\"scale\":1.0,\"focused\":true}]") == null &&
+                  DisplayScale.FromHyprland("not json", monitors) == null && DisplayScale.FromHyprland(null, null) == null,
+                  "display scale: taken from Hyprland's focused monitor, only when it leaves XWayland windows unscaled");
+
             // Settings
             SettingsOverlay set = w.SettingsBox;
             Press(PhysicalKey.Comma, RawInputModifiers.Control);
@@ -415,6 +441,12 @@ namespace Sidetone.Gui
             set.TxLimit.Text = "90";
             set.Save();
             Check(!set.IsOpen && w.TxLimitSeconds == 90, "Save keeps the new time limit");
+            Press(PhysicalKey.Comma, RawInputModifiers.Control);
+            bool automatic = set.Scale.SelectedIndex == 0 && w.SavedScale == null;
+            set.Scale.SelectedIndex = 5;        // 200%
+            set.Save();
+            Check(automatic && w.SavedScale == 2.0 && c.SnapshotLog(1).Any(l => l.Contains("next time Sidetone starts")),
+                  "the display scale is automatic until one is chosen; a new one is saved for the next start");
             bool holdBefore = !w.SpaceIsToggle;
             Press(PhysicalKey.Comma, RawInputModifiers.Control);
             Check(set.IsOpen && set.TxLimit.Text == "90", "Settings reopens on what was saved");
@@ -462,6 +494,7 @@ namespace Sidetone.Gui
             Console.WriteLine("         [--ptt-device NAME [--ptt-button BUTTON] [--mute-button BUTTON|none]]");
             Console.WriteLine("         [--socket PATH | --no-socket] [--tx-limit SECONDS] [--log FILE]");
             Console.WriteLine("         [--settings FILE | --no-settings] [--space hold|toggle]");
+            Console.WriteLine("                  [--scale FACTOR] [--key-file FILE.ekc]");
             Console.WriteLine("  sidetone --install-launcher | --remove-launcher");
             Console.WriteLine("  sidetone --demo");
             Console.WriteLine("  sidetone --screenshot FILE.png [--demo] [--theme light|dark] [--size 1280x800] [--show page|digital|radio|settings|keyfile]");

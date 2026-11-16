@@ -17,8 +17,8 @@ Things we'd like to do, roughly in the order that makes sense to do them. Nothin
 
 4. ~~**Hold-to-talk on the on-screen PTT button, and a PTT on each card.**~~ Done in 0.19.
 
-5. ~~**Selectable encryption and local key files.**~~ Done in 0.19: channels marked `selectable_encryption` can be switched between secure and clear for transmit, and keys can come from a password-protected KFDEKC `.ekc` container.
-   - Still to do: `sidetone-cli listen` doesn't use a key file yet, and a key file has not been tried against one made by KFDEKC itself, only one written by the self-test.
+5. ~~**Selectable encryption and local key files.**~~ Done in 0.19: channels marked `selectable_encryption` can be switched between secure and clear for transmit, and keys can come from a password-protected KFDtool `.ekc` container.
+   - Still to do: `sidetone-cli listen` doesn't use a key file yet, and a key file has not been tried against one made by KFDtool itself, only one written by the self-test.
 
 6. **Patching.** Start by reading how the Windows console does it. Worth looking into: passing voice frames between talkgroups without decoding and re-encoding them, which would avoid a second pass through the vocoder.
 

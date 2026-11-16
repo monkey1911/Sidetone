@@ -35,7 +35,7 @@
     <PackageReference Include="YamlDotNet" Version="16.2.0" />
     <!-- only needed for a [JsonIgnore] attribute in Codeplug.cs; same version as dvmconsole -->
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
-    <!-- XML encryption, for KFDEKC key containers (EkcKeyStore.cs); part of the Windows desktop runtime, a package elsewhere -->
+    <!-- XML encryption, for KFDtool key containers (EkcKeyStore.cs); part of the Windows desktop runtime, a package elsewhere -->
     <PackageReference Include="System.Security.Cryptography.Xml" Version="10.0.0" />
   </ItemGroup>
 

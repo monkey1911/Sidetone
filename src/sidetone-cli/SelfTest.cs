@@ -776,7 +776,7 @@ B: MSC=10
             Check(!tui.RadioDialogOpen && tui.Render(120, 40).RowText(1).Contains("RADIO") && tui.Render(120, 40).RowText(1).Contains("T6"),
                   "TUI title bar has T6 and RADIO");
 
-            // local key file (KFDEKC .ekc), and selectable encryption
+            // local key file (a KFDtool .ekc container), and selectable encryption
             string keyDir = Path.Combine(Path.GetTempPath(), $"sidetone-keys-{Environment.ProcessId}");
             try
             {
@@ -1188,7 +1188,7 @@ zones:
 ";
 
         /// <summary>
-        /// Writes a KFDEKC-style key container: a length-prefixed gzip of an XML outer container whose
+        /// Writes a KFDtool-style key container: a length-prefixed gzip of an XML outer container whose
         /// inner container is AES-256 encrypted with a PBKDF2 (SHA-512) key from the password.
         /// </summary>
         private static void WriteEkc(string path, string password, (bool Tek, int Alg, int Id, string Hex)[] entries)

@@ -23,6 +23,8 @@ namespace Sidetone.Gui
             public string Output, Input, PttDevice, PttButton, MuteButton;
             public int TxLimit = 120;
             public bool SpaceToggle;
+            /// <summary>Display scale (1.0 = 100%), or null for automatic.</summary>
+            public double? Scale;
         }
 
         /// <summary>One line in a drop-down list.</summary>
@@ -39,6 +41,9 @@ namespace Sidetone.Gui
         /// <summary>Covers the window below the header while the box is open.</summary>
         public readonly Grid Root = new Grid { IsVisible = false };
         public readonly ComboBox Output = Combo(), Input = Combo(), PttDevice = Combo(), PttButton = Combo(), MuteButton = Combo();
+        public readonly ComboBox Scale = new ComboBox { Width = 150, FontSize = 13, HorizontalAlignment = HorizontalAlignment.Left };
+        private readonly TextBlock scaleNote = new TextBlock { FontSize = 12, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap };
+        private static readonly double[] Scales = { 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3.0 };
         public readonly TextBox TxLimit = new TextBox { Width = 90, MaxLength = 3, FontSize = 14, HorizontalAlignment = HorizontalAlignment.Left };
 
         private readonly Func<Values, string> save;
@@ -74,7 +79,7 @@ namespace Sidetone.Gui
 
         public bool IsOpen => Root.IsVisible;
         /// <summary>A drop-down list is showing (Esc closes that, not the box).</summary>
-        public bool DropDownOpen => Output.IsDropDownOpen || Input.IsDropDownOpen || PttDevice.IsDropDownOpen || PttButton.IsDropDownOpen || MuteButton.IsDropDownOpen;
+        public bool DropDownOpen => Scale.IsDropDownOpen || Output.IsDropDownOpen || Input.IsDropDownOpen || PttDevice.IsDropDownOpen || PttButton.IsDropDownOpen || MuteButton.IsDropDownOpen;
         /// <summary>Space starts and stops transmit (as chosen in the box).</summary>
         public bool SpaceToggle { get; private set; }
         /// <summary>The error being shown.</summary>
@@ -147,6 +152,14 @@ namespace Sidetone.Gui
 
             // the title and the buttons stay put; what's between them scrolls when the window is short
             StackPanel stack = new StackPanel { Spacing = 7, Margin = new Thickness(0, 0, 16, 0) };
+            Grid scaleRow = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*") };
+            scaleNote.Margin = new Thickness(10, 0, 0, 0);
+            Grid.SetColumn(Scale, 0);
+            Grid.SetColumn(scaleNote, 1);
+            scaleRow.Children.Add(Scale);
+            scaleRow.Children.Add(scaleNote);
+            stack.Children.Add(Heading("Display"));
+            stack.Children.Add(Field("Scale", scaleRow));
             stack.Children.Add(Heading("Audio"));
             stack.Children.Add(Field("Output", Output));
             stack.Children.Add(Field("Microphone", Input));
@@ -223,6 +236,11 @@ namespace Sidetone.Gui
                          string keyFile, bool keyFileLocked, bool keyFileChosen)
         {
             keyFileText.Text = keyFile;
+            filling = true;
+            Fill(Scale, current.Scale?.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture), "Automatic",
+                 Scales.Select(v => new Choice(v.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture), DisplayScale.Percent(v))), "custom");
+            filling = false;
+            scaleNote.Text = $"Now: {DisplayScale.InEffect}. A change takes effect the next time Sidetone starts.";
             keyUnlock.Root.IsVisible = keyFileLocked;
             keyNone.Root.IsVisible = keyFileChosen;
             filling = true;
@@ -340,8 +358,11 @@ namespace Sidetone.Gui
             }
 
             string device = Selected(PttDevice);
+            string scaleText = Selected(Scale);
             Values v = new Values
             {
+                Scale = scaleText != null && double.TryParse(scaleText, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double chosenScale)
+                    ? chosenScale : null,
                 Output = Selected(Output),
                 Input = Selected(Input),
                 PttDevice = device,
@@ -378,6 +399,7 @@ namespace Sidetone.Gui
             codeplugPath.Foreground = p.Dim;
             launcherState.Foreground = p.Dim;
             seconds.Foreground = p.Dim;
+            scaleNote.Foreground = p.Dim;
             note.Foreground = p.Dim;
             overrides.Foreground = p.Warn;
             message.Foreground = p.Tx;

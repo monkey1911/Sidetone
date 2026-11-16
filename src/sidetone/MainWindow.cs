@@ -155,6 +155,9 @@ namespace Sidetone.Gui
         /// <summary>Space starts and stops transmit instead of hold-to-talk: the command line's choice, or the saved one.</summary>
         internal bool SpaceIsToggle => opt.SpaceToggle ?? appSettings.SpaceToggle;
 
+        /// <summary>The display scale saved in Settings, or null for automatic (self-check hook).</summary>
+        internal double? SavedScale => appSettings.UiScale;
+
         /// <summary>The transmit time limit in effect, in seconds.</summary>
         internal int TxLimitSeconds => Math.Clamp(opt.TxLimit ?? appSettings.TxLimitSeconds ?? 120, SettingsOverlay.MinTxLimit, SettingsOverlay.MaxTxLimit);
 
@@ -624,7 +627,7 @@ namespace Sidetone.Gui
                 {
                     Title = "Choose a key file",
                     AllowMultiple = false,
-                    FileTypeFilter = new[] { new FilePickerFileType("KFDEKC key container") { Patterns = new[] { "*.ekc" } } }
+                    FileTypeFilter = new[] { new FilePickerFileType("KFDtool key container") { Patterns = new[] { "*.ekc" } } }
                 });
                 string path = files != null && files.Count > 0 ? files[0].TryGetLocalPath() : null;
                 if (path == null)
@@ -676,6 +679,7 @@ namespace Sidetone.Gui
             if (opt.Input != null) given.Add("--input");
             if (opt.PttDevice != null) given.Add("--ptt-device");
             if (opt.KeyFile != null) given.Add("--key-file");
+            if (opt.Scale != null) given.Add("--scale");
             if (opt.TxLimit != null) given.Add("--tx-limit");
             if (opt.SpaceToggle != null) given.Add("--space");
             return given.Count == 0 ? null : string.Join(", ", given);
@@ -705,6 +709,7 @@ namespace Sidetone.Gui
                 PttDevice = appSettings.PttDeviceName,
                 PttButton = appSettings.PttButton,
                 MuteButton = appSettings.MuteButton,
+                Scale = appSettings.UiScale,
                 TxLimit = Math.Clamp(appSettings.TxLimitSeconds ?? 120, SettingsOverlay.MinTxLimit, SettingsOverlay.MaxTxLimit),
                 SpaceToggle = appSettings.SpaceToggle
             }, audio, inputs, opt.Demo ? "The demo system (no codeplug file)." : currentPath, CommandLineOverrides(),
@@ -730,8 +735,10 @@ namespace Sidetone.Gui
                              !Same(appSettings.PttDeviceName, v.PttDevice) || !Same(appSettings.PttButton, v.PttButton) ||
                              !Same(appSettings.MuteButton, v.MuteButton) || (appSettings.TxLimitSeconds ?? 120) != v.TxLimit;
 
+            bool rescaled = appSettings.UiScale != v.Scale;
             ChangeSettings(s =>
             {
+                s.UiScale = v.Scale;
                 s.AudioOutput = v.Output;
                 s.AudioInput = v.Input;
                 s.PttDeviceName = v.PttDevice;
@@ -744,6 +751,8 @@ namespace Sidetone.Gui
 
             if (reconnect)
                 Reconnect();
+            if (rescaled)
+                console?.AddLog($"display scale: {(v.Scale == null ? "automatic" : DisplayScale.Percent(v.Scale.Value))} the next time Sidetone starts");
             return null;
         }
 

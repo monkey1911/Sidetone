@@ -176,6 +176,7 @@ What it has so far:
 
 | Setting | What it does |
 |---|---|
+| Scale | The size of everything in the window, for high-DPI screens. Automatic, or 100% to 300%. Takes effect the next time Sidetone starts. |
 | Output, Microphone | The audio devices to use, or the system default |
 | PTT device | A desk microphone, footswitch or PTT button that keys the console (see [PTT devices](#ptt-devices)) |
 | PTT button, Mute button | Which of that device's buttons do what. Automatic uses the buttons Sidetone knows for the device, or its only button. |
@@ -242,7 +243,17 @@ In the page and radio command boxes, Enter sends, Esc closes, and the other shor
 
 Space and the on-screen PTT buttons are hold-to-talk here because a window, unlike a terminal, can tell when a key is let go. If the window loses the keyboard while you're holding it, the transmission ends. To make them start and stop instead, as in the TUI, choose that in Settings or start with `--space toggle`.
 
-**Wayland.** On Wayland desktops (Hyprland, GNOME, KDE) the window runs through XWayland by default. `--wayland` uses Avalonia's native Wayland backend instead, which is newer and still missing some features. If the window looks blurry or the wrong size on a high-DPI screen under XWayland, try `--wayland`, or set a scale yourself with `AVALONIA_GLOBAL_SCALE_FACTOR=2 ./sidetone`.
+**Wayland.** On Wayland desktops (Hyprland, GNOME, KDE) the window runs through XWayland by default. `--wayland` uses Avalonia's native Wayland backend instead, which is newer and still missing some features. 
+
+**High-DPI screens.** Under XWayland a window often isn't told the screen's scale, and everything comes out tiny. Sidetone picks the scale in this order:
+
+1. `--scale 2` (or `--scale 150%`) on the command line
+2. **Scale** in Settings, when it isn't Automatic
+3. `AVALONIA_GLOBAL_SCALE_FACTOR`, if it's already set in the environment
+4. on Hyprland, the focused monitor's scale, when Hyprland is set to leave XWayland windows unscaled (`xwayland { force_zero_scaling = true }`, which Omarchy uses)
+5. otherwise, whatever the desktop reports
+
+Settings shows which one is in effect. A change needs a restart. With `--wayland` the desktop scales the window itself and none of this applies.
 
 To look around without connecting to anything, `./sidetone --demo` shows a made-up system.
 
@@ -352,7 +363,7 @@ Keys normally come from the FNE: the console asks for each encrypted channel's k
 
 ### Local key file
 
-If the FNE doesn't deliver keys to your console, Sidetone can read them from a password-protected **KFDEKC key container** (an `.ekc` file), the same kind the Windows console uses. Clear-text key files are not supported.
+If the FNE doesn't deliver keys to your console, Sidetone can read them from a password-protected **KFDtool key container** (an `.ekc` file), the same kind the Windows console uses. Clear-text key files are not supported.
 
 Sidetone uses the first of these that is set:
 
