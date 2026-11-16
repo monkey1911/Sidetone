@@ -294,7 +294,7 @@ namespace Sidetone.Gui
             connection.Text = string.Empty;
             details.Text = "no codeplug open";
             welcomeText.Text = "An IP dispatch console for DVMProject FNE networks.\n\n" +
-                               "Open the codeplug you use with the Windows DVM console. " +
+                               "Open the codeplug you use with the Windows DVM console.\n" +
                                "You can also start with: sidetone --codeplug FILE";
             welcomeError.Text = error ?? string.Empty;
         }
