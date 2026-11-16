@@ -8,8 +8,8 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
 
 ## State at hand-off (2026-11-16)
 
-- Version **0.23.0** on `main` (set once, in `src/Directory.Build.props`). The last release the
-  owner published is 0.23.0 or about to be; check `gh release list`.
+- Version **0.23.1** on `main` (set once, in `src/Directory.Build.props`). The last release the
+  owner published is 0.23.1 or about to be; check `gh release list`.
 - CI is green on ARM64 and x86-64: 244 checks (199 in `sidetone-cli selftest`, 45 in the GUI's
   `--selfcheck`) plus screenshots. The same 244 also pass in a local ARM64 build.
 - **Tested on the air by the owner:** RX/TX clear and AES, key delivery from the FNE, alias sync,
@@ -115,8 +115,9 @@ locally too: `out/sidetone-$R/sidetone --screenshot FILE --demo --size 1180x760 
 (add `--show page|radio|settings|keyfile|patch|recall` for a box). Save these to the scratchpad and
 read the PNG directly, with no CI round trip.
 
-Known build warning (not an error): NU1903 on `System.Security.Cryptography.Xml` 10.0.0, pulled in
-by `sidetone-core`.
+The build should have no NuGet warnings. `System.Security.Cryptography.Xml` (a direct reference in
+`sidetone-core`, used only for `.ekc` key files) was raised to 10.0.15 in 0.23.1 for advisories in
+10.0.0. Check with `dotnet list src/sidetone-core/sidetone-core.csproj package --vulnerable --include-transitive`.
 
 What CI does on every push to `main` (both architectures):
 1. builds libvocoder, publishes `sidetone-cli` and `sidetone` into one folder;
