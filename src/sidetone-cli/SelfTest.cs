@@ -776,6 +776,71 @@ B: MSC=10
             Check(!tui.RadioDialogOpen && tui.Render(120, 40).RowText(1).Contains("RADIO") && tui.Render(120, 40).RowText(1).Contains("T6"),
                   "TUI title bar has T6 and RADIO");
 
+            // patching: a call on one member goes out on the others as the same codewords
+            {
+                const uint consoleRid = 9000001, radio = 1234;
+                Tui pt = new Tui(cp, sys, TimeSpan.FromSeconds(120), null) { NoAudio = true };
+                CliPeer headers = new CliPeer(sys, new KeyStore(), verbose: false);
+                CaptureSink sentOut = new CaptureSink(headers);
+                pt.sinkForTest = sentOut;
+                pt.consoleRidForTest = consoleRid;
+                pt.Keys.Store(P25Defines.P25_ALGO_AES, TestKeyId, TestKey);
+                ConsoleChannel calling = pt.Channels.First(ch => ch.IsP25 && !ch.Encrypted);
+                ConsoleChannel secureCh = pt.Channels.First(ch => ch.Encrypted);
+
+                // a clear call from a radio on Calling
+                CaptureSink onAir = new CaptureSink(headers);
+                P25Transmitter talker = new P25Transmitter(onAir, new KeyStore(), radio, calling.Tg, P25Defines.P25_ALGO_UNENCRYPT, 0);
+                List<byte[]> spoken = new List<byte[]>();
+                talker.ClearFrame += spoken.Add;
+                talker.Start(out _);
+                for (int i = 0; i < 36; i++) talker.PushAudio(VoicedFrame(i));
+                uint airStream = talker.StreamId;
+                talker.Stop();
+
+                pt.SetPatch(calling, 1);
+                bool alone = sentOut.Tdus.Count == 0 && calling.Selected && pt.PatchName(calling) == "Patch 1" && pt.PatchNames.Count == 3;
+                pt.SetPatch(secureCh, 1);
+                Check(alone && secureCh.Selected && pt.PatchMembers(1).Count == 2 &&
+                      string.Join("\n", pt.SnapshotLog(20)).Contains("joins secure and clear channels"),
+                      "patch: joining starts listening, and a patch of secure and clear channels is warned about");
+
+                foreach (var v in onAir.Voice)
+                    calling.Rx.Handle(calling.Tg, radio, (P25DUID)v.Frame[22], v.Stream, v.Frame);
+                bool during = pt.GetStatus(secureCh).Activity == ChannelActivity.Transmitting && pt.GetStatus(secureCh).Text.Contains("patch");
+                calling.Rx.Handle(calling.Tg, radio, P25DUID.TDU, airStream, new byte[24]);
+
+                uint outStream = sentOut.Voice.Count > 0 ? sentOut.Voice[0].Stream : 0;
+                Check(during && sentOut.Voice.Count == 4 && outStream != 0 && outStream != airStream && sentOut.Voice.All(v => v.Stream == outStream) &&
+                      sentOut.Tdus.Count == 5 && sentOut.Tdus[0].Grant && sentOut.Tdus.All(t => t.Dst == secureCh.Tg && t.Src == consoleRid) &&
+                      sentOut.Voice[0].Frame[P25VoiceReceiver.HduAlgOffset] == P25Defines.P25_ALGO_AES,
+                      $"patch: a clear call on one member is sent on the secure member as its own call, encrypted, and ended with it ({sentOut.Voice.Count} LDUs, {sentOut.Tdus.Count} TDUs)");
+                List<byte[]> heard = RoundTrip(sentOut, secureCh.Tg, consoleRid, pt.Keys, out long patchMuted);
+                Check(patchMuted == 0 && SameCodewords(heard, spoken), "patch: the voice arrives as exactly the codewords that were spoken (no second pass through the vocoder)");
+
+                // the FNE sending our own patch traffic back must not start it going the other way
+                int before = sentOut.Voice.Count, tdusBefore = sentOut.Tdus.Count;
+                foreach (var v in sentOut.Voice.Take(before).ToList())
+                    secureCh.Rx.Handle(secureCh.Tg, consoleRid, (P25DUID)v.Frame[22], v.Stream, v.Frame);
+                Check(sentOut.Voice.Count == before && sentOut.Tdus.Count == tdusBefore, "patch: its own traffic coming back is not patched again");
+
+                // the console's own PTT on a member keys the rest of the patch with the same voice
+                CaptureSink mainOut = new CaptureSink(headers);
+                P25Transmitter main = new P25Transmitter(mainOut, pt.Keys, consoleRid, calling.Tg, P25Defines.P25_ALGO_UNENCRYPT, 0);
+                main.Start(out _);
+                pt.StartPatchTx(calling, main);
+                for (int i = 0; i < 18; i++) main.PushAudio(VoicedFrame(i));
+                pt.StopPatchTx();
+                main.Stop();
+                Check(mainOut.Voice.Count == 2 && sentOut.Voice.Count == before + 2 && sentOut.Tdus.Count == tdusBefore + 5,
+                      "patch: the console's own transmission on a member also goes out on the rest of the patch");
+
+                pt.Deselect(secureCh);
+                bool left = secureCh.Patch == 0 && pt.PatchMembers(1).Count == 1;
+                pt.ClearPatches();
+                Check(left && calling.Patch == 0, "patch: a channel that stops listening leaves its patch; clearing empties them all");
+            }
+
             // local key file (a KFDtool .ekc container), and selectable encryption
             string keyDir = Path.Combine(Path.GetTempPath(), $"sidetone-keys-{Environment.ProcessId}");
             try

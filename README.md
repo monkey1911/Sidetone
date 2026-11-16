@@ -132,6 +132,7 @@ Channels are shown as cards, up to four across. The mouse works in any terminal 
 | + / - | Volume of the focused card |
 | k | Request the focused card's key from the FNE again |
 | e | Switch the focused card's transmit between secure and clear, where the codeplug allows it |
+| x | Move the focused card to the next patch (none, then each patch in turn) |
 | q or Ctrl+C | Quit |
 
 Alert tones match the Windows console's built-in tones 1–6 (5 seconds each). A digital page is a P25 call alert from the console's RID to one radio (the Windows console's "Page Subscriber"); call alerts and acknowledgements addressed to the console's RID are logged when the FNE passes them on. A QuickCall II page is tone A for 1 s then tone B for 3 s (250–3000 Hz, as the Windows console's manual page), sent on every listening channel; the last page's tones are filled in next time. On P25, tones travel as IMBE tone frames, which carry the frequency in steps of about 31 Hz, so radios regenerate the nearest step. The channel marker is the console's "channel hold" beep: 0.5 s of 650 Hz every 10 seconds on each listening channel that isn't busy; change the interval with `--marker-interval SECONDS`. Tones are encrypted on secure channels and skipped on channels whose key isn't held. The tone buttons are hidden on terminals narrower than 110 columns; the keys still work.
@@ -167,6 +168,7 @@ What it has so far:
   - **Page…** opens a box for a two-tone (QuickCall II) page on every listening channel, or a digital page (P25 call alert) to one radio. The last values are filled in.
   - **Radio command…** sends a check, inhibit or uninhibit to one radio. Inhibit has to be sent twice to confirm. The radio's alias shows as you type its ID. Replies appear in the log when the FNE passes them back to the console, which not every FNE version does.
   - **Channel marker** turns the periodic beep on idle listening channels on and off
+  - **Patch…** opens the Patches box (see [Patching](#patching))
 - a transmit bar, recent calls and the log
 - **Auto / Light / Dark** in the top right. Auto follows your desktop's light or dark setting. The choice is remembered. `--theme light|dark|system` sets it from the command line.
 
@@ -230,6 +232,7 @@ Keyboard shortcuts (the same keys as the TUI where both have the feature):
 | V | Mic check (level meter) on or off |
 | K | Request the focused channel's key from the FNE |
 | E | Switch the focused channel's transmit between secure and clear, where the codeplug allows it |
+| X | Move the focused channel to the next patch (none, then each patch in turn) |
 | A | Reload the alias file and download aliases again |
 | T | Talk permit tone on or off |
 | 1 to 6 | Send an alert tone on every listening channel |
@@ -356,6 +359,28 @@ SUBSYSTEM=="input", ATTRS{idVendor}=="1234", ATTRS{idProduct}=="5678", TAG+="uac
 Avoid adding yourself to the `input` group instead: that lets every program you run read every keystroke.
 
 Sidetone doesn't take the device away from other programs, so a footswitch that types a key still types it in the focused window. Pick a key nothing else uses, such as F13 to F24.
+
+## Patching
+
+Channels in the same patch hear each other. When a call comes in on one member, the console sends it out on the others and ends it there when it ends. When you transmit on a member, the rest of the patch gets your voice too.
+
+- **Graphical console:** **Patch…** in the tool bar opens a box with a row per channel: **Off**, or one of the patches. A click takes effect at once. `X` moves the focused channel to the next patch.
+- **TUI:** `x` moves the focused card to the next patch.
+- Patched cards show `⇄` and the patch name next to the talkgroup, and `TX patch ← name` while a call is being passed on to them.
+
+How it behaves:
+
+- **One talker at a time.** While one member's call is being passed on, calls on the other members are not; the next call starts fresh.
+- **A patched channel is always listening.** Joining a patch starts listening, and a channel that stops listening leaves its patch.
+- **Receive-only channels** can be heard into a patch but are never sent to.
+- **Busy channels are skipped** for that call, and so are secure channels whose key isn't loaded. The log says which.
+- **Source ID.** Passed-on calls carry the console's radio ID, or the original radio's when the codeplug has `patchSourceIdPassthrough: true`.
+- **Names.** The patches are the codeplug's patch groups (`groups:` entries), up to six. Without any, they are Patch 1 to 3.
+- **Not remembered.** Patches are empty when Sidetone starts, so nothing is retransmitted by itself at launch.
+
+**Secure and clear channels in one patch.** Each member's traffic goes out with that member's own encryption. Patching a secure channel to a clear one therefore puts the secure channel's traffic on the air in the clear, and the log warns you when a patch is like that.
+
+**Audio quality.** The Windows console decodes a received call to audio and encodes it again for each patched channel. Sidetone passes the voice frames themselves across (decrypting and re-encrypting them as needed), so a patched call goes through the vocoder once, at the radio that spoke, and not a second time in the console.
 
 ## Encryption keys
 

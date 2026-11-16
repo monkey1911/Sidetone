@@ -218,8 +218,9 @@ namespace Sidetone.Gui
             Set(name, chan.Cfg.Name);
             name.Foreground = chan.IsP25 ? p.Text : p.Dim;
 
-            Set(tg, chan.Tg != 0 ? $"TG {chan.Tg}" : $"TG {chan.Cfg.Tgid}");
-            tg.Foreground = p.Text;
+            string patch = console.PatchName(chan);
+            Set(tg, (chan.Tg != 0 ? $"TG {chan.Tg}" : $"TG {chan.Cfg.Tgid}") + (patch != null ? $"   ⇄ {patch}" : string.Empty));
+            tg.Foreground = patch != null ? p.Accent : p.Text;
 
             if (!chan.IsP25)
             {

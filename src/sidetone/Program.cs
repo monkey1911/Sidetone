@@ -76,8 +76,8 @@ namespace Sidetone.Gui
                     case "--selfcheck": o.SelfCheck = true; break;
                     case "--show":
                         o.Show = Next().ToLowerInvariant();
-                        if (o.Show is not ("page" or "digital" or "radio" or "settings" or "keyfile"))
-                            throw new ArgumentException("--show must be page, digital, radio, settings or keyfile");
+                        if (o.Show is not ("page" or "digital" or "radio" or "settings" or "keyfile" or "patch"))
+                            throw new ArgumentException("--show must be page, digital, radio, settings, keyfile or patch");
                         break;
                     case "--space":
                     {
@@ -400,6 +400,15 @@ namespace Sidetone.Gui
             Check(clearChannel && nowClear && secure.TxSecure && c.FocusIndex == 1,
                   "E switches a selectable channel's transmit between secure and clear, and does nothing on a clear channel");
 
+            // patches: X moves the focused channel through them
+            Press(PhysicalKey.X);
+            bool inFirst = focus.Patch == 1 && c.PatchName(focus) == "Patch 1" && c.PatchNames.Count == 3;
+            Press(PhysicalKey.X);
+            Press(PhysicalKey.X);
+            bool inThird = focus.Patch == 3;
+            Press(PhysicalKey.X);
+            Check(inFirst && inThird && focus.Patch == 0 && c.PatchName(focus) == null, "X moves the focused channel through the patches and back to none");
+
             // key file password box
             w.OpenBox("keyfile");
             Dispatcher.UIThread.RunJobs();
@@ -497,7 +506,7 @@ namespace Sidetone.Gui
             Console.WriteLine("                  [--scale FACTOR] [--key-file FILE.ekc]");
             Console.WriteLine("  sidetone --install-launcher | --remove-launcher");
             Console.WriteLine("  sidetone --demo");
-            Console.WriteLine("  sidetone --screenshot FILE.png [--demo] [--theme light|dark] [--size 1280x800] [--show page|digital|radio|settings|keyfile]");
+            Console.WriteLine("  sidetone --screenshot FILE.png [--demo] [--theme light|dark] [--size 1280x800] [--show page|digital|radio|settings|keyfile|patch]");
             Console.WriteLine();
             Console.WriteLine("Without --codeplug, the codeplug opened last time is used. --demo shows a made-up system");
             Console.WriteLine("without connecting to anything. The options are the same as 'sidetone-cli tui'; see the README.");

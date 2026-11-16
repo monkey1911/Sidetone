@@ -108,6 +108,9 @@ namespace Sidetone.Core
         /// <summary>Source radio of the current (or last) call.</summary>
         public uint CurrentSource => sourceId;
 
+        /// <summary>Network stream ID of the call in progress (0 when idle).</summary>
+        public uint CurrentStreamId => streamId;
+
         /// <summary>Algorithm of the current call (0 = not known yet, 0x80 = clear).</summary>
         public byte CurrentAlgorithm => algId;
 

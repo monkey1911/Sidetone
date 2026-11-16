@@ -62,7 +62,8 @@ namespace Sidetone.Gui
         private readonly Border toolBar = new Border { Padding = new Thickness(16, 7), BorderThickness = new Thickness(0, 0, 0, 1) };
         private readonly TextBlock alertLabel = new TextBlock { Text = "Alert tones", FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 4, 0) };
         private readonly List<Tap> alertTaps = new List<Tap>();
-        private Tap pageTap, radioTap, markerTap;
+        private Tap pageTap, radioTap, markerTap, patchTap;
+        private PatchOverlay patchBox;
         private CommandOverlay overlay;
         private SettingsOverlay settingsBox;
         private KeyFileOverlay keyBox;
@@ -170,6 +171,15 @@ namespace Sidetone.Gui
                 case "digital": overlay.ShowPage(true); break;
                 case "radio": overlay.ShowRadio(); break;
                 case "settings": ShowSettings(); break;
+                case "patch":
+                    if (console != null)
+                    {
+                        console.SetPatch(console.Channels[0], 1);
+                        console.SetPatch(console.Channels[1], 1);
+                    }
+                    patchBox.Show();
+                    patchBox.Refresh(palette);
+                    break;
                 case "keyfile": keyBox.Show("/home/operator/keys/demo.ekc", true); keyBox.Refresh(palette); break;
             }
         }
@@ -249,12 +259,15 @@ namespace Sidetone.Gui
             tools.Children.Add(pageTap.Root);
             tools.Children.Add(radioTap.Root);
             tools.Children.Add(markerTap.Root);
+            patchTap = new Tap("Patch…", () => { overlay.Close(); patchBox.Show(); RefreshNow(); }, fontSize: 12, padY: 5);
+            tools.Children.Add(patchTap.Root);
             toolBar.Child = tools;
 
             overlay = new CommandOverlay(() => console, RefreshNow, () => root.Focus());
             settingsBox = new SettingsOverlay(SaveSettings, () => _ = PickCodeplug(), LauncherAction, () => root.Focus(),
                                               () => _ = PickKeyFile(), ClearKeyFile, ShowKeyBox);
             keyBox = new KeyFileOverlay(UnlockKeyFile, () => root.Focus());
+            patchBox = new PatchOverlay(() => console, RefreshNow, () => root.Focus());
 
             // console view: cards, transmit bar, recent calls and log
             ScrollViewer cardScroll = new ScrollViewer { Content = cardPanel, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
@@ -308,11 +321,13 @@ namespace Sidetone.Gui
             Grid.SetRow(overlay.Root, 1);
             Grid.SetRow(settingsBox.Root, 1);
             Grid.SetRow(keyBox.Root, 1);
+            Grid.SetRow(patchBox.Root, 1);
             root.Children.Add(header);
             root.Children.Add(consoleView);
             root.Children.Add(welcome);
             root.Children.Add(overlay.Root);     // last, so they're on top
             root.Children.Add(settingsBox.Root);
+            root.Children.Add(patchBox.Root);
             root.Children.Add(keyBox.Root);
             Content = root;
         }
@@ -781,6 +796,7 @@ namespace Sidetone.Gui
         public void CloseConsole()
         {
             overlay?.Close();
+            patchBox?.Close();
             DispatchConsole c = console;
             console = null;
             if (c == null || offline)
@@ -943,6 +959,11 @@ namespace Sidetone.Gui
             foreach (ChannelCard card in cards)
                 card.Refresh(p);
             overlay.Refresh(p);
+            patchBox.Refresh(p);
+            if (c.Channels.Any(ch => ch.Patch != 0))
+                patchTap.Paint(p.Accent, p.OnStrong);
+            else
+                patchTap.Paint(Brushes.Transparent, p.Text, p.Edge);
 
             RefreshTxBar(c, p, tx, tone);
             RefreshRecent(c, p);
@@ -1028,6 +1049,17 @@ namespace Sidetone.Gui
                 {
                     e.Handled = true;
                     keyBox.Submit();
+                }
+                return;
+            }
+
+            // the Patches box is open: Esc or Enter closes it
+            if (patchBox.IsOpen)
+            {
+                if (e.Key == Key.Escape || e.Key == Key.Enter)
+                {
+                    e.Handled = true;
+                    patchBox.Close();
                 }
                 return;
             }
@@ -1121,6 +1153,7 @@ namespace Sidetone.Gui
                     case Key.V: c.ToggleMicMonitor(); break;
                     case Key.K: c.RequestKey(focus); break;
                     case Key.E: c.ToggleTxSecure(focus); break;
+                    case Key.X: c.CyclePatch(focus); break;
                     case Key.A: c.RefreshAliases(); break;
                     case Key.T: c.ToggleTalkPermit(); break;
                     case Key.C: c.ToggleMarker(); break;

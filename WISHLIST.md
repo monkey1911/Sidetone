@@ -20,7 +20,8 @@ Things we'd like to do, roughly in the order that makes sense to do them. Nothin
 5. ~~**Selectable encryption and local key files.**~~ Done in 0.19: channels marked `selectable_encryption` can be switched between secure and clear for transmit, and keys can come from a password-protected KFDtool `.ekc` container.
    - Still to do: `sidetone-cli listen` doesn't use a key file yet, and a key file has not been tried against one made by KFDtool itself, only one written by the self-test.
 
-6. **Patching.** Start by reading how the Windows console does it. Worth looking into: passing voice frames between talkgroups without decoding and re-encoding them, which would avoid a second pass through the vocoder.
+6. ~~**Patching.**~~ Done in 0.20, passing voice frames between talkgroups without decoding and re-encoding them.
+   - Still to do: one-way patches (the Windows console has them), remembering patches between runs if that turns out to be wanted, and patching across modes once there are other modes.
 
 7. **NXDN and DMR.** libvocoder already has the codec both use, and the cards already show modes that aren't supported yet, so the work is a receiver and a transmitter per mode. Needs live traffic to test against.
    - **Analog** too, once we've confirmed how DVM carries it. It may be the simplest of the three.

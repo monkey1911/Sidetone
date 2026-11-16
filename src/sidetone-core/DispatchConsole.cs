@@ -46,6 +46,9 @@ namespace Sidetone.Core
         /// <summary>The key ID transmit uses right now.</summary>
         public ushort ActiveKeyId => TxSecure ? KeyId : (ushort)0;
 
+        /// <summary>The patch this channel is in (1 and up, an index into the console's patch names plus one), or 0 for none.</summary>
+        public volatile int Patch;
+
         public volatile bool Selected;
         public volatile bool Muted;
         public double Gain = 1.0;
@@ -68,7 +71,7 @@ namespace Sidetone.Core
     /// <summary>
     /// The dispatch console for one system.
     /// </summary>
-    public class DispatchConsole
+    public partial class DispatchConsole
     {
         internal const int MaxLogLines = 500;
         internal const int MaxRecentCalls = 100;
@@ -147,6 +150,7 @@ namespace Sidetone.Core
             aliases = new RadioAliasBook(codeplug, system, Path.GetDirectoryName(settingsPath ?? AppSettings.DefaultPath));
             aliases.Status += AddLog;
             this.logFile = logFile;
+            SetUpPatches(codeplug);
 
             foreach (Codeplug.Zone zone in codeplug.Zones ?? new List<Codeplug.Zone>())
                 foreach (Codeplug.Channel c in zone.Channels ?? new List<Codeplug.Channel>())
@@ -229,6 +233,7 @@ namespace Sidetone.Core
             CancelTones(wait: true);
             SaveSettings();     // before the channels are closed below
             StopTx("console closed");
+            ClearPatches(quiet: true);
             keys.SetLocal(null, 0);
             localKeys?.Dispose();   // wipes the key file's keys from memory
             localKeys = null;
@@ -353,6 +358,9 @@ namespace Sidetone.Core
             P25Transmitter t = tx;
             if (t != null && t.IsTransmitting && txChan == c)
                 return new ChannelStatus(ChannelActivity.Transmitting, $"TX {DateTime.Now - t.StartedAt:mm\\:ss}", muted);
+            string patched = PatchTransmitText(c);
+            if (patched != null)
+                return new ChannelStatus(ChannelActivity.Transmitting, patched, muted);
 
             P25VoiceReceiver rx = c.Rx;
             if (c.Selected && rx != null && rx.InCall)
@@ -438,6 +446,8 @@ namespace Sidetone.Core
                 AddLog($"{c.Cfg.Name}: end {aliases.Describe(src)}, {secs:F1} s, {crypt}{(muted > 0 ? $", {muted} frames muted" : string.Empty)}");
                 AddRecent(c.Cfg.Name, aliases.Label(src), $"{secs:F0} s, {crypt}{(muted > 0 ? ", partly muted" : string.Empty)}", tx: false);
             };
+            rx.Codeword += imbe => PatchCodeword(c, rx, imbe);
+            rx.CallEnded += (src, secs, played, muted, crypt) => PatchCallEnded(c);
             rx.Audio += samples =>
             {
                 PipeWireSink sink = c.Sink;
@@ -477,6 +487,8 @@ namespace Sidetone.Core
                 return;
             if (txChan == c)
                 StopTx("channel deselected");
+            if (c.Patch != 0)
+                SetPatch(c, 0);     // a patch member has to be listening
 
             c.Selected = false;
             P25VoiceReceiver rx = c.Rx;
@@ -595,6 +607,8 @@ namespace Sidetone.Core
                 return Refuse($"{c.Cfg.Name}: receive-only channel");
             if (peer == null || !peer.Connected)
                 return Refuse("not connected to the FNE yet");
+            if (PatchTransmitText(c) != null)
+                return Refuse($"{c.Cfg.Name}: a patch is transmitting here");
 
             Select(c);
 
@@ -614,6 +628,7 @@ namespace Sidetone.Core
 
             tx = t;
             txChan = c;
+            StartPatchTx(c, t);     // the rest of its patch hears the console too
             txFeed = t;
             if (talkPermit)
                 c.Sink?.Write(TalkPermitPcm());     // played locally once the call has started, as the Windows console does
@@ -693,6 +708,7 @@ namespace Sidetone.Core
                 return;
 
             txFeed = null;      // stop feeding mic audio before the call ends
+            StopPatchTx();
 
             double secs = (DateTime.Now - t.StartedAt).TotalSeconds;
             bool was = t.IsTransmitting;
@@ -1032,6 +1048,7 @@ namespace Sidetone.Core
 
         public void Housekeeping()
         {
+            PatchHousekeeping();
             string micFail = pendingMicFail;
             if (micFail != null)
             {

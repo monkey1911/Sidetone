@@ -178,6 +178,38 @@ namespace Sidetone.Core
                         throw new ArgumentException("expected 160 samples");
                     encoder.encode(samples, imbe);
                 }
+                Queue(imbe);
+            }
+        }
+
+        /// <summary>
+        /// Raised with each clear (not yet encrypted) IMBE codeword this transmitter sends, so the same
+        /// voice can go out on patched channels without being encoded again. The array is a copy.
+        /// </summary>
+        public event Action<byte[]> ClearFrame;
+
+        /// <summary>
+        /// Queues one 20 ms frame that is already an IMBE codeword (clear, 11 bytes): voice received on
+        /// another talkgroup being patched to this one. Nothing is decoded or encoded again; the codeword
+        /// is only encrypted for this talkgroup if it is secure.
+        /// </summary>
+        public void PushImbe(byte[] codeword)
+        {
+            if (codeword == null || codeword.Length != P25VoiceReceiver.ImbeLength)
+                throw new ArgumentException("expected an 11-byte IMBE codeword");
+            lock (sync)
+            {
+                if (!IsTransmitting)
+                    return;
+                Queue((byte[])codeword.Clone());
+            }
+        }
+
+        /// <summary>Encrypts a clear codeword if the call is secure, and sends an LDU every nine (caller holds the lock).</summary>
+        private void Queue(byte[] imbe)
+        {
+            {
+                ClearFrame?.Invoke((byte[])imbe.Clone());
 
                 if (crypto != null)
                 {

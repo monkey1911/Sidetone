@@ -498,6 +498,7 @@ namespace Sidetone.Cli
                         case '-': case '_': Quieter(c); break;
                         case 'k': case 'K': RequestKey(c); break;
                         case 'e': case 'E': ToggleTxSecure(c); break;
+                        case 'x': case 'X': CyclePatch(c); break;
                         case >= '1' and <= '6': SendAlert(e.Char - '0'); break;
                         case 'r': case 'R': OpenRadio(); break;
                         case 't': case 'T': ToggleTalkPermit(); break;
@@ -798,7 +799,8 @@ namespace Sidetone.Cli
             }
 
             // line 1: talkgroup and crypto
-            screen.Text(ix, y, $"TG {c.Tg}", Style.Of(Ansi.BrightWhite), iw);
+            string patch = PatchName(c);
+            screen.Text(ix, y, $"TG {c.Tg}{(patch != null ? $" ⇄ {patch}" : string.Empty)}", patch != null ? Style.Of(Ansi.BrightCyan, bold: true) : Style.Of(Ansi.BrightWhite), iw);
             // a selectable channel switched to clear still decrypts what it receives, so say which half is clear
             string crypt = !c.Encrypted ? "clear" : c.TxSecure ? $"{KeyStore.AlgorithmName(c.TxAlg)} 🔒" : "TX CLEAR 🔓";
             screen.TextRight(right, y, crypt, !c.Encrypted ? dim : c.TxSecure ? Style.Of(Ansi.BrightYellow) : Style.Of(Ansi.BrightRed, bold: true));
@@ -957,7 +959,7 @@ namespace Sidetone.Cli
                     screen.Text(1 + used, y, "   MIC MUTED (u to unmute)", Style.Of(Ansi.BrightRed, bold: true), width - 2 - used);
             }
 
-            screen.Text(1, y + 1, "click card: listen  [●]: stop  Space: PTT  1-6: alert  p/d: page  r: radio cmd  c: marker  t: talk permit  v: mic meter  u: mic mute  a: aliases  m/M: mute card/all  +/-: vol  k: key  e: secure/clear  q: quit",
+            screen.Text(1, y + 1, "click card: listen  [●]: stop  Space: PTT  1-6: alert  p/d: page  r: radio cmd  c: marker  t: talk permit  v: mic meter  u: mic mute  a: aliases  m/M: mute card/all  +/-: vol  k: key  e: secure/clear  x: patch  q: quit",
                         Style.Of(Ansi.Grey), width - 2);
         }
     } // public sealed class Tui
