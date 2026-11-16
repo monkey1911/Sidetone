@@ -102,13 +102,13 @@ namespace Sidetone.Gui
 
             try
             {
-                using Stream icon = Launcher.OpenIcon("sidetone-256.png");
+                using Stream icon = AppLauncher.OpenIcon("sidetone-256.png");
                 if (icon != null)
                     Icon = new WindowIcon(icon);
             }
             catch (Exception) { /* a window without an icon is fine */ }
             if (!offline)
-                Launcher.Refresh(Launcher.DataHome, Environment.ProcessPath);      // a new version in a new folder keeps its launcher entry
+                AppLauncher.Refresh(AppLauncher.DataHome, Environment.ProcessPath);      // a new version in a new folder keeps its launcher entry
 
             BuildShell();
             ActualThemeVariantChanged += (s, e) => ApplyTheme();
@@ -555,7 +555,7 @@ namespace Sidetone.Gui
                 TxLimit = Math.Clamp(appSettings.TxLimitSeconds ?? 120, SettingsOverlay.MinTxLimit, SettingsOverlay.MaxTxLimit),
                 SpaceToggle = appSettings.SpaceToggle
             }, audio, inputs, opt.Demo ? "The demo system (no codeplug file)." : currentPath, CommandLineOverrides(),
-               !offline && Launcher.IsInstalled(Launcher.DataHome));
+               !offline && AppLauncher.IsInstalled(AppLauncher.DataHome));
             settingsBox.Refresh(palette);
         }
 
@@ -605,10 +605,10 @@ namespace Sidetone.Gui
             {
                 if (add)
                 {
-                    Launcher.Install(Launcher.DataHome, Environment.ProcessPath);
+                    AppLauncher.Install(AppLauncher.DataHome, Environment.ProcessPath);
                     return "Added. Look for Sidetone in your app launcher.";
                 }
-                Launcher.Remove(Launcher.DataHome);
+                AppLauncher.Remove(AppLauncher.DataHome);
                 return "Removed from your app launcher.";
             }
             catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)

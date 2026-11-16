@@ -11,7 +11,7 @@ using System.Reflection;
 
 namespace Sidetone.Gui
 {
-    public static class Launcher
+    public static class AppLauncher
     {
         public const string DesktopFileName = "sidetone.desktop";
         public const string IconName = "sidetone";
@@ -34,7 +34,7 @@ namespace Sidetone.Gui
         private static string PngPath(string dataHome) => Path.Combine(dataHome, "icons", "hicolor", "256x256", "apps", IconName + ".png");
 
         /// <summary>One of the icon files built into the program (sidetone.svg, sidetone-256.png), or null.</summary>
-        public static Stream OpenIcon(string name) => typeof(Launcher).Assembly.GetManifestResourceStream(name);
+        public static Stream OpenIcon(string name) => typeof(AppLauncher).Assembly.GetManifestResourceStream(name);
 
         /// <summary>
         /// A program path as the Exec key wants it: in double quotes, with the characters the
@@ -130,5 +130,5 @@ namespace Sidetone.Gui
             }
             return was;
         }
-    } // public static class Launcher
+    } // public static class AppLauncher
 }

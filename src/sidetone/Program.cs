@@ -179,12 +179,12 @@ namespace Sidetone.Gui
             {
                 if (install)
                 {
-                    string entry = Launcher.Install(Launcher.DataHome, Environment.ProcessPath);
+                    string entry = AppLauncher.Install(AppLauncher.DataHome, Environment.ProcessPath);
                     Console.WriteLine($"sidetone: added to the app launcher ({entry})");
                 }
                 else
                 {
-                    Console.WriteLine(Launcher.Remove(Launcher.DataHome) ? "sidetone: removed from the app launcher" : "sidetone: it wasn't in the app launcher");
+                    Console.WriteLine(AppLauncher.Remove(AppLauncher.DataHome) ? "sidetone: removed from the app launcher" : "sidetone: it wasn't in the app launcher");
                 }
                 return 0;
             }
@@ -392,20 +392,20 @@ namespace Sidetone.Gui
             string data = Path.Combine(Path.GetTempPath(), $"sidetone-launcher-{Environment.ProcessId}");
             try
             {
-                string entry = Launcher.Install(data, "/opt/side tone/sidetone");
+                string entry = AppLauncher.Install(data, "/opt/side tone/sidetone");
                 string text = File.ReadAllText(entry);
-                Check(Launcher.IsInstalled(data) && text.Contains("Exec=\"/opt/side tone/sidetone\"") && text.Contains("Icon=sidetone") && text.Contains("Name=Sidetone") &&
+                Check(AppLauncher.IsInstalled(data) && text.Contains("Exec=\"/opt/side tone/sidetone\"") && text.Contains("Icon=sidetone") && text.Contains("Name=Sidetone") &&
                       new FileInfo(Path.Combine(data, "icons", "hicolor", "scalable", "apps", "sidetone.svg")).Length > 200 &&
                       new FileInfo(Path.Combine(data, "icons", "hicolor", "256x256", "apps", "sidetone.png")).Length > 1000,
                       "launcher: the entry and both icons are written, with the program path quoted");
-                bool same = Launcher.Refresh(data, "/opt/side tone/sidetone");
-                bool moved = Launcher.Refresh(data, "/opt/sidetone-next/sidetone");
+                bool same = AppLauncher.Refresh(data, "/opt/side tone/sidetone");
+                bool moved = AppLauncher.Refresh(data, "/opt/sidetone-next/sidetone");
                 Check(!same && moved && File.ReadAllText(entry).Contains("Exec=\"/opt/sidetone-next/sidetone\""),
                       "launcher: an entry follows the program to a new folder, and is left alone otherwise");
                 File.WriteAllText(entry, "[Desktop Entry]\nName=Mine\n");
-                Check(!Launcher.Refresh(data, "/opt/elsewhere/sidetone"), "launcher: an entry someone else wrote is left alone");
-                Check(Launcher.Remove(data) && !Launcher.IsInstalled(data) && !Launcher.Remove(data), "launcher: removing takes the entry and icons away");
-                Check(Launcher.QuoteExec("/a/50% \"x\" $y") == "\"/a/50%% \\\\\"x\\\\\" \\\\$y\"", "launcher: reserved characters in the path are escaped");
+                Check(!AppLauncher.Refresh(data, "/opt/elsewhere/sidetone"), "launcher: an entry someone else wrote is left alone");
+                Check(AppLauncher.Remove(data) && !AppLauncher.IsInstalled(data) && !AppLauncher.Remove(data), "launcher: removing takes the entry and icons away");
+                Check(AppLauncher.QuoteExec("/a/50% \"x\" $y") == "\"/a/50%% \\\\\"x\\\\\" \\\\$y\"", "launcher: reserved characters in the path are escaped");
             }
             finally
             {
