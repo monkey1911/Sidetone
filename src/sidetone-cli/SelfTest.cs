@@ -920,12 +920,12 @@ B: MSC=10
                     List<string> shown = new List<string>();
                     rt.notifyForTest = (title, body) => shown.Add(title);
                     rt.consoleRidForTest = consoleRid;
-                    byte[] alert = CliPeer.BuildCallAlert(consoleRid, radio);
-                    rt.OnP25Control(P25Defines.TSBK_IOSP_CALL_ALRT, radio, consoleRid, alert);
-                    rt.OnP25Control(P25Defines.TSBK_IOSP_CALL_ALRT, radio, consoleRid, alert);
-                    rt.OnP25Control(P25Defines.TSBK_IOSP_CALL_ALRT, radio, 4321, alert);
+                    byte[] pageTsbk = CliPeer.BuildCallAlert(consoleRid, radio);
+                    rt.OnP25Control(P25Defines.TSBK_IOSP_CALL_ALRT, radio, consoleRid, pageTsbk);
+                    rt.OnP25Control(P25Defines.TSBK_IOSP_CALL_ALRT, radio, consoleRid, pageTsbk);
+                    rt.OnP25Control(P25Defines.TSBK_IOSP_CALL_ALRT, radio, 4321, pageTsbk);
                     rt.Notifications = false;
-                    rt.OnP25Control(P25Defines.TSBK_IOSP_CALL_ALRT, 5555, consoleRid, alert);
+                    rt.OnP25Control(P25Defines.TSBK_IOSP_CALL_ALRT, 5555, consoleRid, pageTsbk);
                     Check(shown.Count == 1 && shown[0].Contains("Paged by"), $"notifications: a page to this console shows one notification; repeats, other radios' pages and 'off' don't ({shown.Count})");
                 }
                 finally
