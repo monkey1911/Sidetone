@@ -95,7 +95,7 @@ namespace Sidetone.Cli
             Console.WriteLine("  sidetone-cli ptt      down | up | toggle | hold | status [--socket PATH]");
             Console.WriteLine("  sidetone-cli selftest");
             Console.WriteLine();
-            Console.WriteLine("listen follows one P25 talkgroup and plays clear calls through PipeWire (pw-play).");
+            Console.WriteLine("listen follows one P25 talkgroup and plays them through the sound system (PipeWire).");
             Console.WriteLine("devices lists the audio outputs and inputs. --output / --input pick one by any unique");
             Console.WriteLine("part of its name (or its ID); without them the system default is used.");
             Console.WriteLine("ptt controls a running console (sidetone or 'sidetone-cli tui') from a hotkey or script: bind 'ptt down' to a key's");
@@ -187,9 +187,17 @@ namespace Sidetone.Cli
                 if (!opt.NoPlay)
                 {
                     AudioSelection audio = AudioSelection.Choose(opt.Output, null);
-                    PipeWireSink pw = new PipeWireSink(opt.Player, audio.OutputTarget);
-                    sinks.Add(pw);
-                    Say($"{audio.OutputReport}, through {Path.GetFileName(pw.Command)}");
+                    if (opt.Player != null)
+                    {
+                        PipeWireSink pw = new PipeWireSink(opt.Player, audio.OutputTarget);    // --player: a PipeWire player of your choosing
+                        sinks.Add(pw);
+                        Say($"{audio.OutputReport}, through {Path.GetFileName(pw.Command)}");
+                    }
+                    else
+                    {
+                        sinks.Add(AudioBackend.Current.OpenOutput(audio.OutputTarget));
+                        Say($"{audio.OutputReport}, through {AudioBackend.Current.Name}");
+                    }
                 }
                 else if (!string.IsNullOrWhiteSpace(opt.Output))
                     Say("note: --output is ignored with --no-play");
@@ -262,10 +270,8 @@ namespace Sidetone.Cli
                 : cp.Systems.FirstOrDefault(s => string.Equals(s.Name, opt.SystemName, StringComparison.OrdinalIgnoreCase))
                     ?? throw new ArgumentException($"no system named '{opt.SystemName}'");
 
-            if (PipeWireSink.FindPlayer() == null)
-                Console.Error.WriteLine("warning: pw-play not found; you'll see activity but hear nothing");
-            if (PipeWireCapture.FindRecorder() == null)
-                Console.Error.WriteLine("warning: pw-record not found; transmit won't work");
+            foreach (string problem in AudioBackend.Current.Problems())
+                Console.Error.WriteLine($"warning: {problem}");
 
             // resolved before the TUI takes over the terminal, so a bad --output / --input is a plain error
             AudioSelection audio = AudioSelection.Choose(opt.Output, opt.Input);
@@ -476,7 +482,7 @@ namespace Sidetone.Cli
             Console.WriteLine($"processing: {stages}{(vocoderPass ? ", then through IMBE and back" : string.Empty)}");
             Console.WriteLine($"in:  {WavFile.Describe(input)}");
             Console.WriteLine($"out: {WavFile.Describe(all)}");
-            Console.WriteLine($"wrote {files[1]} ({all.Length / (double)PipeWireSink.SampleRate:F1} s)");
+            Console.WriteLine($"wrote {files[1]} ({all.Length / (double)VoiceProcessor.SampleRate:F1} s)");
             return 0;
         }
 

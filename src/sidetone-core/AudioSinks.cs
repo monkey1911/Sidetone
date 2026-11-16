@@ -23,7 +23,7 @@ namespace Sidetone.Core
     /// <summary>
     /// Plays PCM on a PipeWire output by piping it into pw-play.
     /// </summary>
-    public sealed class PipeWireSink : IAudioSink
+    public sealed class PipeWireSink : IAudioOutput
     {
         public const int SampleRate = 8000;
 

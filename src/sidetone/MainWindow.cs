@@ -523,10 +523,8 @@ namespace Sidetone.Gui
                     DemoCodeplug.Populate(c);
                 else
                 {
-                    if (PipeWireSink.FindPlayer() == null)
-                        c.AddLog("warning: pw-play not found; you'll see activity but hear nothing");
-                    if (PipeWireCapture.FindRecorder() == null)
-                        c.AddLog("warning: pw-record not found; transmit won't work");
+                    foreach (string problem in AudioBackend.Current.Problems())
+                        c.AddLog($"warning: {problem}");
                     c.WorkQueued += () => Dispatcher.UIThread.Post(() =>
                     {
                         if (console != c)
@@ -577,7 +575,7 @@ namespace Sidetone.Gui
             {
                 AudioDeviceList list = null;
                 try { list = AudioDeviceList.Query(); }
-                catch (Exception) { /* can't check; PipeWire gets the name as saved */ }
+                catch (Exception) { /* can't check; the sound system gets the name as saved */ }
                 if (list != null && savedOutput && !Connected(list.Outputs, output))
                 {
                     notes.Add($"warning: the saved audio output '{output}' isn't connected; using the system default");

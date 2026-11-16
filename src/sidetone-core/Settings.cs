@@ -49,9 +49,9 @@ namespace Sidetone.Core
         public bool TalkPermitTone { get; set; } = true;
         /// <summary>The graphical console's theme: "light", "dark", or null to follow the desktop.</summary>
         public string Theme { get; set; }
-        /// <summary>Audio output chosen in the graphical console's Settings (a PipeWire node name), or null for the system default.</summary>
+        /// <summary>Audio output chosen in the graphical console's Settings (the sound system's device name), or null for the system default.</summary>
         public string AudioOutput { get; set; }
-        /// <summary>Microphone chosen in Settings (a PipeWire node name), or null for the system default.</summary>
+        /// <summary>Microphone chosen in Settings (the sound system's device name), or null for the system default.</summary>
         public string AudioInput { get; set; }
         /// <summary>PTT device chosen in Settings (its name), or null for none.</summary>
         public string PttDeviceName { get; set; }

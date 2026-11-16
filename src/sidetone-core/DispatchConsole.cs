@@ -59,7 +59,7 @@ namespace Sidetone.Core
         public volatile bool Muted;
         public double Gain = 1.0;
         public P25VoiceReceiver Rx;
-        public PipeWireSink Sink;
+        public IAudioOutput Sink;
 
         // activity seen on channels that aren't selected
         public bool Active;
@@ -97,7 +97,7 @@ namespace Sidetone.Core
 
         internal P25Transmitter tx;
         internal Chan txChan;
-        internal PipeWireCapture capture;
+        internal IAudioInput capture;
         internal volatile string pendingTxStop;
 
         // microphone: one capture shared by transmit and the level meter
@@ -124,7 +124,7 @@ namespace Sidetone.Core
         /// <summary>Self-test hook: don't start audio players when selecting channels.</summary>
         public bool NoAudio { get; set; }
 
-        /// <summary>Output and input to use (from --output / --input or the defaults); null means PipeWire's defaults, unreported.</summary>
+        /// <summary>Output and input to use (from --output / --input or the defaults); null means the sound system's defaults, unreported.</summary>
         public AudioSelection Audio { get; set; }
 
         /// <summary>Index of the focused card (self-test hook).</summary>
@@ -460,7 +460,7 @@ namespace Sidetone.Core
             rx.CallEnded += (src, secs, played, muted, crypt) => RecallCallEnded(c);
             rx.Audio += samples =>
             {
-                PipeWireSink sink = c.Sink;
+                IAudioOutput sink = c.Sink;
                 if (sink == null || c.Muted || globalMute || (txChan == c && tx?.IsTransmitting == true) || toneChans.Contains(c))
                     return;
                 c.RxLevel?.Process(samples);
@@ -472,7 +472,7 @@ namespace Sidetone.Core
             {
                 try
                 {
-                    PipeWireSink sink = new PipeWireSink(target: Audio?.OutputTarget);
+                    IAudioOutput sink = AudioBackend.Current.OpenOutput(Audio?.OutputTarget);
                     sink.Failed += msg => AddLog($"{c.Cfg.Name}: {msg}");
                     c.Sink = sink;
                 }
@@ -506,7 +506,7 @@ namespace Sidetone.Core
 
             c.Selected = false;
             P25VoiceReceiver rx = c.Rx;
-            PipeWireSink sink = c.Sink;
+            IAudioOutput sink = c.Sink;
             c.Rx = null;
             c.Sink = null;
             rx?.Dispose();
@@ -961,7 +961,7 @@ namespace Sidetone.Core
                 return true;
             try
             {
-                PipeWireCapture cap = new PipeWireCapture(target: Audio?.InputTarget);
+                IAudioInput cap = AudioBackend.Current.OpenInput(Audio?.InputTarget);
                 cap.Block += OnMicBlock;
                 cap.Failed += msg => pendingMicFail = msg;
                 capture = cap;
@@ -1079,7 +1079,7 @@ namespace Sidetone.Core
         {
             if (micMonitor || txFeed != null)
                 return;
-            PipeWireCapture cap = capture;
+            IAudioInput cap = capture;
             capture = null;
             cap?.Dispose();
             micLevel.Reset();
@@ -1121,7 +1121,7 @@ namespace Sidetone.Core
             if (micFail != null)
             {
                 pendingMicFail = null;
-                PipeWireCapture cap = capture;
+                IAudioInput cap = capture;
                 capture = null;
                 cap?.Dispose();
                 micLevel.Reset();

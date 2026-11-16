@@ -35,7 +35,7 @@ Things we'd like to do, roughly in the order that makes sense to do them. Nothin
 ## Audio
 
 - ~~**Microphone processing.**~~ Done in 0.22: low cut, noise gate, automatic level and limiter in C#, plus optional receive leveling.
-- **An audio device layer.** One internal interface for playing and recording, with PipeWire as the first implementation, so Windows (WASAPI) and macOS (Core Audio) can be added without touching the rest. Next.
+- ~~**An audio device layer.**~~ Done in 0.23: all playing, recording and device listing goes through one interface, with PipeWire as the first backend. A Windows (WASAPI) or macOS (Core Audio) port now needs only its own backend for audio (PTT devices and the control socket still need theirs).
 
 ## Project plumbing
 

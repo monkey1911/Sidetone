@@ -841,6 +841,41 @@ B: MSC=10
                 Check(left && calling.Patch == 0, "patch: a channel that stops listening leaves its patch; clearing empties them all");
             }
 
+            // the audio device layer: everything plays and records through the backend
+            {
+                FakeAudio fake = new FakeAudio();
+                IAudioBackend real = AudioBackend.Current;
+                try
+                {
+                    AudioBackend.Current = fake;
+                    Tui ft = new Tui(cp, sys, TimeSpan.FromSeconds(120), null);
+                    ConsoleChannel ch = ft.Channels.First(x => x.IsP25 && !x.Encrypted);
+                    ft.Select(ch);
+                    bool opened = fake.Outputs.Count == 1 && ch.Sink == fake.Outputs[0];
+                    ch.Sink.Write(new short[160]);
+                    ft.OpenMic(out string micError);
+                    fake.Input?.Raise(Enumerable.Range(0, 160).Select(i => (short)(i % 2 == 0 ? 8000 : -8000)).ToArray());
+                    ft.AddDemoCall(ch, 1234, "Unit 1", 1, false, "clear", DateTime.Now);
+                    ft.ReplayLast(ch);
+                    bool replayed = fake.Outputs.Count == 2;
+                    for (int i = 0; i < 200 && fake.Outputs[1].Blocks < 50; i++)
+                        Thread.Sleep(20);
+                    ft.Deselect(ch, quiet: true);
+                    Check(opened && micError == null && fake.Input != null && ft.MicLevel.Read().Active && replayed && fake.Outputs[1].Blocks == 50 &&
+                          AudioSelection.Choose(null, null).OutputReport.Contains("Fake default"),
+                          $"audio layer: channels, the microphone, replays and device lists all go through the backend ({fake.Outputs.Count} outputs)");
+                    ft.Select(ch);
+                    int logged = ft.SnapshotLog(50).Count;
+                    fake.Outputs[2].Fail("the device went away");
+                    Check(ft.SnapshotLog(50).Any(l => l.Contains("the device went away")), "audio layer: a backend reporting a failed output is logged on the channel");
+                }
+                finally
+                {
+                    AudioBackend.Current = real;
+                }
+                Check(AudioBackend.Current is PipeWireBackend && AudioBackend.Current.Name == "PipeWire", "audio layer: Linux uses the PipeWire backend");
+            }
+
             // audio processing
             {
                 short[] Tone(double hz, double dbfs, int blocks, int seed = 0)
@@ -1424,6 +1459,35 @@ zones:
         algo: ""aes""
         keyId: 0x561
 ";
+
+        /// <summary>A sound system that plays and records nothing, and counts what it's given.</summary>
+        private sealed class FakeAudio : IAudioBackend
+        {
+            public sealed class Out : IAudioOutput
+            {
+                public int Blocks;
+                public event Action<string> Failed;
+                public void Write(short[] samples) => Interlocked.Increment(ref Blocks);
+                public void Fail(string why) => Failed?.Invoke(why);
+                public void Dispose() { }
+            }
+            public sealed class In : IAudioInput
+            {
+                public event Action<short[]> Block;
+                public event Action<string> Failed;
+                public void Raise(short[] block) => Block?.Invoke(block);
+                public void Fail(string why) => Failed?.Invoke(why);
+                public void Dispose() { }
+            }
+
+            public readonly List<Out> Outputs = new List<Out>();
+            public In Input;
+            public string Name => "Fake";
+            public AudioDeviceList ListDevices() => throw new InvalidOperationException("no devices here");
+            public IAudioOutput OpenOutput(string device) { Out o = new Out(); lock (Outputs) Outputs.Add(o); return o; }
+            public IAudioInput OpenInput(string device) => Input = new In();
+            public IReadOnlyList<string> Problems() => Array.Empty<string>();
+        }
 
         private sealed class ListSink : IAudioSink
         {

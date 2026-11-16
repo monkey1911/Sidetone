@@ -396,6 +396,8 @@ It prints the speech and peak levels before and after. The same switches as Sett
 
 All of this is plain C# inside Sidetone, independent of PipeWire, so it will behave the same on other platforms.
 
+**Sound system.** Sidetone plays and records through one internal audio interface. On Linux that is PipeWire (`pw-play`, `pw-record` and `pw-dump`); other platforms will get their own (WASAPI on Windows, Core Audio on macOS) without changes elsewhere.
+
 ## Instant recall and recording
 
 **Instant recall.** The last ten calls on each listening channel are kept, including your own transmissions, and can be played again:

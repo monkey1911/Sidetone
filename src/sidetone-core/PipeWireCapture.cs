@@ -13,7 +13,7 @@ namespace Sidetone.Core
     /// <summary>
     /// Captures 8 kHz mono audio from PipeWire.
     /// </summary>
-    public sealed class PipeWireCapture : IDisposable
+    public sealed class PipeWireCapture : IAudioInput
     {
         private readonly Process recorder;
         private readonly Thread reader;

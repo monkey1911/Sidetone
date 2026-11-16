@@ -46,9 +46,14 @@ namespace Sidetone.Core
         public AudioDevice DefaultInput => Inputs.FirstOrDefault(d => d.Name == DefaultInputName);
 
         /// <summary>
+        /// The device list from the audio backend in use. Throws InvalidOperationException if that isn't possible.
+        /// </summary>
+        public static AudioDeviceList Query() => AudioBackend.Current.ListDevices();
+
+        /// <summary>
         /// Reads the device list from pw-dump. Throws InvalidOperationException if that isn't possible.
         /// </summary>
-        public static AudioDeviceList Query()
+        public static AudioDeviceList QueryPipeWire()
         {
             string pwDump = FindOnPath("pw-dump") ?? throw new InvalidOperationException("pw-dump not found");
             ProcessStartInfo psi = new ProcessStartInfo(pwDump)
@@ -263,12 +268,12 @@ namespace Sidetone.Core
             }
 
             if (devices == null)
-                return (null, $"audio {what}: PipeWire default (couldn't name it: {queryError})");
+                return (null, $"audio {what}: {AudioBackend.Current.Name} default (couldn't name it: {queryError})");
             if (def != null)
                 return (null, $"audio {what}: {def.Label} (system default)");
             if (!string.IsNullOrEmpty(defName))
                 return (null, $"audio {what}: {defName} (system default)");
-            return (null, $"audio {what}: PipeWire default (none set{(list.Count == 0 ? $"; no {what}s found" : string.Empty)})");
+            return (null, $"audio {what}: {AudioBackend.Current.Name} default (none set{(list.Count == 0 ? $"; no {what}s found" : string.Empty)})");
         }
     } // public sealed class AudioSelection
 }
