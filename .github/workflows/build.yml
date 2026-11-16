@@ -83,14 +83,19 @@ jobs:
         run: |
           out/dvmcli-$RID/dvmgui --version
           out/dvmcli-$RID/dvmgui --selfcheck
-          for theme in dark light; do
-            out/dvmcli-$RID/dvmgui --screenshot "out/gui-$theme.png" --demo --theme "$theme" --size 1180x760
-            test -s "out/gui-$theme.png" || { echo "::error::no screenshot for the $theme theme"; exit 1; }
-            file -b "out/gui-$theme.png"
-            echo "-----BEGIN PNG $theme-----"
-            base64 -w 120 "out/gui-$theme.png"
-            echo "-----END PNG $theme-----"
-          done
+          shot() {  # name, then dvmgui options
+            name="$1"; shift
+            out/dvmcli-$RID/dvmgui --screenshot "out/gui-$name.png" --demo --size 1180x760 "$@"
+            test -s "out/gui-$name.png" || { echo "::error::no screenshot: $name"; exit 1; }
+            file -b "out/gui-$name.png"
+            echo "-----BEGIN PNG $name-----"
+            base64 -w 120 "out/gui-$name.png"
+            echo "-----END PNG $name-----"
+          }
+          shot dark --theme dark
+          shot light --theme light
+          shot radio --theme dark --show radio
+          shot page --theme light --show page
 
       - name: Upload GUI screenshots
         uses: actions/upload-artifact@v4

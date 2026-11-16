@@ -5,9 +5,9 @@ The [DVM Desktop Dispatch Console](https://github.com/DVMProject/dvmconsole) for
 There are two front ends over the same console:
 
 - **`dvmcli`**: a terminal console (TUI) that works anywhere, including over SSH, plus the `listen`, `ptt` and `devices` commands.
-- **`dvmgui`**: a graphical console (Avalonia), with light and dark themes. It is new and has fewer features than the TUI so far. See [Graphical console (dvmgui)](#graphical-console-dvmgui).
+- **`dvmgui`**: a graphical console (Avalonia), with light and dark themes. See [Graphical console (dvmgui)](#graphical-console-dvmgui).
 
-**What works:** FNE login, P25 receive and transmit (clear, AES-256, DES, ADP/ARC4 with keys from the FNE), PipeWire audio, channel cards, push-to-talk from the keyboard, a hotkey or a PTT device, alert tones and pages (TUI), radio aliases, and WAV recording.
+**What works:** FNE login, P25 receive and transmit (clear, AES-256, DES, ADP/ARC4 with keys from the FNE), PipeWire audio, channel cards, push-to-talk from the keyboard, a hotkey or a PTT device, alert tones, pages, radio commands, the channel marker, radio aliases, and WAV recording.
 
 **Not yet:** DMR/NXDN/analog.
 
@@ -158,6 +158,11 @@ What it has so far:
 - a card per channel: talkgroup, encryption and key, what the channel is doing, the last call, and Listen, volume and Mute. Clicking a card focuses it (PTT transmits there) and starts listening, as in the TUI.
 - **PTT** (click to start, click to stop), **MUTE** for all receive audio, **Mute mic**, and **Mic check** with a level meter
 - **Quit** in the top right, for desktops without window buttons
+- a tool bar under the header:
+  - **Alert tones 1 to 6**, sent on every listening channel. While a tone is going out, the PTT button reads **STOP TONE**; click it or press Esc to stop.
+  - **Page…** opens a box for a two-tone (QuickCall II) page on every listening channel, or a digital page (P25 call alert) to one radio. The last values are filled in.
+  - **Radio command…** sends a check, inhibit or uninhibit to one radio. Inhibit has to be sent twice to confirm. The radio's alias shows as you type its ID, and replies appear in the log.
+  - **Channel marker** turns the periodic beep on idle listening channels on and off
 - a transmit bar, recent calls and the log
 - **Auto / Light / Dark** in the top right. Auto follows your desktop's light or dark setting. The choice is remembered. `--theme light|dark|system` sets it from the command line.
 
@@ -178,11 +183,16 @@ Keyboard shortcuts (the same keys as the TUI where both have the feature):
 | K | Request the focused channel's key from the FNE |
 | A | Reload the alias file and download aliases again |
 | T | Talk permit tone on or off |
+| 1 to 6 | Send an alert tone on every listening channel |
+| P / D | Open the page box: two-tone / digital |
+| R | Open the radio command box |
+| C | Channel marker on or off |
 | Ctrl+Q | Quit |
+
+In the page and radio command boxes, Enter sends, Esc closes, and the other shortcut keys are just typing.
 
 Space is hold-to-talk here because a window, unlike a terminal, can tell when a key is let go. If the window loses the keyboard while you're holding it, the transmission ends. To make Space start and stop instead, as in the TUI, start with `--space toggle`.
 
-Not in the GUI yet: alert tones, pages, radio commands and the channel marker. Use the TUI for those.
 
 **Wayland.** On Wayland desktops (Hyprland, GNOME, KDE) the window runs through XWayland by default. `--wayland` uses Avalonia's native Wayland backend instead, which is newer and still missing some features. If the window looks blurry or the wrong size on a high-DPI screen under XWayland, try `--wayland`, or set a scale yourself with `AVALONIA_GLOBAL_SCALE_FACTOR=2 ./dvmgui`.
 

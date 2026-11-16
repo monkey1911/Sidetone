@@ -44,7 +44,7 @@ namespace dvmgui
         private Palette shownLogPalette, shownRecentPalette;
 
         // shell
-        private readonly Grid root = new Grid { RowDefinitions = new RowDefinitions("Auto,*") };
+        private readonly Grid root = new Grid { RowDefinitions = new RowDefinitions("Auto,*"), Focusable = true };
         private readonly Border header = new Border { Padding = new Thickness(16, 10) };
         private readonly TextBlock systemName = new TextBlock { FontSize = 20, FontWeight = FontWeight.Bold, VerticalAlignment = VerticalAlignment.Center };
         private readonly TextBlock connection = new TextBlock { FontSize = 13, FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center };
@@ -57,7 +57,12 @@ namespace dvmgui
         private readonly StackPanel consoleButtons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
 
         // console view
-        private readonly Grid consoleView = new Grid { RowDefinitions = new RowDefinitions("*,Auto,230") };
+        private readonly Grid consoleView = new Grid { RowDefinitions = new RowDefinitions("Auto,*,Auto,230") };
+        private readonly Border toolBar = new Border { Padding = new Thickness(16, 7), BorderThickness = new Thickness(0, 0, 0, 1) };
+        private readonly TextBlock alertLabel = new TextBlock { Text = "Alert tones", FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 4, 0) };
+        private readonly List<Tap> alertTaps = new List<Tap>();
+        private Tap pageTap, radioTap, markerTap;
+        private CommandOverlay overlay;
         private readonly WrapPanel cardPanel = new WrapPanel { Margin = new Thickness(10, 8) };
         private readonly Border txBar = new Border { Padding = new Thickness(16, 7) };
         private readonly TextBlock txText = new TextBlock { FontSize = 14, FontWeight = FontWeight.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
@@ -119,6 +124,20 @@ namespace dvmgui
         /// <summary>The console being shown, or null (self-check hook).</summary>
         internal DispatchConsole ActiveConsole => console;
 
+        /// <summary>The page and radio-command boxes (self-check hook).</summary>
+        internal CommandOverlay Overlay => overlay;
+
+        /// <summary>Opens a box by name: page, digital or radio (for screenshots).</summary>
+        internal void OpenBox(string which)
+        {
+            switch (which)
+            {
+                case "page": overlay.ShowPage(false); break;
+                case "digital": overlay.ShowPage(true); break;
+                case "radio": overlay.ShowRadio(); break;
+            }
+        }
+
         private static string Normalize(string theme) =>
             theme != null && (theme.Equals("light", StringComparison.OrdinalIgnoreCase) || theme.Equals("dark", StringComparison.OrdinalIgnoreCase))
                 ? theme.ToLowerInvariant() : null;
@@ -174,6 +193,28 @@ namespace dvmgui
             headerGrid.Children.Add(right);
             header.Child = headerGrid;
 
+            // tool bar: alert tones, page, radio command, channel marker
+            StackPanel tools = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+            tools.Children.Add(alertLabel);
+            for (int n = 1; n <= 6; n++)
+            {
+                int number = n;
+                Tap t = new Tap(n.ToString(), () => Do(c => c.SendAlert(number)), fontSize: 13, minWidth: 34, padX: 8, padY: 4);
+                alertTaps.Add(t);
+                tools.Children.Add(t.Root);
+            }
+            pageTap = new Tap("Page…", () => overlay.ShowPage(false), fontSize: 12, padY: 5);
+            pageTap.Root.Margin = new Thickness(14, 0, 0, 0);
+            radioTap = new Tap("Radio command…", () => overlay.ShowRadio(), fontSize: 12, padY: 5);
+            markerTap = new Tap("Channel marker", () => Do(c => c.ToggleMarker()), fontSize: 12, padY: 5);
+            markerTap.Root.Margin = new Thickness(14, 0, 0, 0);
+            tools.Children.Add(pageTap.Root);
+            tools.Children.Add(radioTap.Root);
+            tools.Children.Add(markerTap.Root);
+            toolBar.Child = tools;
+
+            overlay = new CommandOverlay(() => console, RefreshNow, () => root.Focus());
+
             // console view: cards, transmit bar, recent calls and log
             ScrollViewer cardScroll = new ScrollViewer { Content = cardPanel, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
             keyHints.Text = $"Space: PTT ({(opt.SpaceToggle ? "start/stop" : "hold")})    Enter: listen    M: mute    U: mute mic    V: mic check    Ctrl+Q: quit";
@@ -203,9 +244,11 @@ namespace dvmgui
             bottom.Children.Add(recentPanel);
             bottom.Children.Add(logPanel);
 
-            Grid.SetRow(cardScroll, 0);
-            Grid.SetRow(txBar, 1);
-            Grid.SetRow(bottom, 2);
+            Grid.SetRow(toolBar, 0);
+            Grid.SetRow(cardScroll, 1);
+            Grid.SetRow(txBar, 2);
+            Grid.SetRow(bottom, 3);
+            consoleView.Children.Add(toolBar);
             consoleView.Children.Add(cardScroll);
             consoleView.Children.Add(txBar);
             consoleView.Children.Add(bottom);
@@ -221,9 +264,11 @@ namespace dvmgui
             Grid.SetRow(header, 0);
             Grid.SetRow(consoleView, 1);
             Grid.SetRow(welcome, 1);
+            Grid.SetRow(overlay.Root, 1);
             root.Children.Add(header);
             root.Children.Add(consoleView);
             root.Children.Add(welcome);
+            root.Children.Add(overlay.Root);     // last, so it's on top
             Content = root;
         }
 
@@ -359,6 +404,7 @@ namespace dvmgui
         /// <summary>Stops the console (when the window closes or another codeplug is opened).</summary>
         public void CloseConsole()
         {
+            overlay?.Close();
             DispatchConsole c = console;
             console = null;
             if (c == null || offline)
@@ -404,6 +450,9 @@ namespace dvmgui
             details.Foreground = p.Dim;
             micTrack.Background = p.Track;
             micText.Foreground = p.Dim;
+            toolBar.Background = p.Panel;
+            toolBar.BorderBrush = p.Edge;
+            alertLabel.Foreground = p.Dim;
 
             foreach (Border panel in new[] { recentPanel, logPanel })
             {
@@ -459,7 +508,7 @@ namespace dvmgui
 
             bool tx = c.Transmitting;
             ToneJob tone = c.ActiveTone;
-            ptt.Text = tx ? "● TX" : "PTT";
+            ptt.Text = tone != null ? "STOP TONE" : tx ? "● TX" : "PTT";
             if (tx || tone != null)
                 ptt.Paint(p.Tx, p.OnStrong);
             else
@@ -496,8 +545,25 @@ namespace dvmgui
                 micText.Foreground = m.Clipping ? p.Tx : p.Dim;
             }
 
+            // tool bar
+            for (int i = 0; i < alertTaps.Count; i++)
+            {
+                if (tone != null && tone.Plan.Name == $"alert {i + 1}")
+                    alertTaps[i].Paint(p.Tx, p.OnStrong);
+                else
+                    alertTaps[i].Paint(Brushes.Transparent, p.Text, p.Edge);
+            }
+            pageTap.Paint(Brushes.Transparent, p.Text, p.Edge);
+            radioTap.Paint(Brushes.Transparent, p.Text, p.Edge);
+            markerTap.Text = c.MarkerOn ? "Channel marker on" : "Channel marker";
+            if (c.MarkerOn)
+                markerTap.Paint(p.Warn, p.OnStrong);
+            else
+                markerTap.Paint(Brushes.Transparent, p.Text, p.Edge);
+
             foreach (ChannelCard card in cards)
                 card.Refresh(p);
+            overlay.Refresh(p);
 
             RefreshTxBar(c, p, tx, tone);
             RefreshRecent(c, p);
@@ -564,10 +630,36 @@ namespace dvmgui
                 return;
             }
 
+            // a box is open: Esc and Enter are its; everything else is typing
+            if (overlay.Open != CommandOverlay.Kind.None)
+            {
+                if (e.Key == Key.Escape)
+                {
+                    e.Handled = true;
+                    overlay.Close();
+                }
+                else if (e.Key == Key.Enter)
+                {
+                    e.Handled = true;
+                    overlay.Enter();
+                }
+                return;
+            }
+
             DispatchConsole c = console;
             if (c == null || ctrl || e.KeyModifiers.HasFlag(KeyModifiers.Alt) || e.KeyModifiers.HasFlag(KeyModifiers.Meta))
                 return;
             ConsoleChannel focus = c.Channels[c.FocusIndex];
+
+            int alert = e.Key >= Key.D1 && e.Key <= Key.D6 ? e.Key - Key.D1 + 1
+                      : e.Key >= Key.NumPad1 && e.Key <= Key.NumPad6 ? e.Key - Key.NumPad1 + 1 : 0;
+            if (alert != 0)
+            {
+                e.Handled = true;
+                c.SendAlert(alert);
+                RefreshNow();
+                return;
+            }
 
             if (e.Key == Key.Space)
             {
@@ -617,6 +709,10 @@ namespace dvmgui
                     case Key.K: c.RequestKey(focus); break;
                     case Key.A: c.RefreshAliases(); break;
                     case Key.T: c.ToggleTalkPermit(); break;
+                    case Key.C: c.ToggleMarker(); break;
+                    case Key.P: overlay.ShowPage(false); break;
+                    case Key.D: overlay.ShowPage(true); break;
+                    case Key.R: overlay.ShowRadio(); break;
                     default: return;
                 }
             }

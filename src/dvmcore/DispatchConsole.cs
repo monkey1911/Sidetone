@@ -13,6 +13,7 @@
 * other threads (the PTT socket, PTT devices) is queued and run by RunControlCalls / Tick.
 */
 
+using System.Globalization;
 using dvmconsole;
 using fnecore;
 using fnecore.P25;
@@ -1097,32 +1098,70 @@ namespace dvmcore
         /// </summary>
         public void SendPage(double aHz, double bHz) => SendManual(TonePlan.Page(aHz, bHz));
 
-        internal void SendManual(TonePlan plan)
+        /// <summary>
+        /// Why an alert tone or page can't be sent right now, or null when it can.
+        /// </summary>
+        public string ToneBlocker()
         {
             if (toneJob != null)
-            {
-                AddLog($"a tone is already being sent ({toneJob.Plan.Name}); Esc stops it");
-                return;
-            }
+                return $"a tone is already being sent ({toneJob.Plan.Name}); Esc stops it";
             if (Transmitting)
-            {
-                AddLog("stop transmitting before sending a tone");
-                return;
-            }
+                return "stop transmitting before sending a tone";
             if (peer == null || !peer.Connected)
-            {
-                AddLog("not connected to the FNE yet");
-                return;
-            }
-
-            List<Chan> targets = TxCapableListening();
-            if (targets.Count == 0)
-            {
-                AddLog("no listening channels to send the tone on (click a card to listen)");
-                return;
-            }
-            SendTone(plan, targets, quiet: false);
+                return "not connected to the FNE yet";
+            if (TxCapableListening().Count == 0)
+                return "no listening channels to send the tone on (click a card to listen)";
+            return null;
         }
+
+        internal void SendManual(TonePlan plan)
+        {
+            string why = ToneBlocker();
+            if (why != null)
+            {
+                AddLog(why);
+                return;
+            }
+            SendTone(plan, TxCapableListening(), quiet: false);
+        }
+
+        /// <summary>
+        /// Sends a QuickCall II page from tone frequencies as typed (Hz). Returns null when it was
+        /// started, or what is wrong; the tones are remembered for next time.
+        /// </summary>
+        public string SendTonePage(string aText, string bText)
+        {
+            aText = (aText ?? string.Empty).Trim();
+            bText = (bText ?? string.Empty).Trim();
+            bool okA = double.TryParse(aText, NumberStyles.Float, CultureInfo.InvariantCulture, out double a);
+            bool okB = double.TryParse(bText, NumberStyles.Float, CultureInfo.InvariantCulture, out double b);
+            if (!okA || a < TonePlan.MinPageHz || a > TonePlan.MaxPageHz)
+                return $"tone A must be {TonePlan.MinPageHz:F0}-{TonePlan.MaxPageHz:F0} Hz";
+            if (!okB || b < TonePlan.MinPageHz || b > TonePlan.MaxPageHz)
+                return $"tone B must be {TonePlan.MinPageHz:F0}-{TonePlan.MaxPageHz:F0} Hz";
+
+            string why = ToneBlocker();
+            if (why != null)
+                return why;
+
+            lastPageA = aText;
+            lastPageB = bText;
+            MarkDirty();
+            SendPage(a, b);
+            return null;
+        }
+
+        /// <summary>A radio ID as typed: 1 to 16777215.</summary>
+        public static bool TryParseRid(string text, out uint rid) =>
+            uint.TryParse((text ?? string.Empty).Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out rid) && rid != 0 && rid <= 0xFFFFFF;
+
+        /// <summary>Whether a radio command (an index into <see cref="RadioActions"/>) should be confirmed before it's sent.</summary>
+        public static bool RadioActionNeedsConfirm(int action) => RadioActions[action].Function == ExtendedFunction.INHIBIT;
+
+        /// <summary>The last page's tones and radio ID, as typed (remembered between runs).</summary>
+        public string LastPageA => lastPageA;
+        public string LastPageB => lastPageB;
+        public string LastPageRid => lastPageRid;
 
         // the last page's values, remembered between runs
         internal string lastPageA = string.Empty, lastPageB = string.Empty, lastPageRid = string.Empty;

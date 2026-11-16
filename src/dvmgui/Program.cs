@@ -8,7 +8,8 @@
 *          [--socket PATH | --no-socket] [--tx-limit SECONDS] [--log FILE]
 *          [--settings FILE | --no-settings] [--space hold|toggle]
 *   dvmgui --demo                      a made-up system, nothing is connected
-*   dvmgui --screenshot FILE.png       render the window off-screen and exit (with --demo, --theme, --size WxH)
+*   dvmgui --screenshot FILE.png       render the window off-screen and exit (with --demo, --theme, --size WxH,
+*                                      --show page|digital|radio)
 *   dvmgui --selfcheck                 press the keyboard shortcuts on an off-screen window and check what they do
 */
 
@@ -28,7 +29,7 @@ namespace dvmgui
     /// </summary>
     public sealed class GuiOptions
     {
-        public string Codeplug, SystemName, Output, Input, PttDevice, PttButton, MuteButton, Socket, LogFile, Theme, Screenshot, SettingsFile;
+        public string Codeplug, SystemName, Output, Input, PttDevice, PttButton, MuteButton, Socket, LogFile, Theme, Screenshot, SettingsFile, Show;
         public bool NoSocket, Wayland, Demo, NoSettings, SpaceToggle, SelfCheck;
         public int TxLimitSeconds = 120;
         public int Width = 1280, Height = 800;
@@ -57,6 +58,11 @@ namespace dvmgui
                     case "--demo": o.Demo = true; break;
                     case "--screenshot": o.Screenshot = Next(); break;
                     case "--selfcheck": o.SelfCheck = true; break;
+                    case "--show":
+                        o.Show = Next().ToLowerInvariant();
+                        if (o.Show is not ("page" or "digital" or "radio"))
+                            throw new ArgumentException("--show must be page, digital or radio");
+                        break;
                     case "--space":
                     {
                         string mode = Next().ToLowerInvariant();
@@ -164,6 +170,8 @@ namespace dvmgui
 
             MainWindow window = new MainWindow(opt);
             window.Show();
+            if (opt.Show != null)
+                window.OpenBox(opt.Show);
             window.RefreshNow();
             Dispatcher.UIThread.RunJobs();
 
@@ -273,6 +281,53 @@ namespace dvmgui
                 Dispatcher.UIThread.MainLoop(stop.Token);
             Check(w.SpacePresses == 1 && w.SpaceReleases == 1, $"letting go of Space releases once, shortly after ({w.SpacePresses} / {w.SpaceReleases})");
 
+            // tones, the marker, and the page and radio command boxes
+            Press(PhysicalKey.C);
+            bool marker = c.MarkerOn;
+            Press(PhysicalKey.C);
+            Check(marker && !c.MarkerOn, "C turns the channel marker on and off");
+
+            Press(PhysicalKey.Digit1);
+            Check(c.SnapshotLog(1).Any(l => l.Contains("not connected to the FNE yet")), "1 asks the console for alert tone 1 (refused here: not connected)");
+
+            CommandOverlay box = w.Overlay;
+            Press(PhysicalKey.R);
+            Check(box.Open == CommandOverlay.Kind.Radio, "R opens the radio command box");
+            w.KeyTextInput("1234");
+            Dispatcher.UIThread.RunJobs();
+            Check(box.RadioRid.Text == "1234", $"typing goes into the radio ID field ('{box.RadioRid.Text}')");
+            Press(PhysicalKey.M);
+            Press(PhysicalKey.Space);
+            Check(!focus.Muted && w.SpacePresses == 1 && box.Open == CommandOverlay.Kind.Radio, "while a box is open, shortcut keys don't act on the console");
+
+            box.SelectRadioAction(1);
+            Press(PhysicalKey.Enter);
+            bool asked = box.Open == CommandOverlay.Kind.Radio && box.Message.Contains("again to inhibit 1234");
+            Press(PhysicalKey.Enter);
+            Check(asked && box.Open == CommandOverlay.Kind.Radio && box.Message.Contains("ot connected"),
+                  $"inhibit asks to be confirmed, and a command that can't be sent keeps the box open and says why ('{box.Message}')");
+            Press(PhysicalKey.Escape);
+            Check(box.Open == CommandOverlay.Kind.None, "Esc closes the box");
+
+            Press(PhysicalKey.P);
+            bool pageOpen = box.Open == CommandOverlay.Kind.Page && !box.Digital;
+            w.KeyTextInput("100");
+            Dispatcher.UIThread.RunJobs();
+            Press(PhysicalKey.Enter);       // tone B is empty: Enter moves on to it
+            w.KeyTextInput("1000");
+            Dispatcher.UIThread.RunJobs();
+            Press(PhysicalKey.Enter);
+            Check(pageOpen && box.ToneA.Text == "100" && box.ToneB.Text == "1000" && box.Message.Contains("one A must be"),
+                  $"P opens the two-tone page box; Enter goes from tone A to tone B; a tone out of range is refused ('{box.ToneA.Text}' / '{box.ToneB.Text}' / '{box.Message}')");
+            Press(PhysicalKey.Escape);
+
+            Press(PhysicalKey.D);
+            bool digitalOpen = box.Open == CommandOverlay.Kind.Page && box.Digital;
+            Press(PhysicalKey.Enter);
+            Check(digitalOpen && box.Message.Contains("radio ID"), "D opens the digital page box, which needs a radio ID");
+            Press(PhysicalKey.Escape);
+            Check(box.Open == CommandOverlay.Kind.None, "the boxes are closed again");
+
             w.KeyPressQwerty(PhysicalKey.Q, RawInputModifiers.Control);
             Dispatcher.UIThread.RunJobs();
             Check(closed, "Ctrl+Q closes the window");
@@ -291,7 +346,7 @@ namespace dvmgui
             Console.WriteLine("         [--socket PATH | --no-socket] [--tx-limit SECONDS] [--log FILE]");
             Console.WriteLine("         [--settings FILE | --no-settings] [--space hold|toggle]");
             Console.WriteLine("  dvmgui --demo");
-            Console.WriteLine("  dvmgui --screenshot FILE.png [--demo] [--theme light|dark] [--size 1280x800]");
+            Console.WriteLine("  dvmgui --screenshot FILE.png [--demo] [--theme light|dark] [--size 1280x800] [--show page|digital|radio]");
             Console.WriteLine();
             Console.WriteLine("Without --codeplug, the codeplug opened last time is used. --demo shows a made-up system");
             Console.WriteLine("without connecting to anything. The options are the same as 'dvmcli tui'; see the README.");
@@ -299,7 +354,8 @@ namespace dvmgui
             Console.WriteLine();
             Console.WriteLine("Keys: Space push-to-talk (hold; --space toggle makes it start/stop), Esc stop transmitting,");
             Console.WriteLine("arrows move between cards, Enter listen, M mute channel, Shift+M mute all, +/- volume,");
-            Console.WriteLine("U mute mic, V mic check, K request key, A reload aliases, T talk permit tone, Ctrl+Q quit.");
+            Console.WriteLine("U mute mic, V mic check, K request key, A reload aliases, T talk permit tone, 1-6 alert tones,");
+            Console.WriteLine("P page, D digital page, R radio command, C channel marker, Ctrl+Q quit.");
         }
     } // public static class Program
 }

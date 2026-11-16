@@ -410,6 +410,16 @@ B: MSC=10
             Check(Tui.RmsDb(new short[160]) <= LevelMeter.FloorDb && Tui.RmsDb(voice) > Tui.NoAudioDb && Tui.RmsDb(Sine(20)) < Tui.NoAudioDb,
                   "no-audio warning: speech counts as audio, a muted-mic trickle (-64 dB) doesn't");
 
+            // helpers shared with the graphical console
+            Check(DispatchConsole.TryParseRid(" 9511 ", out uint parsed) && parsed == 9511 && !DispatchConsole.TryParseRid("0", out _) &&
+                  !DispatchConsole.TryParseRid("16777216", out _) && !DispatchConsole.TryParseRid("12a", out _) && !DispatchConsole.TryParseRid(null, out _),
+                  "radio IDs are accepted from 1 to 16777215 only");
+            Check(tui.SendTonePage("100", "1000").Contains("tone A") && tui.SendTonePage("1000", "x").Contains("tone B") &&
+                  tui.SendTonePage("1000", "1500") == "not connected to the FNE yet" && tui.ToneBlocker() == "not connected to the FNE yet",
+                  "a tone page is checked (range, then whether a tone can be sent) before anything is transmitted");
+            Check(DispatchConsole.RadioActionNeedsConfirm(1) && !DispatchConsole.RadioActionNeedsConfirm(0) && !DispatchConsole.RadioActionNeedsConfirm(2),
+                  "only inhibit asks to be confirmed");
+
             tui.OnDevicePtt(true);
             tui.OnDevicePtt(false);
             string text = string.Join("\n", Enumerable.Range(0, 40).Select(y => tui.Render(120, 40).RowText(y)));
