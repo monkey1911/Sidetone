@@ -62,8 +62,12 @@ namespace Sidetone.Gui
         private readonly Border toolBar = new Border { Padding = new Thickness(16, 7), BorderThickness = new Thickness(0, 0, 0, 1) };
         private readonly TextBlock alertLabel = new TextBlock { Text = "Alert tones", FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 4, 0) };
         private readonly List<Tap> alertTaps = new List<Tap>();
-        private Tap pageTap, radioTap, markerTap, patchTap;
+        private Tap pageTap, radioTap, markerTap, patchTap, recallTap;
         private PatchOverlay patchBox;
+        private RecallOverlay recallBox;
+
+        /// <summary>The Instant recall box (self-check hook).</summary>
+        internal RecallOverlay RecallBox => recallBox;
         private CommandOverlay overlay;
         private SettingsOverlay settingsBox;
         private KeyFileOverlay keyBox;
@@ -171,6 +175,10 @@ namespace Sidetone.Gui
                 case "digital": overlay.ShowPage(true); break;
                 case "radio": overlay.ShowRadio(); break;
                 case "settings": ShowSettings(); break;
+                case "recall":
+                    recallBox.Show(console?.Channels[1]);
+                    recallBox.Refresh(palette);
+                    break;
                 case "patch":
                     if (console != null)
                     {
@@ -261,13 +269,18 @@ namespace Sidetone.Gui
             tools.Children.Add(markerTap.Root);
             patchTap = new Tap("Patch…", () => { overlay.Close(); patchBox.Show(); RefreshNow(); }, fontSize: 12, padY: 5);
             tools.Children.Add(patchTap.Root);
+            recallTap = new Tap("Recall…", () => { overlay.Close(); recallBox.Show(FocusedChannel()); RefreshNow(); }, fontSize: 12, padY: 5);
+            recallTap.Root.Margin = new Thickness(6, 0, 0, 0);
+            tools.Children.Add(recallTap.Root);
             toolBar.Child = tools;
 
             overlay = new CommandOverlay(() => console, RefreshNow, () => root.Focus());
             settingsBox = new SettingsOverlay(SaveSettings, () => _ = PickCodeplug(), LauncherAction, () => root.Focus(),
-                                              () => _ = PickKeyFile(), ClearKeyFile, ShowKeyBox);
+                                              () => _ = PickKeyFile(), ClearKeyFile, ShowKeyBox,
+                                              () => _ = PickRecordingsFolder(), () => SetRecordingsFolder(null), OpenRecordingsFolder);
             keyBox = new KeyFileOverlay(UnlockKeyFile, () => root.Focus());
             patchBox = new PatchOverlay(() => console, RefreshNow, () => root.Focus());
+            recallBox = new RecallOverlay(() => console, RefreshNow, () => root.Focus(), OpenRecordingsFolder);
 
             // console view: cards, transmit bar, recent calls and log
             ScrollViewer cardScroll = new ScrollViewer { Content = cardPanel, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
@@ -322,12 +335,14 @@ namespace Sidetone.Gui
             Grid.SetRow(settingsBox.Root, 1);
             Grid.SetRow(keyBox.Root, 1);
             Grid.SetRow(patchBox.Root, 1);
+            Grid.SetRow(recallBox.Root, 1);
             root.Children.Add(header);
             root.Children.Add(consoleView);
             root.Children.Add(welcome);
             root.Children.Add(overlay.Root);     // last, so they're on top
             root.Children.Add(settingsBox.Root);
             root.Children.Add(patchBox.Root);
+            root.Children.Add(recallBox.Root);
             root.Children.Add(keyBox.Root);
             Content = root;
         }
@@ -480,6 +495,8 @@ namespace Sidetone.Gui
                 {
                     Audio = audio,
                     NoAudio = offline,
+                    RecordingsFolder = opt.RecordDir != null ? Path.GetFullPath(opt.RecordDir) : null,
+                    Notifications = !opt.NoNotify && appSettings.Notifications != false,
                     ControlSocketPath = offline || opt.NoSocket ? null : opt.Socket != null ? Path.GetFullPath(opt.Socket) : ControlServer.DefaultPath,
                     PttDevice = !offline && pttDevice != null ? (pttDevice.Value.Device, pttDevice.Value.Button, pttDevice.Value.Mute) : null
                 };
@@ -592,6 +609,64 @@ namespace Sidetone.Gui
         */
 
         /// <summary>Changes remembered settings, wherever they are being kept right now.</summary>
+        /// <summary>The focused channel, or null.</summary>
+        private ConsoleChannel FocusedChannel()
+        {
+            DispatchConsole c = console;
+            return c == null || c.Channels.Count == 0 ? null : c.Channels[Math.Clamp(c.FocusIndex, 0, c.Channels.Count - 1)];
+        }
+
+        /*
+        ** Recordings
+        */
+
+        private async Task PickRecordingsFolder()
+        {
+            try
+            {
+                IReadOnlyList<IStorageFolder> folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+                {
+                    Title = "Choose where recordings go",
+                    AllowMultiple = false
+                });
+                string path = folders != null && folders.Count > 0 ? folders[0].TryGetLocalPath() : null;
+                if (path != null)
+                    SetRecordingsFolder(path);
+            }
+            catch (Exception ex)
+            {
+                console?.AddLog($"warning: couldn't open a folder dialog ({ex.Message}); use --record-dir DIR instead");
+            }
+        }
+
+        /// <summary>Saves the recordings folder (null for the default); it applies to the next call recorded.</summary>
+        private void SetRecordingsFolder(string path)
+        {
+            ChangeSettings(s => s.RecordingsFolder = path);
+            if (console != null)
+                console.AddLog($"recordings now go to {console.RecordingsFolder}" + (opt.RecordDir != null ? " (after this run: --record-dir is in effect)" : string.Empty));
+            RefreshNow();
+        }
+
+        /// <summary>Opens the recordings folder in the file manager.</summary>
+        private void OpenRecordingsFolder()
+        {
+            string folder = console?.RecordingsFolder ?? appSettings.RecordingsFolder ?? DispatchConsole.DefaultRecordingsFolder;
+            if (offline)
+                return;
+            try
+            {
+                Directory.CreateDirectory(folder);
+                System.Diagnostics.ProcessStartInfo psi = new System.Diagnostics.ProcessStartInfo("xdg-open") { UseShellExecute = false };
+                psi.ArgumentList.Add(folder);
+                System.Diagnostics.Process.Start(psi)?.Dispose();
+            }
+            catch (Exception ex)
+            {
+                console?.AddLog($"warning: couldn't open {folder} ({ex.Message})");
+            }
+        }
+
         private void ChangeSettings(Action<AppSettings> change)
         {
             change(appSettings);
@@ -726,10 +801,13 @@ namespace Sidetone.Gui
                 MuteButton = appSettings.MuteButton,
                 Scale = appSettings.UiScale,
                 TxLimit = Math.Clamp(appSettings.TxLimitSeconds ?? 120, SettingsOverlay.MinTxLimit, SettingsOverlay.MaxTxLimit),
-                SpaceToggle = appSettings.SpaceToggle
+                SpaceToggle = appSettings.SpaceToggle,
+                Notifications = appSettings.Notifications != false
             }, audio, inputs, opt.Demo ? "The demo system (no codeplug file)." : currentPath, CommandLineOverrides(),
                !offline && AppLauncher.IsInstalled(AppLauncher.DataHome), KeyFileSummary(out bool locked), locked,
-               appSettings.KeyFile != null && opt.KeyFile == null);
+               appSettings.KeyFile != null && opt.KeyFile == null,
+               console?.RecordingsFolder ?? appSettings.RecordingsFolder ?? DispatchConsole.DefaultRecordingsFolder,
+               appSettings.RecordingsFolder != null && opt.RecordDir == null);
             settingsBox.Refresh(palette);
         }
 
@@ -761,6 +839,7 @@ namespace Sidetone.Gui
                 s.MuteButton = v.MuteButton;
                 s.TxLimitSeconds = v.TxLimit == 120 ? null : v.TxLimit;
                 s.SpaceToggle = v.SpaceToggle;
+                s.Notifications = v.Notifications ? null : false;
             });
             UpdateKeyHints();
 
@@ -797,6 +876,7 @@ namespace Sidetone.Gui
         {
             overlay?.Close();
             patchBox?.Close();
+            recallBox?.Close();
             DispatchConsole c = console;
             console = null;
             if (c == null || offline)
@@ -960,6 +1040,11 @@ namespace Sidetone.Gui
                 card.Refresh(p);
             overlay.Refresh(p);
             patchBox.Refresh(p);
+            recallBox.Refresh(p);
+            if (c.Replaying != null)
+                recallTap.Paint(p.Accent, p.OnStrong);
+            else
+                recallTap.Paint(Brushes.Transparent, p.Text, p.Edge);
             if (c.Channels.Any(ch => ch.Patch != 0))
                 patchTap.Paint(p.Accent, p.OnStrong);
             else
@@ -1049,6 +1134,26 @@ namespace Sidetone.Gui
                 {
                     e.Handled = true;
                     keyBox.Submit();
+                }
+                return;
+            }
+
+            // the Instant recall box is open: Esc or Enter closes it, L still plays and stops
+            if (recallBox.IsOpen)
+            {
+                if (e.Key == Key.Escape || e.Key == Key.Enter)
+                {
+                    e.Handled = true;
+                    recallBox.Close();
+                }
+                else if (e.Key == Key.L)
+                {
+                    e.Handled = true;
+                    if (console?.Replaying != null)
+                        console.StopReplay();
+                    else
+                        recallBox.PlayRow(0);
+                    RefreshNow();
                 }
                 return;
             }
@@ -1154,6 +1259,13 @@ namespace Sidetone.Gui
                     case Key.K: c.RequestKey(focus); break;
                     case Key.E: c.ToggleTxSecure(focus); break;
                     case Key.X: c.CyclePatch(focus); break;
+                    case Key.W: c.ToggleRecord(focus); break;
+                    case Key.L:
+                        if (e.KeyModifiers.HasFlag(KeyModifiers.Shift))
+                            recallBox.Show(focus);
+                        else
+                            c.ReplayLast(focus);
+                        break;
                     case Key.A: c.RefreshAliases(); break;
                     case Key.T: c.ToggleTalkPermit(); break;
                     case Key.C: c.ToggleMarker(); break;
@@ -1328,6 +1440,12 @@ zones:
             c.AddLog("warning: this is what a warning looks like");
             c.AddRecent("Tac 1", "9000001", "3 s, clear", tx: true);
             c.AddRecent("Tac 1", "Unit 12", "6 s, clear", tx: false);
+            DateTime now = DateTime.Now;
+            c.AddDemoCall(c.Channels[1], 3007, "Engine 7", 4, false, "clear", now.AddMinutes(-41));
+            c.AddDemoCall(c.Channels[1], 9000001, "9000001", 3, true, "clear", now.AddMinutes(-12));
+            c.AddDemoCall(c.Channels[1], 3012, "Unit 12", 6, false, "clear", now.AddMinutes(-11));
+            c.AddDemoCall(c.Channels[0], 3012, "Unit 12", 9, false, "AES-256", now.AddMinutes(-30));
+            c.SetRecord(c.Channels[1], true);
         }
 
         /// <summary>Made-up audio devices for the demo's Settings box.</summary>

@@ -26,9 +26,11 @@ Things we'd like to do, roughly in the order that makes sense to do them. Nothin
 7. **NXDN and DMR.** libvocoder already has the codec both use, and the cards already show modes that aren't supported yet, so the work is a receiver and a transmitter per mode. Needs live traffic to test against.
    - **Analog** too, once we've confirmed how DVM carries it. It may be the simplest of the three.
 
-8. **Instant replay** of the last call on a channel.
+8. ~~**Instant replay.**~~ Done in 0.21: the last ten calls per channel, with talkgroup recording to WAV files.
+   - Still to do: deleting old recordings automatically after a set number of days, and a compressed format (Opus) if WAV turns out too big.
 
-9. **Desktop notifications** when the console is paged.
+9. ~~**Desktop notifications.**~~ Done in 0.21, for pages (call alerts) to the console.
+   - Still to do: emergency alarms, once the console decodes them.
 
 ## Project plumbing
 

@@ -83,7 +83,7 @@ namespace Sidetone.Cli
             Console.WriteLine("                  [--marker-interval SECONDS] [--settings FILE | --no-settings]");
             Console.WriteLine("                  [--output DEVICE] [--input DEVICE] [--socket PATH | --no-socket]");
             Console.WriteLine("                  [--ptt-device NAME [--ptt-button BUTTON] [--mute-button BUTTON|none]]");
-            Console.WriteLine("                  [--key-file FILE.ekc]");
+            Console.WriteLine("                  [--key-file FILE.ekc] [--record-dir DIR] [--no-notify]");
             Console.WriteLine("  sidetone-cli devices");
             Console.WriteLine("  sidetone-cli ptt      down | up | toggle | hold | status [--socket PATH]");
             Console.WriteLine("  sidetone-cli selftest");
@@ -278,6 +278,10 @@ namespace Sidetone.Cli
                 PttDevice = opt.PttDevice != null ? (opt.PttDevice, opt.PttButton, opt.MuteButton) : null,
                 KeyFilePath = LocalKeyFile.Resolve(cp, opt.KeyFile)
             };
+            if (opt.RecordDir != null)
+                tui.RecordingsFolder = Path.GetFullPath(opt.RecordDir);
+            if (opt.NoNotify)
+                tui.Notifications = false;
             if (tui.KeyFilePath != null)
                 UnlockKeyFile(tui);     // before the TUI takes over the terminal
             return tui.Run();
@@ -474,7 +478,8 @@ namespace Sidetone.Cli
             public int MarkerSeconds = 10;
             public string SettingsFile;
             public bool NoSettings;
-            public string Socket, PttDevice, PttButton, MuteButton, KeyFile;
+            public string Socket, PttDevice, PttButton, MuteButton, KeyFile, RecordDir;
+            public bool NoNotify;
             public bool NoSocket;
 
             public static Options Parse(string[] args)
@@ -510,6 +515,8 @@ namespace Sidetone.Cli
                         case "--no-socket": o.NoSocket = true; break;
                         case "--ptt-device": o.PttDevice = Next(); break;
                         case "--key-file": o.KeyFile = Next(); break;
+                        case "--record-dir": o.RecordDir = Next(); break;
+                        case "--no-notify": o.NoNotify = true; break;
                         case "--ptt-button": o.PttButton = Next(); break;
                         case "--mute-button": o.MuteButton = Next(); break;
                         case "--marker-interval":

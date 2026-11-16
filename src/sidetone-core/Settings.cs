@@ -23,6 +23,8 @@ namespace Sidetone.Core
         public double Gain { get; set; } = 1.0;
         /// <summary>On a channel whose encryption is selectable: transmit in the clear.</summary>
         public bool TxClear { get; set; }
+        /// <summary>Calls on this channel are recorded to disk.</summary>
+        public bool Record { get; set; }
     }
 
     /// <summary>
@@ -57,6 +59,10 @@ namespace Sidetone.Core
         public string PttButton { get; set; }
         /// <summary>Mute button on that device, "none", or null to choose automatically.</summary>
         public string MuteButton { get; set; }
+        /// <summary>Folder for talkgroup recordings, or null for the default (~/.local/share/sidetone/recordings).</summary>
+        public string RecordingsFolder { get; set; }
+        /// <summary>Show a desktop notification when the console is paged (null means yes).</summary>
+        public bool? Notifications { get; set; }
         /// <summary>Display scale for the graphical console (1.0 = 100%), or null to work it out.</summary>
         public double? UiScale { get; set; }
         /// <summary>Local key file (.ekc) chosen in Settings, or null to use the codeplug's, if it names one.</summary>

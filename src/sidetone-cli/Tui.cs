@@ -499,6 +499,9 @@ namespace Sidetone.Cli
                         case 'k': case 'K': RequestKey(c); break;
                         case 'e': case 'E': ToggleTxSecure(c); break;
                         case 'x': case 'X': CyclePatch(c); break;
+                        case 'l': ReplayLast(c); break;
+                        case 'L': ReplayOlder(c); break;
+                        case 'w': case 'W': ToggleRecord(c); break;
                         case >= '1' and <= '6': SendAlert(e.Char - '0'); break;
                         case 'r': case 'R': OpenRadio(); break;
                         case 't': case 'T': ToggleTalkPermit(); break;
@@ -819,9 +822,18 @@ namespace Sidetone.Cli
             // line 3: status
             DrawStatus(c, rx, txHere, rxHere, ix, y + 2, iw);
 
-            // line 4: last call
-            if (!string.IsNullOrEmpty(c.LastCall))
-                screen.Text(ix, y + 3, $"last {c.LastCall}", dim, iw);
+            // line 4: last call, or the replay; recording on the right
+            int lastWidth = iw;
+            if (c.Record)
+            {
+                const string rec = "● REC";
+                screen.TextRight(ix + iw, y + 3, rec, Style.Of(Ansi.BrightRed, bold: true));
+                lastWidth -= ScreenBuffer.TextWidth(rec) + 1;
+            }
+            if (ReplayChannel == c && Replaying is RecalledCall playing)
+                screen.Text(ix, y + 3, $"▶ replay {playing.Who} {ReplayPosition.TotalSeconds:F0}/{playing.Length.TotalSeconds:F0} s (l: stop)", Style.Of(Ansi.BrightCyan, bold: true), lastWidth);
+            else if (!string.IsNullOrEmpty(c.LastCall))
+                screen.Text(ix, y + 3, $"last {c.LastCall}", dim, lastWidth);
 
             // line 5: volume and mute, clickable
             int vx = ix;
@@ -959,7 +971,7 @@ namespace Sidetone.Cli
                     screen.Text(1 + used, y, "   MIC MUTED (u to unmute)", Style.Of(Ansi.BrightRed, bold: true), width - 2 - used);
             }
 
-            screen.Text(1, y + 1, "click card: listen  [●]: stop  Space: PTT  1-6: alert  p/d: page  r: radio cmd  c: marker  t: talk permit  v: mic meter  u: mic mute  a: aliases  m/M: mute card/all  +/-: vol  k: key  e: secure/clear  x: patch  q: quit",
+            screen.Text(1, y + 1, "click card: listen  [●]: stop  Space: PTT  1-6: alert  p/d: page  r: radio cmd  c: marker  t: talk permit  v: mic meter  u: mic mute  a: aliases  m/M: mute card/all  +/-: vol  k: key  e: secure/clear  x: patch  l/L: replay  w: rec  q: quit",
                         Style.Of(Ansi.Grey), width - 2);
         }
     } // public sealed class Tui

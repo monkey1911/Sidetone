@@ -106,7 +106,7 @@ namespace Sidetone.Gui
         private readonly int index;
         private readonly TextBlock name, tg, crypt, keyLine, status, last, vol;
         private readonly Border statusPill;
-        private readonly Tap listen, keyTap, quieter, louder, mute, secureTap, pttTap;
+        private readonly Tap listen, keyTap, quieter, louder, mute, secureTap, pttTap, replayTap, recTap;
         private readonly StackPanel volRow;
         private readonly Grid bottomRow;
 
@@ -140,7 +140,14 @@ namespace Sidetone.Gui
             status = new TextBlock { FontSize = 13, FontWeight = FontWeight.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis };
             statusPill = new Border { Child = status, Padding = new Thickness(8, 4), CornerRadius = new CornerRadius(5), Margin = new Thickness(0, 4, 0, 2) };
 
-            last = new TextBlock { FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis, MinHeight = 16 };
+            last = new TextBlock { FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
+            replayTap = new Tap("Replay", () => { console.SetFocus(index); console.ReplayLast(chan); changed(); }, fontSize: 11, padX: 7, padY: 1);
+            recTap = new Tap("Rec", () => { console.SetFocus(index); console.ToggleRecord(chan); changed(); }, fontSize: 11, padX: 7, padY: 1);
+            StackPanel recallRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
+            recallRow.Children.Add(replayTap.Root);
+            recallRow.Children.Add(recTap.Root);
+            Grid lastRow = Row(last, recallRow);
+            lastRow.MinHeight = 22;
 
             vol = new TextBlock { FontSize = 12, VerticalAlignment = VerticalAlignment.Center, MinWidth = 50 };
             quieter = new Tap("-", () => { console.SetFocus(index); console.Quieter(chan); changed(); }, fontSize: 13, minWidth: 26, padX: 6, padY: 1);
@@ -162,7 +169,7 @@ namespace Sidetone.Gui
             stack.Children.Add(line1);
             stack.Children.Add(line2);
             stack.Children.Add(statusPill);
-            stack.Children.Add(last);
+            stack.Children.Add(lastRow);
             stack.Children.Add(bottomRow);
 
             Root = new Border
@@ -279,8 +286,30 @@ namespace Sidetone.Gui
                     statusPill.Background = p.Track; status.Foreground = p.Dim; break;
             }
 
-            Set(last, string.IsNullOrEmpty(chan.LastCall) ? string.Empty : $"last: {chan.LastCall}");
-            last.Foreground = p.Dim;
+            bool replaying = console.ReplayChannel == chan && console.Replaying != null;
+            if (replaying)
+            {
+                RecalledCall r = console.Replaying;
+                Set(last, $"▶ {r.Who} {console.ReplayPosition.TotalSeconds:F0}/{r.Length.TotalSeconds:F0} s");
+                last.Foreground = p.Accent;
+            }
+            else
+            {
+                Set(last, string.IsNullOrEmpty(chan.LastCall) ? string.Empty : $"last: {chan.LastCall}");
+                last.Foreground = p.Dim;
+            }
+            replayTap.Root.IsVisible = chan.IsP25;
+            recTap.Root.IsVisible = chan.IsP25;
+            replayTap.Text = replaying ? "Stop" : "Replay";
+            if (replaying)
+                replayTap.Paint(p.Accent, p.OnStrong);
+            else
+                replayTap.Paint(Brushes.Transparent, p.Dim, p.Edge);
+            recTap.Text = chan.Record ? "● REC" : "Rec";
+            if (chan.Record)
+                recTap.Paint(p.Tx, p.OnStrong);
+            else
+                recTap.Paint(Brushes.Transparent, p.Dim, p.Edge);
 
             // controls
             listen.Text = chan.Selected ? "Listening" : "Listen";

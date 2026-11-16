@@ -46,6 +46,9 @@ namespace Sidetone.Core
         /// <summary>The key ID transmit uses right now.</summary>
         public ushort ActiveKeyId => TxSecure ? KeyId : (ushort)0;
 
+        /// <summary>Calls on this channel are written to disk as they end.</summary>
+        public volatile bool Record;
+
         /// <summary>The patch this channel is in (1 and up, an index into the console's patch names plus one), or 0 for none.</summary>
         public volatile int Patch;
 
@@ -233,6 +236,7 @@ namespace Sidetone.Core
             CancelTones(wait: true);
             SaveSettings();     // before the channels are closed below
             StopTx("console closed");
+            StopReplay();
             ClearPatches(quiet: true);
             keys.SetLocal(null, 0);
             localKeys?.Dispose();   // wipes the key file's keys from memory
@@ -447,7 +451,9 @@ namespace Sidetone.Core
                 AddRecent(c.Cfg.Name, aliases.Label(src), $"{secs:F0} s, {crypt}{(muted > 0 ? ", partly muted" : string.Empty)}", tx: false);
             };
             rx.Codeword += imbe => PatchCodeword(c, rx, imbe);
+            rx.Codeword += imbe => RecallCodeword(c, rx, imbe);
             rx.CallEnded += (src, secs, played, muted, crypt) => PatchCallEnded(c);
+            rx.CallEnded += (src, secs, played, muted, crypt) => RecallCallEnded(c);
             rx.Audio += samples =>
             {
                 PipeWireSink sink = c.Sink;
@@ -489,6 +495,9 @@ namespace Sidetone.Core
                 StopTx("channel deselected");
             if (c.Patch != 0)
                 SetPatch(c, 0);     // a patch member has to be listening
+            if (c.Record)
+                SetRecord(c, false);    // only what the console hears can be recorded
+            RecallCallEnded(c);
 
             c.Selected = false;
             P25VoiceReceiver rx = c.Rx;
@@ -629,6 +638,7 @@ namespace Sidetone.Core
             tx = t;
             txChan = c;
             StartPatchTx(c, t);     // the rest of its patch hears the console too
+            RecallTxStarted(c, t);
             txFeed = t;
             if (talkPermit)
                 c.Sink?.Write(TalkPermitPcm());     // played locally once the call has started, as the Windows console does
@@ -713,6 +723,7 @@ namespace Sidetone.Core
             double secs = (DateTime.Now - t.StartedAt).TotalSeconds;
             bool was = t.IsTransmitting;
             t.Stop();
+            RecallTxStopped(txChan);
             if (was)
             {
                 AddLog($"{txChan?.Cfg.Name}: TX end, {secs:F1} s, {t.FramesSent} frames{(reason != null ? $" ({reason})" : string.Empty)}");
@@ -1049,6 +1060,7 @@ namespace Sidetone.Core
         public void Housekeeping()
         {
             PatchHousekeeping();
+            RecallHousekeeping();
             string micFail = pendingMicFail;
             if (micFail != null)
             {
@@ -1136,11 +1148,12 @@ namespace Sidetone.Core
                     continue;
                 c.Muted = cs.Muted;
                 c.TxClear = cs.TxClear && c.Selectable;
+                c.Record = cs.Record && cs.Listening && c.IsP25;
                 c.Gain = Math.Clamp(cs.Gain, 0.25, 8.0);
                 if (cs.Listening && c.IsP25)
                 {
                     Select(c);
-                    restored.Add(c.Cfg.Name);
+                    restored.Add(c.Cfg.Name + (c.Record ? " (recording)" : string.Empty));
                 }
             }
             if (restored.Count > 0)
@@ -1165,7 +1178,7 @@ namespace Sidetone.Core
             ss.PageRid = lastPageRid;
             ss.Focused = ChanKey(chans[cursor]);
             foreach (Chan c in chans)
-                ss.Channels[ChanKey(c)] = new ChannelSettings { Listening = c.Selected, Muted = c.Muted, Gain = Math.Round(c.Gain, 3), TxClear = c.Selectable && c.TxClear };
+                ss.Channels[ChanKey(c)] = new ChannelSettings { Listening = c.Selected, Muted = c.Muted, Gain = Math.Round(c.Gain, 3), TxClear = c.Selectable && c.TxClear, Record = c.Record };
 
             try { settings.Save(settingsPath); }
             catch (Exception ex) { AddLog($"could not save settings to {settingsPath}: {ex.Message}"); }
@@ -1319,6 +1332,7 @@ namespace Sidetone.Core
                     {
                         AddLog($"call alert (page) from {aliases.Describe(src)}");
                         AddRecent("call alert", aliases.Label(src), "paged this console", tx: false);
+                        NotifyPaged(src);
                     }
                     break;
 

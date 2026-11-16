@@ -30,7 +30,8 @@ namespace Sidetone.Gui
     public sealed class GuiOptions
     {
         public string Codeplug, SystemName, Output, Input, PttDevice, PttButton, MuteButton, Socket, LogFile, Theme, Screenshot, SettingsFile, Show, KeyFile;
-        public bool NoSocket, Wayland, Demo, NoSettings, SelfCheck;
+        public bool NoSocket, Wayland, Demo, NoSettings, SelfCheck, NoNotify;
+        public string RecordDir;
         /// <summary>Given on the command line; null leaves it to the saved settings.</summary>
         public bool? SpaceToggle;
         public int? TxLimit;
@@ -51,6 +52,8 @@ namespace Sidetone.Gui
                     case "--input": o.Input = Next(); break;
                     case "--ptt-device": o.PttDevice = Next(); break;
                     case "--key-file": o.KeyFile = Next(); break;
+                    case "--record-dir": o.RecordDir = Next(); break;
+                    case "--no-notify": o.NoNotify = true; break;
                     case "--scale":
                     {
                         string text = Next().TrimEnd('%');
@@ -76,8 +79,8 @@ namespace Sidetone.Gui
                     case "--selfcheck": o.SelfCheck = true; break;
                     case "--show":
                         o.Show = Next().ToLowerInvariant();
-                        if (o.Show is not ("page" or "digital" or "radio" or "settings" or "keyfile" or "patch"))
-                            throw new ArgumentException("--show must be page, digital, radio, settings, keyfile or patch");
+                        if (o.Show is not ("page" or "digital" or "radio" or "settings" or "keyfile" or "patch" or "recall"))
+                            throw new ArgumentException("--show must be page, digital, radio, settings, keyfile, patch or recall");
                         break;
                     case "--space":
                     {
@@ -409,6 +412,27 @@ namespace Sidetone.Gui
             Press(PhysicalKey.X);
             Check(inFirst && inThird && focus.Patch == 0 && c.PatchName(focus) == null, "X moves the focused channel through the patches and back to none");
 
+            // instant recall: the demo has calls on Tac 1, the focused channel
+            Press(PhysicalKey.L, RawInputModifiers.Shift);
+            RecallOverlay recall = w.RecallBox;
+            bool listed = recall.IsOpen && recall.Channel == c.Channels[1] && recall.Count == 3;
+            recall.PlayRow(0);
+            bool playing = c.Replaying != null && c.ReplayChannel == c.Channels[1] && c.Replaying.Who == "Unit 12";
+            Press(PhysicalKey.L);
+            bool stopped = c.Replaying == null;
+            Press(PhysicalKey.Escape);
+            Check(listed && playing && stopped && !recall.IsOpen,
+                  $"Shift+L lists the focused channel's calls, Play replays one and L stops it ({recall.Count} calls)");
+            Press(PhysicalKey.L);
+            bool again = c.Replaying?.Who == "Unit 12";
+            Press(PhysicalKey.L);
+            Check(again && c.Replaying == null, "L replays the focused channel's last call, and stops it");
+            bool recBefore = focus.Record;
+            Press(PhysicalKey.W);
+            bool recAfter = focus.Record;
+            Press(PhysicalKey.W);
+            Check(recAfter != recBefore && focus.Record == recBefore, "W turns recording on the focused channel on and off");
+
             // key file password box
             w.OpenBox("keyfile");
             Dispatcher.UIThread.RunJobs();
@@ -503,10 +527,10 @@ namespace Sidetone.Gui
             Console.WriteLine("         [--ptt-device NAME [--ptt-button BUTTON] [--mute-button BUTTON|none]]");
             Console.WriteLine("         [--socket PATH | --no-socket] [--tx-limit SECONDS] [--log FILE]");
             Console.WriteLine("         [--settings FILE | --no-settings] [--space hold|toggle]");
-            Console.WriteLine("                  [--scale FACTOR] [--key-file FILE.ekc]");
+            Console.WriteLine("                  [--scale FACTOR] [--key-file FILE.ekc] [--record-dir DIR] [--no-notify]");
             Console.WriteLine("  sidetone --install-launcher | --remove-launcher");
             Console.WriteLine("  sidetone --demo");
-            Console.WriteLine("  sidetone --screenshot FILE.png [--demo] [--theme light|dark] [--size 1280x800] [--show page|digital|radio|settings|keyfile|patch]");
+            Console.WriteLine("  sidetone --screenshot FILE.png [--demo] [--theme light|dark] [--size 1280x800] [--show page|digital|radio|settings|keyfile|patch|recall]");
             Console.WriteLine();
             Console.WriteLine("Without --codeplug, the codeplug opened last time is used. --demo shows a made-up system");
             Console.WriteLine("without connecting to anything. The options are the same as 'sidetone-cli tui'; see the README.");

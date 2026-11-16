@@ -133,6 +133,9 @@ Channels are shown as cards, up to four across. The mouse works in any terminal 
 | k | Request the focused card's key from the FNE again |
 | e | Switch the focused card's transmit between secure and clear, where the codeplug allows it |
 | x | Move the focused card to the next patch (none, then each patch in turn) |
+| l | Replay the focused card's last call (again to stop) |
+| L | Replay the call before the one playing, stepping back through the last ten |
+| w | Turn recording on the focused card on or off |
 | q or Ctrl+C | Quit |
 
 Alert tones match the Windows console's built-in tones 1–6 (5 seconds each). A digital page is a P25 call alert from the console's RID to one radio (the Windows console's "Page Subscriber"); call alerts and acknowledgements addressed to the console's RID are logged when the FNE passes them on. A QuickCall II page is tone A for 1 s then tone B for 3 s (250–3000 Hz, as the Windows console's manual page), sent on every listening channel; the last page's tones are filled in next time. On P25, tones travel as IMBE tone frames, which carry the frequency in steps of about 31 Hz, so radios regenerate the nearest step. The channel marker is the console's "channel hold" beep: 0.5 s of 650 Hz every 10 seconds on each listening channel that isn't busy; change the interval with `--marker-interval SECONDS`. Tones are encrypted on secure channels and skipped on channels whose key isn't held. The tone buttons are hidden on terminals narrower than 110 columns; the keys still work.
@@ -169,6 +172,7 @@ What it has so far:
   - **Radio command…** sends a check, inhibit or uninhibit to one radio. Inhibit has to be sent twice to confirm. The radio's alias shows as you type its ID. Replies appear in the log when the FNE passes them back to the console, which not every FNE version does.
   - **Channel marker** turns the periodic beep on idle listening channels on and off
   - **Patch…** opens the Patches box (see [Patching](#patching))
+  - **Recall…** opens Instant recall (see [Instant recall and recording](#instant-recall-and-recording))
 - a transmit bar, recent calls and the log
 - **Auto / Light / Dark** in the top right. Auto follows your desktop's light or dark setting. The choice is remembered. `--theme light|dark|system` sets it from the command line.
 
@@ -183,6 +187,8 @@ What it has so far:
 | PTT device | A desk microphone, footswitch or PTT button that keys the console (see [PTT devices](#ptt-devices)) |
 | PTT button, Mute button | Which of that device's buttons do what. Automatic uses the buttons Sidetone knows for the device, or its only button. |
 | Space and PTT | Hold to talk, or press to start and press again to stop. Applies to Space and the on-screen PTT buttons. |
+| Recordings | Where recordings go, and a button to open that folder |
+| When paged | Desktop notifications when the console is paged, on or off |
 | Key file | A local key file to use, and its unlock state (see [Encryption keys](#encryption-keys)) |
 | Time limit | How long a transmission can last, 5 to 600 seconds |
 | Codeplug | Shows the open codeplug, and opens another one |
@@ -233,6 +239,9 @@ Keyboard shortcuts (the same keys as the TUI where both have the feature):
 | K | Request the focused channel's key from the FNE |
 | E | Switch the focused channel's transmit between secure and clear, where the codeplug allows it |
 | X | Move the focused channel to the next patch (none, then each patch in turn) |
+| L | Replay the focused channel's last call (again to stop) |
+| Shift+L | Open Instant recall for the focused channel |
+| W | Turn recording on the focused channel on or off |
 | A | Reload the alias file and download aliases again |
 | T | Talk permit tone on or off |
 | 1 to 6 | Send an alert tone on every listening channel |
@@ -359,6 +368,33 @@ SUBSYSTEM=="input", ATTRS{idVendor}=="1234", ATTRS{idProduct}=="5678", TAG+="uac
 Avoid adding yourself to the `input` group instead: that lets every program you run read every keystroke.
 
 Sidetone doesn't take the device away from other programs, so a footswitch that types a key still types it in the focused window. Pick a key nothing else uses, such as F13 to F24.
+
+## Instant recall and recording
+
+**Instant recall.** The last ten calls on each listening channel are kept, including your own transmissions, and can be played again:
+
+- **Replay** on a card plays its last call; press it again to stop. While a call is replaying, the card shows who and how far in.
+- **Recall…** in the tool bar (or `Shift+L`) lists a channel's last ten calls with a **Play** button each, and buttons across the top to switch channels.
+- `L` replays the focused channel's last call in the graphical console. In the TUI, `l` does the same and `L` steps back to older calls.
+
+Replays play at the channel's volume, even when the channel or the console is muted, alongside any live audio. Only calls on listening channels are kept, because only those are received; a secure call is kept only if its key was loaded. Calls are kept in memory and are gone when Sidetone closes.
+
+**Recording.** A channel set to record also saves every call to a WAV file when it ends:
+
+- **Rec** on a card, **Record** in Instant recall, `W` (GUI) or `w` (TUI) turns it on and off. Recording a channel starts listening to it, and a channel that stops listening stops recording.
+- Files go to `~/.local/share/sidetone/recordings/SYSTEM/YYYY-MM-DD/`, named like `143107_CT-OPS_TG500_RX_Kara-M.wav`. Choose another folder in Settings or with `--record-dir DIR` (both programs).
+- Recording is remembered per channel, so it carries on after a restart.
+- Files are 8 kHz mono WAV, about 1 MB a minute of speech. Nothing is deleted automatically.
+
+**Secure calls are saved decrypted.** A recording of a secure channel is plain audio anyone with the file can play. The folders and files are made readable by your user only, and the log says so when you start recording a secure channel.
+
+**Audio quality.** Calls are kept as the voice frames that came over the network (about 0.5 kB a second) and only turned into audio when played or saved, so both sound the same as the live call.
+
+## Desktop notifications
+
+When a radio pages the console (a call alert to the console's radio ID), Sidetone shows a desktop notification as well as logging it. It uses `notify-send`, or `gdbus` when that isn't installed, and needs a notification service such as mako, dunst, swaync, GNOME or KDE. Repeats from the same radio within ten seconds show one notification.
+
+Turn it off under **When paged** in Settings, or for one run with `--no-notify` (both programs).
 
 ## Patching
 

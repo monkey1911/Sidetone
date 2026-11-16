@@ -25,6 +25,8 @@ namespace Sidetone.Gui
             public bool SpaceToggle;
             /// <summary>Display scale (1.0 = 100%), or null for automatic.</summary>
             public double? Scale;
+            /// <summary>Desktop notifications when the console is paged.</summary>
+            public bool Notifications = true;
         }
 
         /// <summary>One line in a drop-down list.</summary>
@@ -71,6 +73,10 @@ namespace Sidetone.Gui
         private readonly List<TextBlock> labels = new List<TextBlock>();
         private readonly List<TextBlock> headings = new List<TextBlock>();
         private readonly TextBlock keyFileText = new TextBlock { FontSize = 12, TextWrapping = TextWrapping.Wrap };
+        private readonly TextBlock recordingsText = new TextBlock { FontSize = 12, TextWrapping = TextWrapping.Wrap };
+        private Tap recChoose, recOpen, recDefault, notifyOn, notifyOff;
+        /// <summary>Desktop notifications, as chosen in the box.</summary>
+        public bool Notify { get; private set; } = true;
         private readonly Tap spaceHold, spaceToggle, openCodeplug, launcherTap, cancel, saveTap, keyChoose, keyNone, keyUnlock;
 
         private List<InputDeviceInfo> inputDevices = new List<InputDeviceInfo>();
@@ -95,8 +101,22 @@ namespace Sidetone.Gui
         /// <param name="clearKeyFile">Stops using the key file chosen here.</param>
         /// <param name="unlockKeyFile">Opens the password box for the key file.</param>
         public SettingsOverlay(Func<Values, string> save, Action pickCodeplug, Func<bool, string> launcher, Action closed,
-                               Action pickKeyFile, Action clearKeyFile, Action unlockKeyFile)
+                               Action pickKeyFile, Action clearKeyFile, Action unlockKeyFile,
+                               Action pickRecordings, Action defaultRecordings, Action openRecordings)
         {
+            recChoose = new Tap("Choose…", () => { Close(); pickRecordings(); }, fontSize: 12, padX: 10, padY: 5);
+            recOpen = new Tap("Open", openRecordings, fontSize: 12, padX: 10, padY: 5);
+            recDefault = new Tap("Use the default", () => { defaultRecordings(); Close(); }, fontSize: 12, padX: 10, padY: 5);
+            StackPanel recRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+            recRow.Children.Add(recChoose.Root);
+            recRow.Children.Add(recOpen.Root);
+            recRow.Children.Add(recDefault.Root);
+            notifyOn = new Tap("On", () => { Notify = true; message.Text = string.Empty; }, fontSize: 12, padX: 12, padY: 5);
+            notifyOff = new Tap("Off", () => { Notify = false; message.Text = string.Empty; }, fontSize: 12, padX: 12, padY: 5);
+            StackPanel notifyRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
+            notifyRow.Children.Add(notifyOn.Root);
+            notifyRow.Children.Add(notifyOff.Root);
+
             keyChoose = new Tap("Choose…", () => { Close(); pickKeyFile(); }, fontSize: 12, padX: 10, padY: 5);
             keyNone = new Tap("Stop using it", () => { Close(); clearKeyFile(); }, fontSize: 12, padX: 10, padY: 5);
             keyUnlock = new Tap("Unlock…", () => { Close(); unlockKeyFile(); }, fontSize: 12, padX: 10, padY: 5);
@@ -171,6 +191,10 @@ namespace Sidetone.Gui
             stack.Children.Add(Field("Time limit", limitRow));
             stack.Children.Add(Heading("Codeplug"));
             stack.Children.Add(codeplugRow);
+            stack.Children.Add(Heading("Recordings and notifications"));
+            stack.Children.Add(recordingsText);
+            stack.Children.Add(recRow);
+            stack.Children.Add(Field("When paged", notifyRow));
             stack.Children.Add(Heading("Key file"));
             stack.Children.Add(keyFileText);
             stack.Children.Add(keyRow);
@@ -233,8 +257,11 @@ namespace Sidetone.Gui
         /// <param name="keyFileLocked">There is one and it's waiting for its password.</param>
         /// <param name="keyFileChosen">One was chosen here (so it can be un-chosen).</param>
         public void Show(Values current, AudioDeviceList audio, List<InputDeviceInfo> inputs, string codeplug, string commandLine, bool launcherIsInstalled,
-                         string keyFile, bool keyFileLocked, bool keyFileChosen)
+                         string keyFile, bool keyFileLocked, bool keyFileChosen, string recordings, bool recordingsChosen)
         {
+            recordingsText.Text = $"Recordings go to {recordings}";
+            recDefault.Root.IsVisible = recordingsChosen;
+            Notify = current.Notifications;
             keyFileText.Text = keyFile;
             filling = true;
             Fill(Scale, current.Scale?.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture), "Automatic",
@@ -369,7 +396,8 @@ namespace Sidetone.Gui
                 PttButton = device == null ? null : Selected(PttButton),
                 MuteButton = device == null ? null : Selected(MuteButton),
                 TxLimit = limit,
-                SpaceToggle = SpaceToggle
+                SpaceToggle = SpaceToggle,
+                Notifications = Notify
             };
             string error = save(v);
             if (error != null)
@@ -408,6 +436,12 @@ namespace Sidetone.Gui
             Paint(spaceToggle, SpaceToggle, p);
             openCodeplug.Paint(Brushes.Transparent, p.Text, p.Edge);
             keyFileText.Foreground = p.Dim;
+            recordingsText.Foreground = p.Dim;
+            recChoose.Paint(Brushes.Transparent, p.Text, p.Edge);
+            recOpen.Paint(Brushes.Transparent, p.Text, p.Edge);
+            recDefault.Paint(Brushes.Transparent, p.Text, p.Edge);
+            Paint(notifyOn, Notify, p);
+            Paint(notifyOff, !Notify, p);
             keyChoose.Paint(Brushes.Transparent, p.Text, p.Edge);
             keyNone.Paint(Brushes.Transparent, p.Text, p.Edge);
             keyUnlock.Paint(p.Accent, p.OnStrong);

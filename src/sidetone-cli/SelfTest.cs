@@ -841,6 +841,99 @@ B: MSC=10
                 Check(left && calling.Patch == 0, "patch: a channel that stops listening leaves its patch; clearing empties them all");
             }
 
+            // instant recall, recording and page notifications
+            {
+                const uint consoleRid = 9000001, radio = 1234;
+                Tui rt = new Tui(cp, sys, TimeSpan.FromSeconds(120), null) { NoAudio = true };
+                CliPeer headers = new CliPeer(sys, new KeyStore(), verbose: false);
+                ConsoleChannel calling = rt.Channels.First(ch => ch.IsP25 && !ch.Encrypted);
+                string recDir = Path.Combine(Path.GetTempPath(), $"sidetone-rec-{Environment.ProcessId}");
+                rt.RecordingsFolder = recDir;
+                rt.recordInline = true;
+                List<short[]> played = new List<short[]>();
+                rt.replaySinkForTest = () => new ListSink(played);
+
+                void Call(int frames, int seed)
+                {
+                    CaptureSink air = new CaptureSink(headers);
+                    P25Transmitter talker = new P25Transmitter(air, new KeyStore(), radio, calling.Tg, P25Defines.P25_ALGO_UNENCRYPT, 0);
+                    talker.Start(out _);
+                    for (int i = 0; i < frames; i++) talker.PushAudio(VoicedFrame(i + seed));
+                    uint stream = talker.StreamId;
+                    talker.Stop();
+                    foreach (var v in air.Voice)
+                        calling.Rx.Handle(calling.Tg, radio, (P25DUID)v.Frame[22], v.Stream, v.Frame);
+                    calling.Rx.Handle(calling.Tg, radio, P25DUID.TDU, stream, new byte[24]);
+                }
+
+                try
+                {
+                    rt.ReplayLast(calling);
+                    Check(rt.Replaying == null && rt.SnapshotLog(1)[0].Contains("no calls to replay"), "recall: nothing to replay on a channel that isn't listening");
+
+                    rt.SetRecord(calling, true);
+                    Call(18, 0);
+                    List<RecalledCall> kept = rt.RecalledCalls(calling);
+                    Check(calling.Selected && kept.Count == 1 && kept[0].Length == TimeSpan.FromMilliseconds(360) && !kept[0].Tx && kept[0].Crypt == "clear",
+                          "recall: a call heard on a channel is kept (recording started listening)");
+
+                    string wav = rt.lastRecording;
+                    bool named = wav != null && Path.GetFileName(wav).Contains("_TG" + calling.Tg + "_RX_") && wav.StartsWith(recDir) &&
+                                 Path.GetFileName(Path.GetDirectoryName(wav)) == kept[0].Started.ToString("yyyy-MM-dd");
+                    long size = wav != null && File.Exists(wav) ? new FileInfo(wav).Length : 0;
+                    UnixFileMode mode = wav != null && File.Exists(wav) ? File.GetUnixFileMode(wav) : 0;
+                    Check(rt.RecordingsWritten == 1 && named && size == 44 + 18 * 160 * 2 && (mode & (UnixFileMode.GroupRead | UnixFileMode.OtherRead)) == 0,
+                          $"recording: the call is saved as a WAV named for its time, talkgroup and talker, readable only by the user ({size} bytes)");
+
+                    rt.ReplayLast(calling);
+                    Check(played.Count == 18 && rt.Replaying == null, "recall: the last call plays back in full");
+
+                    for (int n = 0; n < 11; n++)
+                        Call(9, 100 + n);
+                    kept = rt.RecalledCalls(calling);
+                    Check(kept.Count == DispatchConsole.RecallPerChannel && kept.All(k => k.Length == TimeSpan.FromMilliseconds(180)),
+                          $"recall: only the last {DispatchConsole.RecallPerChannel} calls per channel are kept");
+
+                    played.Clear();
+                    rt.ReplayOlder(calling);
+                    rt.ReplayOlder(calling);
+                    Check(played.Count == 18, "recall: L in the TUI plays the kept calls");
+
+                    rt.SetRecord(calling, false);
+                    int written = rt.RecordingsWritten;
+                    Call(9, 500);
+                    Check(rt.RecordingsWritten == written && rt.RecalledCalls(calling).Count == DispatchConsole.RecallPerChannel,
+                          "recording: off means calls are still kept for recall, but not saved");
+
+                    // the console's own transmission is kept as it went out
+                    CaptureSink mainOut = new CaptureSink(headers);
+                    P25Transmitter main = new P25Transmitter(mainOut, rt.Keys, consoleRid, calling.Tg, P25Defines.P25_ALGO_UNENCRYPT, 0);
+                    main.Start(out _);
+                    rt.RecallTxStartedForTest(calling, main);
+                    for (int i = 0; i < 9; i++) main.PushAudio(VoicedFrame(i));
+                    main.Stop();
+                    rt.RecallTxStoppedForTest(calling);
+                    RecalledCall own = rt.RecalledCalls(calling)[0];
+                    Check(own.Tx && own.Length == TimeSpan.FromMilliseconds(180), "recall: the console's own transmissions are kept too");
+
+                    // a page addressed to the console shows one desktop notification, not one per repeat
+                    List<string> shown = new List<string>();
+                    rt.notifyForTest = (title, body) => shown.Add(title);
+                    rt.consoleRidForTest = consoleRid;
+                    byte[] alert = CliPeer.BuildCallAlert(consoleRid, radio);
+                    rt.OnP25Control(P25Defines.TSBK_IOSP_CALL_ALRT, radio, consoleRid, alert);
+                    rt.OnP25Control(P25Defines.TSBK_IOSP_CALL_ALRT, radio, consoleRid, alert);
+                    rt.OnP25Control(P25Defines.TSBK_IOSP_CALL_ALRT, radio, 4321, alert);
+                    rt.Notifications = false;
+                    rt.OnP25Control(P25Defines.TSBK_IOSP_CALL_ALRT, 5555, consoleRid, alert);
+                    Check(shown.Count == 1 && shown[0].Contains("Paged by"), $"notifications: a page to this console shows one notification; repeats, other radios' pages and 'off' don't ({shown.Count})");
+                }
+                finally
+                {
+                    try { Directory.Delete(recDir, true); } catch (Exception) { }
+                }
+            }
+
             // local key file (a KFDtool .ekc container), and selectable encryption
             string keyDir = Path.Combine(Path.GetTempPath(), $"sidetone-keys-{Environment.ProcessId}");
             try
@@ -1251,6 +1344,14 @@ zones:
         algo: ""aes""
         keyId: 0x561
 ";
+
+        private sealed class ListSink : IAudioSink
+        {
+            private readonly List<short[]> into;
+            public ListSink(List<short[]> into) => this.into = into;
+            public void Write(short[] samples) => into.Add((short[])samples.Clone());
+            public void Dispose() { }
+        }
 
         /// <summary>
         /// Writes a KFDtool-style key container: a length-prefixed gzip of an XML outer container whose
