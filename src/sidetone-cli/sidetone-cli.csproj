@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    sidetone-cli - the terminal front end of Sidetone (TUI, listen, ptt, devices, selftest).
+    Everything that isn't terminal-specific lives in sidetone-core.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>sidetone-cli</AssemblyName>
+    <RootNamespace>Sidetone.Cli</RootNamespace>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\sidetone-core\sidetone-core.csproj" />
+    <Using Include="Sidetone.Core" />
+  </ItemGroup>
+
+  <!-- libvocoder.so built by CMake (see CI) is copied next to sidetone-cli when present -->
+  <ItemGroup>
+    <None Include="..\..\build\native\libvocoder.so" Condition="Exists('..\..\build\native\libvocoder.so')">
+      <Link>libvocoder.so</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>

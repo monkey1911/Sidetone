@@ -4,10 +4,8 @@ Things we'd like to do, roughly in the order that makes sense to do them. Nothin
 
 ## First: the things other items depend on
 
-1. **Rename the project.** Drop the leading "DVM" from the name, while still making it plain that this is based on DVMProject's work and talks to DVMFNE (for example in a tagline: "a dispatch console for DVMProject FNE networks").
-   - The name is baked into the programs (`dvmcli`, `dvmgui`), the settings folder (`~/.config/dvmcli`), the PTT socket (`dvmcli.sock`), the download names and the repository, so this comes before the launcher and any packaging.
-   - Existing settings should carry over to the new name.
-   - Name ideas so far, none checked for clashes: Sidetone, Keyline, Squelch, Switchboard.
+1. ~~**Rename the project.**~~ Done in 0.17: the project is now **Sidetone**, "an IP dispatch console for DVMProject FNE networks". The programs are `sidetone` and `sidetone-cli`, settings carry over, and the old `dvmcli` and `dvmgui` commands keep working for now.
+   - Still to do: remove the old command wrappers after a release or two.
 
 2. **Settings screen in the GUI.** Audio output and input, the PTT device and its buttons, the transmit time limit and what Space does are command-line options today. A launcher has no command line, so they need a screen and need to be remembered.
 
@@ -52,6 +50,6 @@ From the feature comparison, not yet placed in the order above:
 - microphone processing (automatic gain control)
 - sending different channels to different audio outputs
 - playing a WAV file onto a talkgroup
-- talkgroup recording in the consoles (`dvmcli listen` can record one talkgroup to WAV)
+- talkgroup recording in the consoles (`sidetone-cli listen` can record one talkgroup to WAV)
 - web streams
 - a call history that survives closing the console

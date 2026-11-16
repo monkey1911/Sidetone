@@ -1,0 +1,4 @@
+#!/bin/sh
+# dvmgui is now sidetone (the project was renamed to Sidetone).
+# This keeps the old command working, so existing launchers and scripts carry on. It will be removed in a later release.
+exec "$(dirname "$(readlink -f "$0")")/sidetone" "$@"
