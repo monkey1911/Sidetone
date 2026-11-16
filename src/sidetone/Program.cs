@@ -480,8 +480,8 @@ namespace Sidetone.Gui
             set.FlipProcessing(2);
             set.FlipProcessing(4);
             set.Save();
-            VoiceProcessing mic = c.MicProcessing;
-            Check(defaults && !set.IsOpen && mic.NoiseGate && mic.LowCut && mic.AutoLevel && mic.Limiter && c.RxLeveling &&
+            VoiceProcessing micStages = c.MicProcessing;
+            Check(defaults && !set.IsOpen && micStages.NoiseGate && micStages.LowCut && micStages.AutoLevel && micStages.Limiter && c.RxLeveling &&
                   c.Channels.All(ch => ch.RxLevel != null) && c.SnapshotLog(3).Any(l => l.Contains("audio processing: microphone low cut, noise gate, auto level, limiter; receive leveling on")),
                   "mic processing starts at its defaults; turning on the gate and receive leveling applies at once");
             Press(PhysicalKey.Comma, RawInputModifiers.Control);
