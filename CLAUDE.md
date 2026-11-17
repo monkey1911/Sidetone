@@ -14,16 +14,15 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
   `--selfcheck`) plus screenshots, and the same pass in a local ARM64 build.
 - **Tested on the air by the owner:** RX/TX clear and AES, key delivery from the FNE, alias sync,
   alert tones, channel marker, QCII and digital pages, radio check (the radio answers; see the FNE
-  limitation below), GUI on x86-64 under Hyprland, keyboard shortcuts, instant recall, tabs and
-  hiding zones (0.24).
+  limitation below), GUI on x86-64 under Hyprland, GUI on ARM64 (Surface Pro 11), display
+  scaling on the Surface's HiDPI screen, keyboard shortcuts, instant recall, recording to WAV,
+  selectable encryption, the app launcher entry, tabs and hiding zones (0.24).
 - The owner tests every release on the air and on their hardware after publishing it. The list
   below is only what the earlier sessions never heard results for, not what is known to be
   untested. Ask the owner before calling something untested, and move items up once confirmed.
-- **No results reported to the earlier sessions yet:** patching, recording
-  to WAV, page notifications, mic processing (on by default!), local KFDtool key files and the
-  keyring, selectable encryption on the air, the Settings screen with real devices, the app
-  launcher entry, display scaling on a real HiDPI screen, the Motorola desk mic in the GUI, the GUI
-  on ARM64 (Surface Pro 11), `--wayland`.
+- **No results reported yet:** patching (the owner is waiting for traffic to test it), page
+  notifications, mic processing (on by default!), local KFDtool key files and the keyring, the
+  Settings screen with real devices, the Motorola desk mic in the GUI, `--wayland`.
 - Next on the wishlist: item 7 (NXDN/DMR, needs live traffic) or item 10 (a CI test against a real
   dvmfne), plus the "Terminal console" gaps at the end of `WISHLIST.md`.
 
