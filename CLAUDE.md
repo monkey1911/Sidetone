@@ -8,10 +8,9 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
 
 ## State at hand-off (2026-11-16)
 
-- Version **0.24.0** on `main` (set once, in `src/Directory.Build.props`): zone tabs, published as a
-  release; check `gh release list` for anything newer.
-- CI is green on ARM64 and x86-64: 267 checks (216 in `sidetone-cli selftest`, 51 in the GUI's
-  `--selfcheck`) plus screenshots, and the same pass in a local ARM64 build.
+- Version **0.24.1** on `main` (set once, in `src/Directory.Build.props`): patch pacing. 0.24.0
+  (zone tabs) was released; check `gh release list`.
+- 271 checks (220 in `sidetone-cli selftest`, 51 in the GUI's `--selfcheck`) plus screenshots.
 - **Tested on the air by the owner:** RX/TX clear and AES, key delivery from the FNE, alias sync,
   alert tones, channel marker, QCII and digital pages, radio check (the radio answers; see the FNE
   limitation below), GUI on x86-64 under Hyprland, GUI on ARM64 (Surface Pro 11), display
@@ -20,7 +19,9 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
 - The owner tests every release on the air and on their hardware after publishing it. The list
   below is only what the earlier sessions never heard results for, not what is known to be
   untested. Ask the owner before calling something untested, and move items up once confirmed.
-- **No results reported yet:** patching (the owner is waiting for traffic to test it), page
+- **No results reported yet:** patching: worked in 0.24.0 but was choppy on the owner's radio via
+  their hotspot site (the console itself heard the source fine); 0.24.1 adds paced sending, not
+  yet tried on the air. Also page
   notifications, mic processing (on by default!), local KFDtool key files and the keyring, the
   Settings screen with real devices, the Motorola desk mic in the GUI, `--wayland`.
 - Next on the wishlist: item 7 (NXDN/DMR, needs live traffic) or item 10 (a CI test against a real
@@ -165,7 +166,9 @@ every release on the air and on their hardware after publishing it.
 - Tones go out as IMBE tone frames (as the Windows console does), so QCII tones are quantised to
   about 31 Hz steps.
 - Patching passes clear IMBE codewords between talkgroups (decrypt on receive, re-encrypt per
-  target), so patched voice is not decoded and re-encoded. `patchSourceIdPassthrough` (top level of
+  target), so patched voice is not decoded and re-encoded. Since 0.24.1 it is buffered and sent
+  one LDU per 180 ms (2-LDU prebuffer, a 10 ms `Timer`; tests drive `PatchPump` by hand), because
+  forwarding frames as they arrived came out choppy on a hotspot site. `patchSourceIdPassthrough` (top level of
   the codeplug) is the Windows console's own setting. A secure-to-clear patch sends secure traffic
   in the clear; the log warns.
 - The owner's Harris radio can't do QCII over P25; Motorola radios can.

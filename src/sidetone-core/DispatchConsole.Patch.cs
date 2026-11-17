@@ -11,11 +11,19 @@
 * and each target's transmitter encrypts them again for its own talkgroup if it is secure. The
 * voice goes through the vocoder once, at the radio that spoke, and not again in the console.
 *
+* A received call reaches the console with whatever unevenness the network gave it, and a radio
+* site (a small hotspot especially) chops up audio that doesn't arrive at a steady rate. So a
+* patched call is held in a short buffer and sent out on a steady 180 ms rhythm, one LDU at a
+* time, as a radio would send it: sending starts once two LDUs are waiting, and the talkgroup is
+* asked for (the grant demand) at once, so the system has that time to grant it. At the end, what
+* is still buffered is sent before the call is ended.
+*
 * Patches are named by the codeplug's patch groups when it has any (as the Windows console's
 * are), otherwise Patch 1 to 3. Who is in which patch is chosen while the console runs and is
 * not remembered: like the channel marker, a patch never starts transmitting by itself at launch.
 */
 
+using System.Diagnostics;
 using dvmconsole;
 using fnecore.P25;
 using Chan = Sidetone.Core.ConsoleChannel;
@@ -28,13 +36,39 @@ namespace Sidetone.Core
         /// <summary>A source that has sent nothing for this long has ended, even if its end was missed.</summary>
         private static readonly TimeSpan PatchStale = TimeSpan.FromSeconds(2);
 
-        /// <summary>One patch while the console runs: who is talking into it, and where that is being sent.</summary>
+        /// <summary>Voice frames per LDU, and how long an LDU lasts on the air.</summary>
+        internal const int PatchLduFrames = 9;
+        internal static readonly TimeSpan PatchLduTime = TimeSpan.FromMilliseconds(180);
+        /// <summary>LDUs buffered before a patched call starts going out (and again after the source falls behind).</summary>
+        internal const int PatchPrebufferLdus = 2;
+        /// <summary>At most this much is buffered; beyond it the oldest audio is dropped rather than falling further behind.</summary>
+        private const int PatchMaxLdus = 10;
+
+        /// <summary>One patch while the console runs: who is talking into it, and the call being sent for it.</summary>
         private sealed class PatchRun
         {
             public Chan Source;
             public uint StreamId, SourceId;
             public DateTime Started, Last;
+            public PatchSend Send;
+        }
+
+        /// <summary>
+        /// One call being sent out on a patch's other members: its transmitters, the voice waiting to
+        /// go out, and how evenly it arrived. Outlives its run while what's buffered drains.
+        /// </summary>
+        private sealed class PatchSend
+        {
+            public int Patch;
+            public Chan Source;
+            public uint SourceId;
+            public DateTime Started;
             public readonly List<(Chan Chan, P25Transmitter Tx)> Targets = new List<(Chan, P25Transmitter)>();
+            public readonly Queue<byte[]> Pending = new Queue<byte[]>();
+            public bool Flowing, Ending;
+            public string EndReason;
+            public TimeSpan NextDue, LastIn = TimeSpan.MinValue, LongestGap;
+            public int FramesIn, FramesOut, RanDry, Dropped;
         }
 
         private readonly object patchLock = new object();
@@ -44,6 +78,12 @@ namespace Sidetone.Core
         private readonly List<(Chan Chan, P25Transmitter Tx)> txPatch = new List<(Chan, P25Transmitter)>(); // the console's own PTT, on the rest of its patch
         private int consolePatch;       // the patch the console itself is transmitting into, or 0
         private bool patchPassthrough;
+        private readonly List<PatchSend> patchDrains = new List<PatchSend>();     // ended calls still sending what's buffered
+        private readonly Stopwatch patchClock = Stopwatch.StartNew();
+        private Timer patchTimer;
+
+        /// <summary>The self-test drives the patch clock itself (<see cref="PatchPump"/>) instead of a timer.</summary>
+        internal bool patchManualPump;
 
         /// <summary>Stands in for the FNE connection in the self-test.</summary>
         internal IP25TrafficSink sinkForTest;
@@ -140,6 +180,9 @@ namespace Sidetone.Core
             {
                 foreach (PatchRun run in patchRuns)
                     EndRun(run, quiet ? null : "patches cleared");
+                foreach (PatchSend d in patchDrains)
+                    FinishSend(d, quiet ? null : "patches cleared");
+                patchDrains.Clear();
                 foreach (Chan c in chans)
                 {
                     any |= c.Patch != 0;
@@ -195,8 +238,24 @@ namespace Sidetone.Core
                 }
 
                 run.Last = now;
-                foreach ((Chan _, P25Transmitter tx) in run.Targets)
-                    tx.PushImbe(imbe);
+                PatchSend send = run.Send;
+                if (send == null)
+                    return;     // nowhere to send it (not connected)
+
+                // how evenly the source's voice arrives: the longest wait between frames
+                TimeSpan at = patchClock.Elapsed;
+                if (send.LastIn != TimeSpan.MinValue && at - send.LastIn > send.LongestGap)
+                    send.LongestGap = at - send.LastIn;
+                send.LastIn = at;
+
+                send.Pending.Enqueue((byte[])imbe.Clone());
+                send.FramesIn++;
+                if (send.Pending.Count > PatchMaxLdus * PatchLduFrames)
+                {
+                    for (int i = 0; i < PatchLduFrames; i++)
+                        send.Pending.Dequeue();
+                    send.Dropped += PatchLduFrames;
+                }
             }
         }
 
@@ -208,7 +267,7 @@ namespace Sidetone.Core
                 foreach (PatchRun run in patchRuns)
                 {
                     if (run.Source == c)
-                        EndRun(run, null);
+                        EndRun(run, null, drain: true);
                 }
             }
         }
@@ -225,6 +284,15 @@ namespace Sidetone.Core
             if (!CanSend)
                 return;     // nothing to send on; the run still marks who is talking
             uint from = patchPassthrough && sourceId != 0 ? sourceId : ConsoleRid;
+            PatchSend send = new PatchSend { Patch = patch, Source = source, SourceId = sourceId, Started = now };
+
+            // a previous call on this patch still draining would be a second transmitter on the same talkgroups
+            foreach (PatchSend d in patchDrains.Where(d => d.Patch == patch).ToList())
+            {
+                FinishSend(d, "next call");
+                patchDrains.Remove(d);
+            }
+
             List<string> skipped = new List<string>();
             foreach (Chan m in chans)
             {
@@ -247,38 +315,149 @@ namespace Sidetone.Core
                     continue;
                 }
                 patchStreams[t.StreamId] = DateTime.MaxValue;   // while it lasts
-                run.Targets.Add((m, t));
+                send.Targets.Add((m, t));
             }
 
-            if (run.Targets.Count > 0)
-                AddLog($"{name}: {source.Cfg.Name} → {string.Join(", ", run.Targets.Select(t => t.Chan.Cfg.Name))} ({aliases.Describe(sourceId)})");
+            if (send.Targets.Count > 0)
+            {
+                run.Send = send;
+                StartPatchPump();
+                AddLog($"{name}: {source.Cfg.Name} → {string.Join(", ", send.Targets.Select(t => t.Chan.Cfg.Name))} ({aliases.Describe(sourceId)})");
+            }
             foreach (string s in skipped)
                 AddLog($"{name}: not sent to {s}");
         }
 
-        /// <summary>Ends what a patch is passing on (caller holds the lock). A reason is logged when given and something was being sent.</summary>
-        private void EndRun(PatchRun run, string reason)
+        /// <summary>
+        /// Ends what a patch is passing on (caller holds the lock). With <paramref name="drain"/>, what is
+        /// still buffered goes out first (the call ended normally); otherwise it stops now.
+        /// </summary>
+        private void EndRun(PatchRun run, string reason, bool drain = false)
         {
             if (run.Source == null)
                 return;
+            PatchSend send = run.Send;
+            run.Send = null;
+            run.Source = null;
+            run.StreamId = 0;
+            if (send == null)
+                return;
+            if (drain)
+            {
+                send.Ending = true;
+                send.EndReason = reason;
+                patchDrains.Add(send);
+                StartPatchPump();
+            }
+            else
+                FinishSend(send, reason);
+        }
+
+        /// <summary>Ends a patched call on its targets and logs how it went (caller holds the lock).</summary>
+        private void FinishSend(PatchSend send, string reason)
+        {
             DateTime now = DateTime.UtcNow;
-            foreach ((Chan _, P25Transmitter tx) in run.Targets)
+            foreach ((Chan _, P25Transmitter tx) in send.Targets)
             {
                 uint id = tx.StreamId;
                 tx.Stop();
                 if (id != 0)
                     patchStreams[id] = now + PatchStale;    // ignore it if the FNE sends it back late
             }
-            if (run.Targets.Count > 0)
+            if (send.Targets.Count == 0)
+                return;
+
+            string name = patchNames[send.Patch - 1];
+            double secs = (now - send.Started).TotalSeconds;
+            List<string> notes = new List<string>();
+            if (send.RanDry > 0)
+                notes.Add($"the source fell behind {send.RanDry}×");
+            if (send.Dropped > 0)
+                notes.Add($"{send.Dropped} frames dropped to catch up");
+            string timing = $"{send.FramesOut} of {send.FramesIn} frames sent, longest gap from the source {send.LongestGap.TotalMilliseconds:F0} ms" +
+                            (notes.Count > 0 ? $", {string.Join(", ", notes)}" : string.Empty);
+            AddLog($"{name}: end {send.Source.Cfg.Name}, {secs:F1} s ({timing}){(reason != null ? $" ({reason})" : string.Empty)}");
+            AddRecent(name, aliases.Label(send.SourceId), $"{secs:F0} s, {send.Source.Cfg.Name} → {string.Join(", ", send.Targets.Select(t => t.Chan.Cfg.Name))}", tx: true);
+            send.Targets.Clear();
+        }
+
+        /// <summary>Starts the timer that sends patched voice at a steady rate, if it isn't running.</summary>
+        private void StartPatchPump()
+        {
+            if (patchManualPump || patchTimer != null)
+                return;
+            patchTimer = new Timer(_ =>
             {
-                string name = patchNames[Array.IndexOf(patchRuns, run)];
-                double secs = (now - run.Started).TotalSeconds;
-                AddLog($"{name}: end {run.Source.Cfg.Name}, {secs:F1} s{(reason != null ? $" ({reason})" : string.Empty)}");
-                AddRecent(name, aliases.Label(run.SourceId), $"{secs:F0} s, {run.Source.Cfg.Name} → {string.Join(", ", run.Targets.Select(t => t.Chan.Cfg.Name))}", tx: true);
+                try { PatchPump(patchClock.Elapsed); }
+                catch (Exception ex) { AddLog($"patch: {ex.Message}"); }
+            }, null, 10, 10);
+        }
+
+        /// <summary>
+        /// Sends what is due on every patched call: one LDU every 180 ms once enough is buffered, and
+        /// ends the calls that have drained. Runs on a timer (or from the self-test with its own clock).
+        /// </summary>
+        internal void PatchPump(TimeSpan now)
+        {
+            lock (patchLock)
+            {
+                foreach (PatchRun run in patchRuns)
+                {
+                    if (run.Send != null)
+                        PumpSend(run.Send, now);
+                }
+                foreach (PatchSend d in patchDrains.ToList())
+                {
+                    if (PumpSend(d, now))
+                    {
+                        FinishSend(d, d.EndReason);
+                        patchDrains.Remove(d);
+                    }
+                }
+                if (patchRuns.All(r => r.Send == null) && patchDrains.Count == 0)
+                {
+                    patchTimer?.Dispose();      // nothing to send; started again by the next call
+                    patchTimer = null;
+                }
             }
-            run.Targets.Clear();
-            run.Source = null;
-            run.StreamId = 0;
+        }
+
+        /// <summary>Sends what is due on one call; true when it has ended and everything has gone out.</summary>
+        private static bool PumpSend(PatchSend s, TimeSpan now)
+        {
+            if (!s.Flowing)
+            {
+                if (s.Pending.Count >= PatchPrebufferLdus * PatchLduFrames || (s.Ending && s.Pending.Count >= PatchLduFrames))
+                {
+                    s.Flowing = true;
+                    s.NextDue = now;
+                }
+                else
+                    return s.Ending;    // an ended call with less than an LDU left: done (a part LDU is dropped, as a radio's would be)
+            }
+
+            for (int sent = 0; sent < 2 && now >= s.NextDue; sent++)
+            {
+                if (s.Pending.Count < PatchLduFrames)
+                {
+                    if (s.Ending)
+                        return true;
+                    s.Flowing = false;  // the source fell behind: wait until there's a buffer again
+                    s.RanDry++;
+                    return false;
+                }
+                for (int i = 0; i < PatchLduFrames; i++)
+                {
+                    byte[] imbe = s.Pending.Dequeue();
+                    foreach ((Chan _, P25Transmitter tx) in s.Targets)
+                        tx.PushImbe(imbe);
+                    s.FramesOut++;
+                }
+                s.NextDue += PatchLduTime;
+            }
+            if (now - s.NextDue > PatchLduTime + PatchLduTime)
+                s.NextDue = now;        // the timer was held up: carry on from now rather than bursting to catch up
+            return s.Ending && s.Pending.Count < PatchLduFrames;
         }
 
         /// <summary>Ends patches whose source stopped without saying so, and forgets old stream IDs.</summary>
@@ -290,7 +469,7 @@ namespace Sidetone.Core
                 foreach (PatchRun run in patchRuns)
                 {
                     if (run.Source != null && now - run.Last > PatchStale)
-                        EndRun(run, "source went quiet");
+                        EndRun(run, "source went quiet", drain: true);
                 }
                 if (patchStreams.Count > 0)
                 {
@@ -309,10 +488,10 @@ namespace Sidetone.Core
             {
                 if (txPatch.Any(t => t.Chan == c))
                     return $"TX patch ← {txChan?.Cfg.Name}";
-                foreach (PatchRun run in patchRuns)
+                foreach (PatchSend send in patchRuns.Select(r => r.Send).Where(x => x != null).Concat(patchDrains))
                 {
-                    if (run.Source != null && run.Targets.Any(t => t.Chan == c))
-                        return $"TX patch ← {run.Source.Cfg.Name}";
+                    if (send.Targets.Any(t => t.Chan == c))
+                        return $"TX patch ← {send.Source.Cfg.Name}";
                 }
             }
             return null;
@@ -332,6 +511,11 @@ namespace Sidetone.Core
             lock (patchLock)
             {
                 EndRun(patchRuns[p - 1], "console transmitting");
+                foreach (PatchSend d in patchDrains.Where(d => d.Patch == p).ToList())
+                {
+                    FinishSend(d, "console transmitting");
+                    patchDrains.Remove(d);
+                }
                 consolePatch = p;
                 foreach (Chan m in chans)
                 {

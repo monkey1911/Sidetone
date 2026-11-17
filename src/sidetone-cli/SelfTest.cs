@@ -787,6 +787,7 @@ B: MSC=10
                 CaptureSink sentOut = new CaptureSink(headers);
                 pt.sinkForTest = sentOut;
                 pt.consoleRidForTest = consoleRid;
+                pt.patchManualPump = true;      // the test drives the patch clock
                 pt.Keys.Store(P25Defines.P25_ALGO_AES, TestKeyId, TestKey);
                 ConsoleChannel calling = pt.Channels.First(ch => ch.IsP25 && !ch.Encrypted);
                 ConsoleChannel secureCh = pt.Channels.First(ch => ch.Encrypted);
@@ -812,6 +813,8 @@ B: MSC=10
                     calling.Rx.Handle(calling.Tg, radio, (P25DUID)v.Frame[22], v.Stream, v.Frame);
                 bool during = pt.GetStatus(secureCh).Activity == ChannelActivity.Transmitting && pt.GetStatus(secureCh).Text.Contains("patch");
                 calling.Rx.Handle(calling.Tg, radio, P25DUID.TDU, airStream, new byte[24]);
+                for (int ms = 0; ms <= 2000; ms += 10)
+                    pt.PatchPump(TimeSpan.FromMilliseconds(ms));       // what was buffered drains out
 
                 uint outStream = sentOut.Voice.Count > 0 ? sentOut.Voice[0].Stream : 0;
                 Check(during && sentOut.Voice.Count == 4 && outStream != 0 && outStream != airStream && sentOut.Voice.All(v => v.Stream == outStream) &&
@@ -825,6 +828,8 @@ B: MSC=10
                 int before = sentOut.Voice.Count, tdusBefore = sentOut.Tdus.Count;
                 foreach (var v in sentOut.Voice.Take(before).ToList())
                     secureCh.Rx.Handle(secureCh.Tg, consoleRid, (P25DUID)v.Frame[22], v.Stream, v.Frame);
+                for (int ms = 3000; ms <= 5000; ms += 10)
+                    pt.PatchPump(TimeSpan.FromMilliseconds(ms));
                 Check(sentOut.Voice.Count == before && sentOut.Tdus.Count == tdusBefore, "patch: its own traffic coming back is not patched again");
 
                 // the console's own PTT on a member keys the rest of the patch with the same voice
@@ -842,6 +847,123 @@ B: MSC=10
                 bool left = secureCh.Patch == 0 && pt.PatchMembers(1).Count == 1;
                 pt.ClearPatches();
                 Check(left && calling.Patch == 0, "patch: a channel that stops listening leaves its patch; clearing empties them all");
+            }
+
+            // patching at a steady pace: a call that arrives in bursts goes out one LDU every 180 ms
+            {
+                const uint paceRid = 9000001, paceRadio = 4321;
+                Tui pace = new Tui(cp, sys, TimeSpan.FromSeconds(120), null) { NoAudio = true };
+                CliPeer paceHeaders = new CliPeer(sys, new KeyStore(), verbose: false);
+                CaptureSink paceOut = new CaptureSink(paceHeaders);
+                pace.sinkForTest = paceOut;
+                pace.consoleRidForTest = paceRid;
+                pace.patchManualPump = true;
+                pace.Keys.Store(P25Defines.P25_ALGO_AES, TestKeyId, TestKey);
+                ConsoleChannel paceFrom = pace.Channels.First(ch => ch.IsP25 && !ch.Encrypted);
+                ConsoleChannel paceTo = pace.Channels.First(ch => ch.Encrypted);
+                pace.SetPatch(paceFrom, 1);
+                pace.SetPatch(paceTo, 1);
+
+                CaptureSink paceAir = new CaptureSink(paceHeaders);
+                P25Transmitter paceTalker = new P25Transmitter(paceAir, new KeyStore(), paceRadio, paceFrom.Tg, P25Defines.P25_ALGO_UNENCRYPT, 0);
+                paceTalker.Start(out _);
+                for (int i = 0; i < 6 * 9; i++) paceTalker.PushAudio(VoicedFrame(i));      // six LDUs
+                uint paceStream = paceTalker.StreamId;
+                paceTalker.Stop();
+                void Feed(int ldu) => paceFrom.Rx.Handle(paceFrom.Tg, paceRadio, (P25DUID)paceAir.Voice[ldu].Frame[22], paceStream, paceAir.Voice[ldu].Frame);
+
+                // one LDU in: the talkgroup is asked for at once, but nothing is sent until two are waiting
+                Feed(0);
+                pace.PatchPump(TimeSpan.FromMilliseconds(0));
+                bool asked = paceOut.Tdus.Count == 1 && paceOut.Tdus[0].Grant && paceOut.Voice.Count == 0;
+                pace.PatchPump(TimeSpan.FromMilliseconds(100));
+                bool waiting = paceOut.Voice.Count == 0;
+
+                // then four more arrive in one burst: they go out evenly, one every 180 ms
+                for (int l = 1; l <= 4; l++) Feed(l);
+                List<int> sentAt = new List<int>();
+                for (int ms = 100; ms <= 1100; ms += 10)
+                {
+                    int had = paceOut.Voice.Count;
+                    pace.PatchPump(TimeSpan.FromMilliseconds(ms));
+                    for (int k = had; k < paceOut.Voice.Count; k++)
+                        sentAt.Add(ms);
+                }
+                List<int> steps = sentAt.Zip(sentAt.Skip(1), (a, b) => b - a).ToList();
+                Check(asked && waiting && sentAt.Count == 5 && sentAt[0] == 100 && steps.All(d => d == 180),
+                      $"patch pacing: the grant is asked for at once, sending starts with two LDUs buffered, and a burst goes out one LDU every 180 ms (at {string.Join(", ", sentAt)} ms)");
+
+                // the source falls behind: wait for a buffer again, then the last LDU and the end drain out before the call ends
+                Feed(5);
+                for (int ms = 1110; ms <= 1500; ms += 10)
+                    pace.PatchPump(TimeSpan.FromMilliseconds(ms));
+                bool heldBack = paceOut.Voice.Count == 5;
+                paceFrom.Rx.Handle(paceFrom.Tg, paceRadio, P25DUID.TDU, paceStream, new byte[24]);
+                bool stillSending = paceOut.Tdus.Count == 1 && pace.GetStatus(paceTo).Text.Contains("patch");
+                for (int ms = 1510; ms <= 2500; ms += 10)
+                    pace.PatchPump(TimeSpan.FromMilliseconds(ms));
+                string endLine = pace.SnapshotLog(10).LastOrDefault(l => l.Contains("Patch 1: end")) ?? string.Empty;
+                Check(heldBack && stillSending && paceOut.Voice.Count == 6 && paceOut.Tdus.Count == 5 &&
+                      endLine.Contains("54 of 54 frames sent") && endLine.Contains("fell behind 1×") && endLine.Contains("longest gap"),
+                      $"patch pacing: a source that falls behind is waited for, and an ended call drains what's buffered before it ends ('{endLine}')");
+
+                List<byte[]> paceHeard = RoundTrip(paceOut, paceTo.Tg, paceRid, pace.Keys, out long paceMuted);
+                List<byte[]> paceSpoken = new List<byte[]>();
+                foreach (var v in paceAir.Voice)
+                {
+                    P25VoiceReceiver.TryExtractCodewords(v.Frame, (P25DUID)v.Frame[22] == P25DUID.LDU1 ? P25VoiceReceiver.Ldu1FirstRecord : P25VoiceReceiver.Ldu2FirstRecord, out byte[][] cws);
+                    paceSpoken.AddRange(cws);
+                }
+                Check(paceMuted == 0 && SameCodewords(paceHeard, paceSpoken), "patch pacing: every frame still arrives, unchanged and in order");
+                pace.ClearPatches();
+            }
+
+            // the same with the real timer, as on the air: a burst of four LDUs takes at least three LDU times to go out
+            {
+                Tui live = new Tui(cp, sys, TimeSpan.FromSeconds(120), null) { NoAudio = true };
+                CliPeer liveHeaders = new CliPeer(sys, new KeyStore(), verbose: false);
+                CaptureSink liveOut = new CaptureSink(liveHeaders);
+                live.sinkForTest = liveOut;
+                live.consoleRidForTest = 9000001;
+                live.Keys.Store(P25Defines.P25_ALGO_AES, TestKeyId, TestKey);
+                ConsoleChannel liveFrom = live.Channels.First(ch => ch.IsP25 && !ch.Encrypted);
+                ConsoleChannel liveTo = live.Channels.First(ch => ch.Encrypted);
+                live.SetPatch(liveFrom, 1);
+                live.SetPatch(liveTo, 1);
+
+                CaptureSink liveAir = new CaptureSink(liveHeaders);
+                P25Transmitter liveTalker = new P25Transmitter(liveAir, new KeyStore(), 4321, liveFrom.Tg, P25Defines.P25_ALGO_UNENCRYPT, 0);
+                liveTalker.Start(out _);
+                for (int i = 0; i < 36; i++) liveTalker.PushAudio(VoicedFrame(i));
+                uint liveStream = liveTalker.StreamId;
+                liveTalker.Stop();
+
+                System.Diagnostics.Stopwatch liveClock = System.Diagnostics.Stopwatch.StartNew();
+                foreach (var v in liveAir.Voice)
+                    liveFrom.Rx.Handle(liveFrom.Tg, 4321, (P25DUID)v.Frame[22], liveStream, v.Frame);
+                liveFrom.Rx.Handle(liveFrom.Tg, 4321, P25DUID.TDU, liveStream, new byte[24]);
+                long firstAt = -1, lastAt = -1;
+                int seen = 0;
+                while (liveClock.ElapsedMilliseconds < 5000 && Volatile.Read(ref liveOut.TduCount) < 5)
+                {
+                    int now = Volatile.Read(ref liveOut.VoiceCount);
+                    if (now > seen)
+                    {
+                        if (seen == 0) firstAt = liveClock.ElapsedMilliseconds;
+                        lastAt = liveClock.ElapsedMilliseconds;
+                        seen = now;
+                    }
+                    Thread.Sleep(2);
+                }
+                if (Volatile.Read(ref liveOut.VoiceCount) > seen)     // the last LDU and the end go out in the same tick
+                {
+                    seen = Volatile.Read(ref liveOut.VoiceCount);
+                    lastAt = liveClock.ElapsedMilliseconds;
+                }
+                long spread = lastAt - firstAt;
+                Check(seen == 4 && Volatile.Read(ref liveOut.TduCount) == 5 && spread >= 3 * 180 - 40 && spread < 3 * 180 + 400,
+                      $"patch pacing: with the real timer, a burst goes out at the LDU rate and the call ends ({seen} LDUs over {spread} ms)");
+                live.ClearPatches();
             }
 
             // the audio device layer: everything plays and records through the backend
@@ -1172,12 +1294,18 @@ B: MSC=10
             public CaptureSink(CliPeer headers) => this.headers = headers;
             public byte[] CreateP25Header(P25DUID duid, fnecore.RemoteCallData callData, fnecore.CryptoParams cryptoParams) =>
                 headers.CreateP25Header(duid, callData, cryptoParams);
-            public void SendP25Voice(byte[] frame, ushort packetSequence, uint streamId) => Voice.Add(((byte[])frame.Clone(), packetSequence, streamId));
+            public int VoiceCount, TduCount;      // safe to read from another thread
+            public void SendP25Voice(byte[] frame, ushort packetSequence, uint streamId)
+            {
+                Voice.Add(((byte[])frame.Clone(), packetSequence, streamId));
+                Interlocked.Increment(ref VoiceCount);
+            }
             public void SendP25Tdu(uint srcId, uint dstId, uint streamId, bool grantDemand)
             {
                 int count = grantDemand ? 1 : 4;   // as CliPeer does
                 for (int i = 0; i < count; i++)
                     Tdus.Add((srcId, dstId, streamId, grantDemand));
+                Interlocked.Add(ref TduCount, count);
             }
         }
 

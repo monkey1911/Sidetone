@@ -466,6 +466,8 @@ How it behaves:
 
 **Audio quality.** The Windows console decodes a received call to audio and encodes it again for each patched channel. Sidetone passes the voice frames themselves across (decrypting and re-encrypting them as needed), so a patched call goes through the vocoder once, at the radio that spoke, and not a second time in the console.
 
+**Steady timing.** A call reaches the console with whatever unevenness the network gave it, and a radio site (a small hotspot especially) chops up audio that doesn't arrive at a steady rate. So a patched call is buffered briefly and sent on at the rate a radio sends: one voice frame block (LDU) every 180 ms, starting once two are waiting. Patched audio is about a third of a second behind the original. The talkgroup is asked for straight away, so the system can grant it in that time, and when the call ends, what's still buffered goes out before it's ended. The log's end line for each patched call says how evenly the source's audio arrived, for example `Patch 1: end Helpdesk, 12.4 s (612 of 612 frames sent, longest gap from the source 240 ms)`, and adds `the source fell behind N×` when the buffer ran out partway through.
+
 ## Encryption keys
 
 Keys normally come from the FNE: the console asks for each encrypted channel's key after it logs in. Two things add to that.
