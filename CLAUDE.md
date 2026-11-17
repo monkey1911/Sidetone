@@ -23,9 +23,10 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
   untested. Ask the owner before calling something untested, and move items up once confirmed.
 - **Patching (0.24.2):** works across the network (another console saw both talkgroups active;
   10503 of 10503 frames sent, source gaps up to 266 ms). Not yet heard on a radio: the owner's
-  hotspot has one voice channel, which was carrying the source TG, so the patch target's grant was
-  denied ("no channels available"). Not a Sidetone fault. Retest with nothing on the hotspot
-  affiliated to the source TG.
+  hotspot has one voice channel, and the FNE sent the source TG (505, the hourly system update) to
+  it although nothing there was affiliated (the owner's radio was on the target TG, not scanning),
+  so the patch target's grant was denied ("no channels available"). Not a Sidetone fault. Retest
+  with a source TG the FNE doesn't send to the hotspot.
 - **No results reported yet:** page
   notifications, mic processing (on by default!), local KFDtool key files and the keyring, the
   Settings screen with real devices, the Motorola desk mic in the GUI, `--wayland`.
@@ -171,8 +172,9 @@ every release on the air and on their hardware after publishing it.
   rejection", `DENY_TGT_GROUP_NOT_VALID`). fnecore's `SendP25TDU` never sets it (nor does the Windows
   console), so `CliPeer.BuildTdu` builds the TDU itself. Found on the owner's hotspot site (0.24.2).
 - A one-voice-channel site (the owner's hotspot) can't carry a patch's source and target at once:
-  whichever talkgroup is granted first holds the channel, and the other's grant is denied. The
-  FNE doesn't tell the peer about a denied grant.
+  whichever talkgroup is granted first holds the channel, and the other's grant is denied. dvmhost
+  grants a network grant demand without checking affiliations (the FNE decides what reaches a
+  site). The FNE doesn't tell the peer about a denied grant.
 - **The FNE version CTRS runs does not pass extended-function replies (radio check acks) back to
   the peer that sent them.** The radio does answer over the air. Don't ask the owner about it again;
   Sidetone already decodes and logs replies if a newer FNE sends them.
