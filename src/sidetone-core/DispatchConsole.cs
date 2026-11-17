@@ -27,7 +27,12 @@ namespace Sidetone.Core
     public sealed class ConsoleChannel
     {
         public Codeplug.Channel Cfg;
+        /// <summary>The codeplug zone's name, as written there (part of the remembered settings key).</summary>
         public string Zone;
+        /// <summary>The zone (tab) this channel is on.</summary>
+        public ConsoleZone InZone;
+        /// <summary>The channel's zone is hidden: the channel is switched off.</summary>
+        public bool Hidden => InZone != null && InZone.Hidden;
         public uint Tg;
         public bool IsP25;
         public bool Encrypted;
@@ -158,19 +163,26 @@ namespace Sidetone.Core
             this.logFile = logFile;
             SetUpPatches(codeplug);
 
-            foreach (Codeplug.Zone zone in codeplug.Zones ?? new List<Codeplug.Zone>())
+            List<Codeplug.Zone> cpZones = codeplug.Zones ?? new List<Codeplug.Zone>();
+            for (int zi = 0; zi < cpZones.Count; zi++)
+            {
+                Codeplug.Zone zone = cpZones[zi];
+                if (zone == null)
+                    continue;
                 foreach (Codeplug.Channel c in zone.Channels ?? new List<Codeplug.Channel>())
                 {
-                    if (!string.IsNullOrWhiteSpace(c.System) && !string.Equals(c.System, system.Name, StringComparison.OrdinalIgnoreCase))
+                    if (c == null || (!string.IsNullOrWhiteSpace(c.System) && !string.Equals(c.System, system.Name, StringComparison.OrdinalIgnoreCase)))
                         continue;
 
                     bool p25 = c.GetChannelMode() == Codeplug.ChannelMode.P25;
                     bool enc = p25 && !string.IsNullOrWhiteSpace(c.Algo) && !c.Algo.Equals("none", StringComparison.OrdinalIgnoreCase);
                     uint.TryParse(c.Tgid, out uint tg);
-                    chans.Add(new Chan
+                    ConsoleZone inZone = ZoneFor(zone, zi);
+                    Chan made = new Chan
                     {
                         Cfg = c,
                         Zone = zone.Name,
+                        InZone = inZone,
                         Tg = tg,
                         IsP25 = p25 && tg != 0,
                         Encrypted = enc,
@@ -178,8 +190,11 @@ namespace Sidetone.Core
                         TxAlg = enc ? c.GetAlgoId() : P25Defines.P25_ALGO_UNENCRYPT,
                         KeyRequestAlg = enc ? c.GetKeyRequestAlgoId() : (byte)0,
                         KeyId = enc ? c.GetKeyId() : (ushort)0
-                    });
+                    };
+                    chans.Add(made);
+                    inZone.chans.Add(made);
                 }
+            }
 
             if (chans.Count == 0)
                 throw new ArgumentException($"no channels for system '{system.Name}' in the codeplug");
@@ -320,11 +335,7 @@ namespace Sidetone.Core
         public int FocusIndex => cursor;
 
         /// <summary>Focuses a channel (PTT then transmits on it).</summary>
-        public void SetFocus(int index)
-        {
-            cursor = Math.Clamp(index, 0, chans.Count - 1);
-            MarkDirty();
-        }
+        public void SetFocus(int index) => FocusTo(index);
 
         /// <summary>Changes whenever a log line is added.</summary>
         public long LogVersion => Interlocked.Read(ref logVersion);
@@ -395,7 +406,7 @@ namespace Sidetone.Core
         {
             List<Chan> matching;
             lock (uiLock)
-                matching = chans.Where(c => c.IsP25 && c.Tg == e.DstId).ToList();
+                matching = chans.Where(c => c.IsP25 && c.Tg == e.DstId && !c.Hidden).ToList();     // a hidden zone's channels are off
 
             bool terminator = e.DUID == P25DUID.TDU || e.DUID == P25DUID.TDULC;
             foreach (Chan c in matching)
@@ -437,6 +448,11 @@ namespace Sidetone.Core
         {
             if (c.Selected)
                 return;
+            if (c.Hidden)
+            {
+                AddLog($"{c.Cfg.Name}: zone {c.InZone.Name} is hidden; show it again to listen here");
+                return;
+            }
             if (!c.IsP25)
             {
                 AddLog($"{c.Cfg.Name}: {c.Cfg.Mode} channels aren't supported yet");
@@ -1192,6 +1208,7 @@ namespace Sidetone.Core
             lastPageA = ss.PageA ?? string.Empty;
             lastPageB = ss.PageB ?? string.Empty;
             lastPageRid = ss.PageRid ?? string.Empty;
+            RestoreHiddenZones(ss);
 
             List<string> restored = new List<string>();
             for (int i = 0; i < chans.Count; i++)
@@ -1206,7 +1223,9 @@ namespace Sidetone.Core
                 c.TxClear = cs.TxClear && c.Selectable;
                 c.Record = cs.Record && cs.Listening && c.IsP25;
                 c.Gain = Math.Clamp(cs.Gain, 0.25, 8.0);
-                if (cs.Listening && c.IsP25)
+                if (c.Hidden)
+                    c.Record = false;
+                if (cs.Listening && c.IsP25 && !c.Hidden)
                 {
                     Select(c);
                     restored.Add(c.Cfg.Name + (c.Record ? " (recording)" : string.Empty));
@@ -1214,6 +1233,7 @@ namespace Sidetone.Core
             }
             if (restored.Count > 0)
                 AddLog($"restored: listening on {string.Join(", ", restored)}");
+            SettleFocus();
             settingsDirty = false;
         }
 
@@ -1233,6 +1253,9 @@ namespace Sidetone.Core
             ss.PageB = lastPageB;
             ss.PageRid = lastPageRid;
             ss.Focused = ChanKey(chans[cursor]);
+            ss.HiddenZones = zones.Where(z => z.Hidden).Select(z => z.Name).ToList();
+            if (ss.HiddenZones.Count == 0)
+                ss.HiddenZones = null;
             foreach (Chan c in chans)
                 ss.Channels[ChanKey(c)] = new ChannelSettings { Listening = c.Selected, Muted = c.Muted, Gain = Math.Round(c.Gain, 3), TxClear = c.Selectable && c.TxClear, Record = c.Record };
 

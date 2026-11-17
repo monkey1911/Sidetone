@@ -80,8 +80,8 @@ namespace Sidetone.Gui
                     case "--selfcheck": o.SelfCheck = true; break;
                     case "--show":
                         o.Show = Next().ToLowerInvariant();
-                        if (o.Show is not ("page" or "digital" or "radio" or "settings" or "keyfile" or "patch" or "recall"))
-                            throw new ArgumentException("--show must be page, digital, radio, settings, keyfile, patch or recall");
+                        if (o.Show is not ("page" or "digital" or "radio" or "settings" or "keyfile" or "patch" or "recall" or "tabs"))
+                            throw new ArgumentException("--show must be page, digital, radio, settings, keyfile, patch, recall or tabs");
                         break;
                     case "--space":
                     {
@@ -519,6 +519,56 @@ namespace Sidetone.Gui
                 try { Directory.Delete(data, true); } catch (Exception) { }
             }
             Check(holdBefore, "Space is hold-to-talk unless Settings or --space says otherwise");
+
+            // zone tabs: the demo has four zones, one of them hidden
+            ZoneTabs strip = w.ZoneStrip;
+            List<(ConsoleZone Zone, Tap Tap)> tabList = strip.Tabs.ToList();
+            w.RefreshNow();
+            Check(strip.Root.IsVisible && tabList.Count == 4 && tabList.Count(t => t.Tap.Root.IsVisible) == 3 && c.Zones[3].Hidden &&
+                  w.CardShown(1) && !w.CardShown(4),
+                  $"tabs: one per zone, the hidden zone's tab not shown, and only the tab's own cards ({tabList.Count} tabs)");
+            c.SetFocus(3);
+            Press(PhysicalKey.ArrowRight);
+            bool edge = c.FocusIndex == 3;
+            Press(PhysicalKey.PageDown, RawInputModifiers.Control);
+            bool regional = c.CurrentZone == c.Zones[1] && c.FocusIndex == 4 && w.CardShown(4) && !w.CardShown(1);
+            Press(PhysicalKey.BracketRight);
+            bool fire = c.CurrentZone == c.Zones[2];
+            Press(PhysicalKey.BracketLeft);
+            bool back = c.CurrentZone == c.Zones[1];
+            Press(PhysicalKey.Digit1, RawInputModifiers.Control);
+            Check(edge && regional && fire && back && c.CurrentZone == c.Zones[0] && c.FocusIndex == 3,
+                  "tabs: arrows stay on the tab; Ctrl+PgDn, ] and [ switch tabs; Ctrl+1 goes back to the first, to the card focused there");
+            Check(c.SnapshotLog(3).All(l => !l.Contains("not connected")), "tabs: Ctrl+1 picks a tab, not alert tone 1");
+            Press(PhysicalKey.Tab, RawInputModifiers.Control);
+            bool ctrlTab = c.CurrentZone == c.Zones[1];
+            Press(PhysicalKey.Tab, RawInputModifiers.Control | RawInputModifiers.Shift);
+            Press(PhysicalKey.PageUp, RawInputModifiers.Control);
+            Check(ctrlTab && c.CurrentZone == c.Zones[2], "tabs: Ctrl+Tab, Ctrl+Shift+Tab and Ctrl+PgUp go through the tabs (round from the first to the last)");
+
+            c.ShowZone(c.Zones[0]);     // so the click has something to do
+            w.RefreshNow();
+            Point onFire = tabList[2].Tap.Root.TranslatePoint(new Point(10, 10), w) ?? new Point(-1, -1);
+            w.MouseDown(onFire, MouseButton.Left);
+            w.MouseUp(onFire, MouseButton.Left);
+            Dispatcher.UIThread.RunJobs();
+            Check(c.CurrentZone == c.Zones[2] && w.CardShown(7), "tabs: clicking a tab shows it");
+
+            ZoneOverlay zbox = w.ZoneBox;
+            Press(PhysicalKey.Z);
+            bool zOpen = zbox.IsOpen && zbox.Row == 2;
+            Press(PhysicalKey.ArrowDown);
+            Press(PhysicalKey.Space);
+            bool aidShown = !c.Zones[3].Hidden && tabList[3].Tap.Root.IsVisible;
+            Press(PhysicalKey.Space);
+            Press(PhysicalKey.ArrowUp);
+            Press(PhysicalKey.Space);
+            bool fireHidden = c.Zones[2].Hidden && c.CurrentZone != c.Zones[2] && !tabList[2].Tap.Root.IsVisible && zbox.Message.Length == 0;
+            Press(PhysicalKey.Space);
+            Press(PhysicalKey.Escape);
+            Check(zOpen && aidShown && c.Zones[3].Hidden && fireHidden && !c.Zones[2].Hidden && !zbox.IsOpen,
+                  "tabs: Z opens the Tabs box; arrows and Space hide and show zones (hiding the tab on show moves to another); Esc closes it");
+            c.SetFocus(1);
 
             w.KeyPressQwerty(PhysicalKey.Q, RawInputModifiers.Control);
             Dispatcher.UIThread.RunJobs();

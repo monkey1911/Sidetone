@@ -202,6 +202,9 @@ namespace Sidetone.Cli
                 // 14. dedicated PTT device (evdev)
                 PttDeviceTests(cp, sys);
 
+                // 15. zones (tabs): switching, hiding, remembering, and the TUI's tab line
+                ZoneTests(tmp);
+
                 // 8. WAV writer
                 string wavPath = Path.Combine(tmp, "test.wav");
                 using (WavSink wav = new WavSink(wavPath))
@@ -1460,6 +1463,188 @@ zones:
         algo: ""aes""
         keyId: 0x561
 ";
+
+        private const string ZoneCodeplug = @"
+systems:
+  - name: ""Test FNE""
+    identity: ""TEST CLI""
+    address: ""127.0.0.1""
+    port: 62031
+    peerId: 9000001
+    rid: ""9000001""
+    password: ""PASSWORD""
+  - name: ""Other FNE""
+    identity: ""OTHER""
+    address: ""127.0.0.1""
+    port: 62032
+    peerId: 9000002
+    rid: ""9000002""
+    password: ""PASSWORD""
+zones:
+  - name: ""Alpha""
+    tabColor: ""#E57373""
+    tabTextColor: ""#000000""
+    channels:
+      - { name: ""A1"", system: ""Test FNE"", tgid: ""601"", mode: ""p25"" }
+      - { name: ""A2"", system: ""Test FNE"", tgid: ""602"", mode: ""p25"" }
+  - name: """"
+    channels:
+      - { name: ""N1"", system: ""Test FNE"", tgid: ""611"", mode: ""p25"" }
+  - name: ""Bravo""
+    channels:
+      - { name: ""B1"", system: ""Test FNE"", tgid: ""621"", mode: ""p25"" }
+      - { name: ""B2"", system: ""Other FNE"", tgid: ""622"", mode: ""p25"" }
+  - name: ""alpha""
+    channels:
+      - { name: ""A3"", system: ""Test FNE"", tgid: ""603"", mode: ""p25"" }
+  - name: ""Elsewhere""
+    channels:
+      - { name: ""E1"", system: ""Other FNE"", tgid: ""631"", mode: ""p25"" }
+";
+
+        private static void ZoneTests(string tmp)
+        {
+            string zonePath = Path.Combine(tmp, "zones.yml");
+            File.WriteAllText(zonePath, ZoneCodeplug);
+            Codeplug zcp = Program.LoadCodeplug(zonePath);
+            Codeplug.System zsys = zcp.Systems[0];
+            string zoneRec = Path.Combine(tmp, "zone-recordings");
+
+            Tui zt = new Tui(zcp, zsys, TimeSpan.FromSeconds(120), null) { NoAudio = true, RecordingsFolder = zoneRec };
+            List<string> zoneNames = zt.Zones.Select(z => z.Name).ToList();
+            ConsoleZone alpha = zt.Zones[0], unnamed = zt.Zones[1], bravo = zt.Zones[2];
+            Check(string.Join(",", zoneNames) == "Alpha,Zone 2,Bravo" &&
+                  string.Join(",", alpha.Channels.Select(c => c.Cfg.Name)) == "A1,A2,A3" && bravo.Channels.Count == 1,
+                  $"zones: one tab per zone, same-named zones share a tab, a nameless one is 'Zone N', other systems' channels and zones left out ({string.Join(",", zoneNames)})");
+            Check(alpha.TabColor == "#E57373" && alpha.TabTextColor == "#000000" && bravo.TabColor == null && zt.Channels[0].InZone == alpha,
+                  "zones: tab colours come from the codeplug");
+
+            // switching tabs
+            int a1 = 0, a2 = 1, n1 = 2, b1 = 3, a3 = 4;      // codeplug order
+            zt.SetFocus(a2);
+            zt.ShowZone(bravo);
+            bool onBravo = zt.CurrentZone == bravo && zt.FocusIndex == b1;
+            zt.NextZone(1);
+            bool backToA2 = zt.CurrentZone == alpha && zt.FocusIndex == a2;
+            zt.NextZone(-1);
+            bool wrapped = zt.CurrentZone == bravo;
+            zt.ShowZoneNumber(2);
+            bool second = zt.CurrentZone == unnamed && zt.FocusIndex == n1;
+            zt.ShowZoneNumber(9);
+            Check(onBravo && backToA2 && wrapped && second && zt.CurrentZone == unnamed,
+                  "zones: switching tabs moves the focus there, each tab remembers its focused card, and the ends wrap round");
+
+            // the TUI: a tab line, cards from the tab on show only, arrows stay on the tab, [ and ] switch
+            zt.ShowZone(alpha);
+            zt.Render(120, 40);
+            string tabLine = zt.Render(120, 40).RowText(Tui.TitleHeight);
+            string cardTop = zt.Render(120, 40).RowText(Tui.TitleHeight + 1);
+            Check(zt.TabRows == 1 && tabLine.Contains("1 Alpha") && tabLine.Contains("2 Zone 2") && tabLine.Contains("3 Bravo") &&
+                  cardTop.Contains("A1") && cardTop.Contains("A3") && !cardTop.Contains("B1"),
+                  $"TUI tabs: a line of tabs under the title, and only the tab's own cards ('{tabLine.Trim()}')");
+            zt.HandleInput(new InputEvent(InputKind.Key, InputKey.End));
+            bool lastOnTab = zt.FocusIndex == a3;
+            zt.HandleInput(new InputEvent(InputKind.Key, InputKey.Right));
+            bool stayed = zt.FocusIndex == a3;
+            zt.HandleInput(new InputEvent(InputKind.Key, InputKey.Char, ']'));
+            bool next = zt.CurrentZone == unnamed;
+            zt.HandleInput(new InputEvent(InputKind.Key, InputKey.Char, '['));
+            Check(lastOnTab && stayed && next && zt.CurrentZone == alpha && zt.FocusIndex == a3,
+                  "TUI tabs: End and the arrows move within the tab; ] and [ go to the next and previous tab");
+            zt.Render(120, 40);
+            int bravoX = tabLine.IndexOf("3 Bravo", StringComparison.Ordinal);
+            zt.HandleInput(new InputEvent(InputKind.Click, X: bravoX + 1, Y: Tui.TitleHeight));
+            Check(zt.CurrentZone == bravo, "TUI tabs: clicking a tab shows it");
+            zt.ShowZone(alpha);
+
+            // hiding a zone switches its channels off
+            zt.Select(zt.Channels[a1]);
+            zt.SetPatch(zt.Channels[a1], 1);
+            zt.SetRecord(zt.Channels[a2], true);
+            zt.Select(zt.Channels[b1]);
+            bool before = zt.Channels[a1].Selected && zt.Channels[a1].Patch == 1 && zt.Channels[a2].Record;
+            string hid = zt.SetZoneHidden(alpha, true);
+            Check(before && hid == null && alpha.Hidden && zt.Channels.Where(c => c.InZone == alpha).All(c => !c.Selected && c.Patch == 0 && !c.Record) &&
+                  zt.Channels[b1].Selected && zt.CurrentZone == unnamed && zt.VisibleZones.Count == 2,
+                  "zones: hiding one stops listening on its channels (and their patch and recording), leaves the others alone, and moves to the next tab");
+            zt.Select(zt.Channels[a1]);
+            int focusNow = zt.FocusIndex;
+            zt.SetFocus(a1);
+            zt.ShowZone(alpha);
+            Check(!zt.Channels[a1].Selected && zt.SnapshotLog(5).Any(l => l.Contains("zone Alpha is hidden")) && zt.FocusIndex == focusNow && zt.CurrentZone == unnamed,
+                  "zones: a hidden zone's channels can't be listened to or focused, and its tab can't be shown");
+            zt.OnFrame(new fnecore.P25DataReceivedEvent(1, 3012, 601, fnecore.CallType.GROUP, P25DUID.LDU1, fnecore.FrameType.VOICE, 0, 77, new byte[300]));
+            zt.OnFrame(new fnecore.P25DataReceivedEvent(1, 3012, 611, fnecore.CallType.GROUP, P25DUID.LDU1, fnecore.FrameType.VOICE, 0, 78, new byte[300]));
+            Check(!zt.Channels[a1].Active && zt.Channels[n1].Active && zt.ZoneActivity(unnamed) == ChannelActivity.Receiving && zt.ZoneActivity(alpha) == ChannelActivity.Idle,
+                  "zones: traffic on a hidden zone isn't shown; traffic on a tab marks it");
+            zt.Channels[n1].Active = false;
+
+            string onlyOne = zt.SetZoneHidden(unnamed, true) == null ? zt.SetZoneHidden(bravo, true) : "first refused";
+            Check(onlyOne != null && onlyOne.Contains("only zone on show") && !bravo.Hidden && unnamed.Hidden,
+                  $"zones: the last zone on show can't be hidden ('{onlyOne}')");
+            zt.SetZoneHidden(unnamed, false);
+            zt.toneChans.Add(zt.Channels[b1]);
+            string toning = zt.SetZoneHidden(bravo, true);
+            zt.toneChans.Clear();
+            Check(toning != null && toning.Contains("transmitting") && !bravo.Hidden, "zones: one being transmitted on can't be hidden");
+
+            string shown = zt.SetZoneHidden(alpha, false);
+            zt.ShowZone(alpha);
+            zt.Select(zt.Channels[a1]);
+            Check(shown == null && !alpha.Hidden && zt.CurrentZone == alpha && zt.Channels[a1].Selected,
+                  "zones: shown again, its tab and channels work again (not listening until asked)");
+
+            // the TUI's zones box
+            zt.HandleInput(new InputEvent(InputKind.Key, InputKey.Char, 'z'));
+            bool boxOpen = zt.ZoneDialogOpen;
+            zt.HandleInput(new InputEvent(InputKind.Key, InputKey.Down));
+            zt.HandleInput(new InputEvent(InputKind.Key, InputKey.Space));
+            bool hiddenByBox = unnamed.Hidden;
+            zt.HandleInput(new InputEvent(InputKind.Key, InputKey.Char, 'm'));     // a shortcut does nothing while the box is open
+            zt.HandleInput(new InputEvent(InputKind.Key, InputKey.Space));
+            zt.HandleInput(new InputEvent(InputKind.Key, InputKey.Escape));
+            Check(boxOpen && hiddenByBox && !unnamed.Hidden && !zt.ZoneDialogOpen && !zt.Channels[a1].Muted,
+                  "TUI zones box: z opens it, Space hides and shows the highlighted zone, Esc closes it");
+
+            Check(Tui.NearestAnsi("#E57373") == Ansi.BrightRed && Tui.NearestAnsi("#81C784") == Ansi.BrightGreen && Tui.NearestAnsi("#1F6FEB") == Ansi.BrightBlue &&
+                  Tui.NearestAnsi("#000000") == Ansi.Black && Tui.NearestAnsi("FFFFFF") == Ansi.BrightWhite && Tui.NearestAnsi("#7a1010") == Ansi.Red &&
+                  Tui.NearestAnsi("teal") == Ansi.Default && Tui.NearestAnsi(null) == Ansi.Default,
+                  "TUI tabs: codeplug tab colours become the nearest terminal colour, pale ones included");
+
+            // one zone: no tab line, as before
+            Tui single = new Tui(Program.LoadCodeplug(Path.Combine(tmp, "codeplug.yml")), zsys, TimeSpan.FromSeconds(120), null) { NoAudio = true };
+            single.Render(120, 40);
+            single.HandleInput(new InputEvent(InputKind.Key, InputKey.Char, 'z'));
+            Check(single.Zones.Count == 1 && single.TabRows == 0 && !single.ZoneDialogOpen, "zones: a codeplug with one zone shows no tabs");
+
+            // remembered: hidden zones and the tab on show
+            string zoneSettings = Path.Combine(tmp, "zone-settings.json");
+            Tui zfirst = new Tui(zcp, zsys, TimeSpan.FromSeconds(120), null, settingsPath: zoneSettings) { NoAudio = true };
+            zfirst.SetFocus(b1);
+            zfirst.Select(zfirst.Channels[a1]);
+            zfirst.SetZoneHidden(zfirst.Zones[1], true);
+            zfirst.SaveSettings();
+            AppSettings edited = AppSettings.Load(zoneSettings, out _);     // as if Zone 2's channel had been left listening
+            edited.For(zsys.Name).Channels[DispatchConsole.ChanKey(zfirst.Channels[n1])] = new ChannelSettings { Listening = true };
+            edited.Save(zoneSettings);
+            zfirst.Shutdown();
+            Tui zsecond = new Tui(zcp, zsys, TimeSpan.FromSeconds(120), null, settingsPath: zoneSettings) { NoAudio = true };
+            zsecond.RestoreSettings();
+            Check(zsecond.Zones[1].Hidden && !zsecond.Channels[n1].Selected && zsecond.Channels[a1].Selected && zsecond.CurrentZone == zsecond.Zones[2] &&
+                  File.ReadAllText(zoneSettings).Contains("\"HiddenZones\""),
+                  "zones: hidden zones and the tab on show are remembered, and a hidden zone's channels stay off");
+            zsecond.Shutdown();
+
+            AppSettings every = AppSettings.Load(zoneSettings, out _);
+            every.For(zsys.Name).HiddenZones = new List<string> { "alpha", "Zone 2", "BRAVO" };
+            every.Save(zoneSettings);
+            Tui zthird = new Tui(zcp, zsys, TimeSpan.FromSeconds(120), null, settingsPath: zoneSettings) { NoAudio = true };
+            zthird.RestoreSettings();
+            Check(!zthird.Zones[0].Hidden && zthird.Zones[1].Hidden && zthird.Zones[2].Hidden && !zthird.Channels[zthird.FocusIndex].Hidden,
+                  "zones: if every zone was hidden, the first one is shown (names match whatever the case)");
+            zthird.Shutdown();
+            zt.Shutdown();
+        }
 
         /// <summary>A sound system that plays and records nothing, and counts what it's given.</summary>
         private sealed class FakeAudio : IAudioBackend

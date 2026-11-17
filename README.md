@@ -109,6 +109,8 @@ Channels are shown as cards, up to four across. The mouse works in any terminal 
 | **MARK** (title bar) | Turn the channel marker on or off |
 | **EXIT** (title bar) | Quit |
 | **MIC** meter (bottom edge of the title box) | Open or close the microphone for the level meter |
+| A tab (the line under the title, when the codeplug has several zones) | Show that tab's cards |
+| `z: zones` or `n hidden · z` (end of the tab line) | Open the zones box, to hide or show zones |
 | A card | Focus it and start listening |
 | `[●]` on a card | Stop listening |
 | `[-]` `[+]` `[mute]` on a card | That card's volume and mute |
@@ -116,7 +118,9 @@ Channels are shown as cards, up to four across. The mouse works in any terminal 
 
 | Key | Action |
 |---|---|
-| Arrows, Tab, PgUp / PgDn, Home / End | Move between cards |
+| Arrows, Tab, PgUp / PgDn, Home / End | Move between the cards on the tab on show |
+| [ / ] | Previous / next tab |
+| z | Zones box: ↑/↓ pick a zone, Space or Enter hides or shows it, Esc closes |
 | Enter | Start or stop listening on the focused card |
 | Space | Toggle transmit on the focused card (press again to stop) |
 | Esc | Stop transmitting or stop a tone |
@@ -166,6 +170,7 @@ What it has so far:
 - **PTT**: hold it to talk, let go to stop. Each card also has its own small **PTT**, which keys that channel without moving the focus to it.
 - **MUTE** for all receive audio, **Mute mic**, and **Mic check** with a level meter
 - **Settings** and **Quit** in the top right (Quit is there for desktops without window buttons)
+- **tabs**, one per codeplug zone, under the tool bar (see [Tabs (zones)](#tabs-zones))
 - a tool bar under the header:
   - **Alert tones 1 to 6**, sent on every listening channel. While a tone is going out, the PTT button reads **STOP TONE**; click it or press Esc to stop.
   - **Page…** opens a box for a two-tone (QuickCall II) page on every listening channel, or a digital page (P25 call alert) to one radio. The last values are filled in.
@@ -232,7 +237,10 @@ Keyboard shortcuts (the same keys as the TUI where both have the feature):
 |---|---|
 | Space | Push-to-talk on the focused channel: hold to talk, let go to stop |
 | Esc | Stop transmitting |
-| Arrow keys | Move the focus between cards |
+| Arrow keys | Move the focus between the cards on the tab on show |
+| [ / ] | Previous / next tab (also Ctrl+PgUp / Ctrl+PgDn, and Ctrl+Shift+Tab / Ctrl+Tab) |
+| Ctrl+1 to Ctrl+9 | Go to tab 1 to 9 |
+| Z | Open the Tabs box (hide or show zones) |
 | Enter | Start or stop listening on the focused card |
 | M / Shift+M | Mute the focused channel / mute all receive audio |
 | + / - | Volume of the focused channel |
@@ -424,6 +432,17 @@ Replays play at the channel's volume, even when the channel or the console is mu
 When a radio pages the console (a call alert to the console's radio ID), Sidetone shows a desktop notification as well as logging it. It uses `notify-send`, or `gdbus` when that isn't installed, and needs a notification service such as mako, dunst, swaync, GNOME or KDE. Repeats from the same radio within ten seconds show one notification.
 
 Turn it off under **When paged** in Settings, or for one run with `--no-notify` (both programs).
+
+## Tabs (zones)
+
+Each zone in the codeplug is a tab, as in the Windows console, in the same order and in the codeplug's tab colours (`tabColor` and `tabTextColor`; the terminal console uses the nearest terminal colour). A codeplug with only one zone shows no tabs, the same as before.
+
+- **Channels on other tabs keep working.** They go on listening, patching and recording, and their audio still plays. A dot on a tab means a call on one of its channels (red: the console is transmitting there), so traffic on another tab doesn't go unnoticed.
+- **Switching tabs** moves the focus to that tab, to the card you had focused there last, so PTT always transmits on a card you can see. Click a tab, or use `[` and `]` (both consoles), Ctrl+PgUp / Ctrl+PgDn or Ctrl+1 to Ctrl+9 (graphical console).
+- **Hiding a zone** switches its channels off, like the Windows console's Tab Manager: they stop listening (which takes them out of patches and stops their recording), their traffic isn't shown, and they can't be listened to until the zone is shown again. Use **Tabs…** at the end of the tab strip (it reads **1 hidden…** when one is hidden) or Z in the graphical console, and `z` in the TUI. The last zone on show can't be hidden, and neither can a zone you're transmitting on.
+- **Remembered** per system: hidden zones, and the tab on show (with the focused card). A zone that comes back is shown but not listening; start listening as usual.
+
+Zones with the same name share one tab, a zone without a name is called "Zone N", and zones with no channels for the system you're connected to aren't shown.
 
 ## Patching
 

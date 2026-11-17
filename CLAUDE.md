@@ -8,10 +8,10 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
 
 ## State at hand-off (2026-11-16)
 
-- Version **0.23.1** on `main` (set once, in `src/Directory.Build.props`). The last release the
-  owner published is 0.23.1 or about to be; check `gh release list`.
-- CI is green on ARM64 and x86-64: 244 checks (199 in `sidetone-cli selftest`, 45 in the GUI's
-  `--selfcheck`) plus screenshots. The same 244 also pass in a local ARM64 build.
+- Version **0.24.0** on `main` (set once, in `src/Directory.Build.props`): zone tabs. The last
+  release the owner published is 0.23.1; check `gh release list`.
+- 267 checks (216 in `sidetone-cli selftest`, 51 in the GUI's `--selfcheck`) plus screenshots,
+  passing locally on ARM64; check CI for both architectures.
 - **Tested on the air by the owner:** RX/TX clear and AES, key delivery from the FNE, alias sync,
   alert tones, channel marker, QCII and digital pages, radio check (the radio answers; see the FNE
   limitation below), GUI on x86-64 under Hyprland, keyboard shortcuts, instant recall.
@@ -22,7 +22,7 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
   to WAV, page notifications, mic processing (on by default!), local KFDtool key files and the
   keyring, selectable encryption on the air, the Settings screen with real devices, the app
   launcher entry, display scaling on a real HiDPI screen, the Motorola desk mic in the GUI, the GUI
-  on ARM64 (Surface Pro 11), `--wayland`.
+  on ARM64 (Surface Pro 11), `--wayland`, tabs and hiding zones (0.24, both consoles).
 - Next on the wishlist: item 7 (NXDN/DMR, needs live traffic) or item 10 (a CI test against a real
   dvmfne), plus the "Terminal console" gaps at the end of `WISHLIST.md`.
 
@@ -31,7 +31,7 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
 ```
 src/Directory.Build.props   shared: Version, net10.0, nullable off, unsafe on
 src/sidetone-core/          class library, namespace Sidetone.Core: everything that isn't UI
-src/sidetone-cli/           terminal front end (TUI), commands, and the self-test (SelfTest.cs)
+src/sidetone-cli/           terminal front end (TUI; `Tui` is partial, tabs in Tui.Zones.cs), commands, self-test
 src/sidetone/               graphical front end (Avalonia 12.1.6), namespace Sidetone.Gui
 extern/dvmconsole           submodule: monkey1911/dvmconsole-ARM64, branch dev (the Windows console)
 extern/dvmvocoder           submodule: DVMProject/dvmvocoder v0.2, built by CMake into libvocoder.so
@@ -42,11 +42,16 @@ tools/                      ci-status.sh, ci-screenshots.sh (see Testing)
 
 ### Core (`src/sidetone-core`)
 
-- `DispatchConsole` (partial: `.cs`, `.Patch.cs`, `.Recall.cs`) is the console: channels,
-  receive, transmit, tones, pages, radio commands, patching, recall/recording, notifications,
-  settings. Both front ends drive the same instance; `Tui` *derives* from it, the GUI *owns* one.
+- `DispatchConsole` (partial: `.cs`, `.Patch.cs`, `.Recall.cs`, `.Zones.cs`) is the console: channels,
+  receive, transmit, tones, pages, radio commands, patching, recall/recording, zones (tabs),
+  notifications, settings. Both front ends drive the same instance; `Tui` *derives* from it, the GUI *owns* one.
 - `ConsoleChannel` is one codeplug channel (talkgroup, encryption, listening, mute, gain, patch,
-  record, TxClear). `GetStatus(c)` gives what the cards show.
+  record, TxClear, `InZone`). `GetStatus(c)` gives what the cards show.
+- `ConsoleZone` is one tab (codeplug zones with the same name merge; nameless ones are "Zone N";
+  zones with no channels for the system are left out). **The tab on show is the focused channel's
+  zone** (`CurrentZone`), so there is no separate tab state; each zone remembers its last focused
+  card. A hidden zone's channels are deselected and refused by `Select`/`FocusTo`, and `OnFrame`
+  ignores them. `SystemSettings.HiddenZones` keeps hidden zones per system.
 - `CliPeer` is the FNE peer (fnecore `FneSystemBase`): login, P25 frames, key requests (KMM),
   aliases, TSBKs (call alert, extended function).
 - `P25VoiceReceiver` (decrypt + IMBE decode per listening channel; raises `Codeword` with clear
@@ -79,7 +84,8 @@ receiver's lock.
 No XAML: everything is built in C#. `Palette` (light/dark) is painted by hand on a 100 ms
 `DispatcherTimer` refresh (`MainWindow.RefreshNow`). Boxes are in-window overlays
 (`CommandOverlay` for page/radio, `SettingsOverlay`, `KeyFileOverlay`, `PatchOverlay`,
-`RecallOverlay`), not separate windows. `Tap` (in `Controls.cs`) is the flat button used
+`RecallOverlay`, `ZoneOverlay` for the Tabs box), not separate windows. `ZoneTabs` is the tab strip;
+all cards are built once and only the current zone's are made visible. `Tap` (in `Controls.cs`) is the flat button used
 everywhere; set `Released` for hold-to-talk. `ChannelCard` is one card. Keyboard handling is in
 `MainWindow.HandleKeyDown/Up` (tunnel handlers; an open box takes keys first). `DemoCodeplug` is a
 made-up system for `--demo`, screenshots and the self-check. The GUI uses only the core's public
@@ -112,7 +118,7 @@ out/sidetone-$R/sidetone --selfcheck      # ends with ALL GUI CHECKS PASSED
 
 libvocoder only needs rebuilding when the `extern/dvmvocoder` submodule changes. A screenshot works
 locally too: `out/sidetone-$R/sidetone --screenshot FILE --demo --size 1180x760 --theme dark`
-(add `--show page|radio|settings|keyfile|patch|recall` for a box). Save these to the scratchpad and
+(add `--show page|radio|settings|keyfile|patch|recall|tabs` for a box). Save these to the scratchpad and
 read the PNG directly, with no CI round trip.
 
 The build should have no NuGet warnings. `System.Security.Cryptography.Xml` (a direct reference in
@@ -123,7 +129,7 @@ What CI does on every push to `main` (both architectures):
 1. builds libvocoder, publishes `sidetone-cli` and `sidetone` into one folder;
 2. `sidetone-cli selftest`: the core's self-test, printing `PASS:`/`FAIL:` lines;
 3. `sidetone --selfcheck`: drives the GUI headlessly (Avalonia.Headless), presses keys, opens boxes;
-4. renders screenshots (`--screenshot FILE --demo --theme dark|light --show page|radio|settings|keyfile|patch|recall`)
+4. renders screenshots (`--screenshot FILE --demo --theme dark|light --show page|radio|settings|keyfile|patch|recall|tabs`)
    and prints them base64 into the log between `-----BEGIN PNG name-----` / `-----END PNG name-----`;
 5. packages `sidetone-<tag>-linux-<arch>.tar.gz` (with the `dvmcli`/`dvmgui` wrappers), and on a
    published **release** attaches it (there is deliberately no tag trigger: two runs raced and

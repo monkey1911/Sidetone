@@ -35,6 +35,8 @@ namespace Sidetone.Core
         /// <summary>Per channel, keyed by "zone/name/tg".</summary>
         public Dictionary<string, ChannelSettings> Channels { get; set; } = new Dictionary<string, ChannelSettings>();
         public string Focused { get; set; }
+        /// <summary>Zones (tabs) hidden in this system: their channels are switched off. Null for none.</summary>
+        public List<string> HiddenZones { get; set; }
         public bool GlobalMute { get; set; }
         public string PageA { get; set; } = string.Empty;
         public string PageB { get; set; } = string.Empty;

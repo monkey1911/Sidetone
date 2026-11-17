@@ -19,7 +19,7 @@ namespace Sidetone.Cli
     /// <summary>
     /// Terminal dispatch console.
     /// </summary>
-    public sealed class Tui : DispatchConsole
+    public sealed partial class Tui : DispatchConsole
     {
         /// <summary>Grid geometry for a terminal size.</summary>
         public readonly record struct GridGeometry(int Columns, int CardWidth, int VisibleRows, int TotalRows, int GridTop, int LogTop, int LogHeight);
@@ -117,6 +117,7 @@ namespace Sidetone.Cli
         private void OpenRadio()
         {
             pageDialog = null;
+            zoneDialog = null;
             radioDialog = new RadioDialog { Rid = lastPageRid };
         }
 
@@ -269,6 +270,7 @@ namespace Sidetone.Cli
         {
             // the last page's values are filled in
             radioDialog = null;
+            zoneDialog = null;
             pageDialog = new PageDialog { Digital = digital, A = lastPageA, B = lastPageB, Rid = lastPageRid };
         }
 
@@ -438,6 +440,11 @@ namespace Sidetone.Cli
         /// </summary>
         internal void HandleInput(InputEvent e)
         {
+            if (zoneDialog != null && e.Kind == InputKind.Key)
+            {
+                ZoneInput(e);
+                return;
+            }
             if (pageDialog != null && e.Kind == InputKind.Key)
             {
                 PageInput(e);
@@ -449,7 +456,7 @@ namespace Sidetone.Cli
                 return;
             }
 
-            GridGeometry g = Layout(screen.Width, screen.Height, chans.Count);
+            GridGeometry g = Layout(screen.Width, screen.Height, CurrentZone.chans.Count, TabRows);
             switch (e.Kind)
             {
                 case InputKind.Click:
@@ -473,6 +480,7 @@ namespace Sidetone.Cli
 
             Chan c = chans[cursor];
             int page = Math.Max(1, g.VisibleRows) * g.Columns;
+            int onTab = CurrentZone.chans.Count;
             switch (e.Key)
             {
                 case InputKey.Left: MoveCursor(-1); break;
@@ -482,8 +490,8 @@ namespace Sidetone.Cli
                 case InputKey.Down: MoveCursor(g.Columns); break;
                 case InputKey.PageUp: MoveCursor(-page); break;
                 case InputKey.PageDown: MoveCursor(page); break;
-                case InputKey.Home: MoveCursor(-chans.Count); break;
-                case InputKey.End: MoveCursor(chans.Count); break;
+                case InputKey.Home: MoveCursor(-onTab); break;
+                case InputKey.End: MoveCursor(onTab); break;
                 case InputKey.Enter: ToggleSelect(c); break;
                 case InputKey.Space: ToggleTx(); break;
                 case InputKey.Escape: StopTx(null); CancelTones(); break;
@@ -511,24 +519,31 @@ namespace Sidetone.Cli
                         case 'v': case 'V': ToggleMicMonitor(); break;
                         case 'u': case 'U': ToggleMicMute(); break;
                         case 'a': case 'A': RefreshAliases(); break;
+                        case '[': NextZone(-1); followCursor = true; break;
+                        case ']': NextZone(1); followCursor = true; break;
+                        case 'z': case 'Z': OpenZones(); break;
                     }
                     break;
             }
         }
 
+        /// <summary>Moves the focus among the cards on the tab on show.</summary>
         private void MoveCursor(int delta)
         {
-            cursor = Math.Clamp(cursor + delta, 0, chans.Count - 1);
+            List<Chan> shown = CurrentZone.chans;
+            int at = Math.Max(0, shown.IndexOf(chans[cursor]));
+            FocusTo(chans.IndexOf(shown[Math.Clamp(at + delta, 0, shown.Count - 1)]));
             followCursor = true;
-            MarkDirty();
         }
 
         private void Focus(int index)
         {
-            cursor = index;
+            FocusTo(index);
             followCursor = true;
-            MarkDirty();
         }
+
+        /// <summary>A line of tabs under the title, when the codeplug has more than one zone.</summary>
+        internal int TabRows => zones.Count > 1 ? 1 : 0;
 
         /*
         ** Layout and rendering
@@ -538,19 +553,19 @@ namespace Sidetone.Cli
         /// Works out the card grid for a terminal size: up to four cards across, at least <see cref="MinCardWidth"/>
         /// wide, and as many card rows as fit while leaving room for the log (capped at <see cref="MaxBottomHeight"/> rows).
         /// </summary>
-        public static GridGeometry Layout(int width, int height, int cardCount)
+        public static GridGeometry Layout(int width, int height, int cardCount, int tabRows = 0)
         {
             int cols = Math.Clamp(width / MinCardWidth, 1, MaxColumns);
             int cardW = width / cols;
             int totalRows = (cardCount + cols - 1) / cols;
-            int avail = Math.Max(0, height - TitleHeight - FooterHeight);
+            int avail = Math.Max(0, height - TitleHeight - tabRows - FooterHeight);
             int visible = Math.Clamp((avail - MinLogHeight) / CardHeight, 1, Math.Max(1, totalRows));
             int gridH = Math.Min(visible * CardHeight, avail);
             int logH = Math.Min(avail - gridH, MaxBottomHeight);
             if (logH < 3)
                 logH = 0;
             // the log sits just above the footer; any spare rows stay between it and the cards
-            return new GridGeometry(cols, cardW, visible, totalRows, TitleHeight, TitleHeight + avail - logH, logH);
+            return new GridGeometry(cols, cardW, visible, totalRows, TitleHeight + tabRows, TitleHeight + tabRows + avail - logH, logH);
         }
 
         /// <summary>
@@ -559,21 +574,24 @@ namespace Sidetone.Cli
         internal ScreenBuffer Render(int width, int height)
         {
             screen.Begin(width, height);
-            if (width < 40 || height < TitleHeight + FooterHeight + CardHeight)
+            if (width < 40 || height < TitleHeight + TabRows + FooterHeight + CardHeight)
             {
                 screen.Text(0, 0, "Sidetone: terminal too small", Style.Of(Ansi.Yellow, bold: true));
                 screen.Text(0, 1, "make the window bigger, or press q to quit", Style.Plain);
                 return screen;
             }
 
-            GridGeometry g = Layout(width, height, chans.Count);
+            List<Chan> shown = CurrentZone.chans;
+            GridGeometry g = Layout(width, height, shown.Count, TabRows);
             DrawTitle(width);
+            if (TabRows > 0)
+                DrawTabs(width, TitleHeight);
 
             // scrolling: keep the focused card in view after keyboard moves; the wheel scrolls freely
             int maxScroll = Math.Max(0, g.TotalRows - g.VisibleRows);
             if (followCursor)
             {
-                int row = cursor / g.Columns;
+                int row = Math.Max(0, shown.IndexOf(chans[cursor])) / g.Columns;
                 if (row < scrollRow) scrollRow = row;
                 if (row >= scrollRow + g.VisibleRows) scrollRow = row - g.VisibleRows + 1;
             }
@@ -582,10 +600,10 @@ namespace Sidetone.Cli
             for (int vr = 0; vr < g.VisibleRows; vr++)
                 for (int col = 0; col < g.Columns; col++)
                 {
-                    int idx = (scrollRow + vr) * g.Columns + col;
-                    if (idx >= chans.Count)
+                    int pos = (scrollRow + vr) * g.Columns + col;
+                    if (pos >= shown.Count)
                         break;
-                    DrawCard(idx, new Rect(col * g.CardWidth, g.GridTop + vr * CardHeight, g.CardWidth, CardHeight));
+                    DrawCard(chans.IndexOf(shown[pos]), new Rect(col * g.CardWidth, g.GridTop + vr * CardHeight, g.CardWidth, CardHeight));
                 }
 
             if (maxScroll > 0)
@@ -608,6 +626,7 @@ namespace Sidetone.Cli
             DrawFooter(width, height);
             DrawPageDialog(width, height);
             DrawRadioDialog(width, height);
+            DrawZoneDialog(width, height);
             return screen;
         }
 
@@ -971,7 +990,7 @@ namespace Sidetone.Cli
                     screen.Text(1 + used, y, "   MIC MUTED (u to unmute)", Style.Of(Ansi.BrightRed, bold: true), width - 2 - used);
             }
 
-            screen.Text(1, y + 1, "click card: listen  [●]: stop  Space: PTT  1-6: alert  p/d: page  r: radio cmd  c: marker  t: talk permit  v: mic meter  u: mic mute  a: aliases  m/M: mute card/all  +/-: vol  k: key  e: secure/clear  x: patch  l/L: replay  w: rec  q: quit",
+            screen.Text(1, y + 1, (TabRows > 0 ? "[ ]: tab  z: zones  " : string.Empty) + "click card: listen  [●]: stop  Space: PTT  1-6: alert  p/d: page  r: radio cmd  c: marker  t: talk permit  v: mic meter  u: mic mute  a: aliases  m/M: mute card/all  +/-: vol  k: key  e: secure/clear  x: patch  l/L: replay  w: rec  q: quit",
                         Style.Of(Ansi.Grey), width - 2);
         }
     } // public sealed class Tui

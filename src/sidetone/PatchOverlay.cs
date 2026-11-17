@@ -81,8 +81,8 @@ namespace Sidetone.Gui
             lines.Clear();
             foreach (ConsoleChannel chan in c.Channels)
             {
-                if (!DispatchConsole.CanPatch(chan))
-                    continue;
+                if (!DispatchConsole.CanPatch(chan) || chan.Hidden)
+                    continue;       // a hidden zone's channels are switched off
                 ConsoleChannel channel = chan;
                 TextBlock name = new TextBlock { Text = chan.Cfg.Name, FontSize = 14, FontWeight = FontWeight.SemiBold, Width = 170, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
                 StackPanel row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };

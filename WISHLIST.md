@@ -32,6 +32,9 @@ Things we'd like to do, roughly in the order that makes sense to do them. Nothin
 9. ~~**Desktop notifications.**~~ Done in 0.21, for pages (call alerts) to the console.
    - Still to do: emergency alarms, once the console decodes them.
 
+- ~~**Tabs (zones).**~~ Done in 0.24: each codeplug zone is a tab in both consoles, in the codeplug's colours, and a zone can be hidden (its channels switched off) as with the Windows console's Tab Manager.
+   - Still to do: sending each zone to its own audio output (the Windows console has this; see "sending different channels to different audio outputs" below).
+
 ## Audio
 
 - ~~**Microphone processing.**~~ Done in 0.22: low cut, noise gate, automatic level and limiter in C#, plus optional receive leveling.

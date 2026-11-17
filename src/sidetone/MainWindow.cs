@@ -58,7 +58,16 @@ namespace Sidetone.Gui
         private readonly StackPanel consoleButtons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
 
         // console view
-        private readonly Grid consoleView = new Grid { RowDefinitions = new RowDefinitions("Auto,*,Auto,230") };
+        private readonly Grid consoleView = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*,Auto,230") };
+        private readonly ZoneTabs zoneTabs = new ZoneTabs();
+        private ZoneOverlay zoneBox;
+
+        /// <summary>The tab strip and the Tabs box (self-check hooks).</summary>
+        internal ZoneTabs ZoneStrip => zoneTabs;
+        internal ZoneOverlay ZoneBox => zoneBox;
+
+        /// <summary>Whether a channel's card is on show (self-check hook).</summary>
+        internal bool CardShown(int index) => index >= 0 && index < cards.Count && cards[index].Root.IsVisible;
         private readonly Border toolBar = new Border { Padding = new Thickness(16, 7), BorderThickness = new Thickness(0, 0, 0, 1) };
         private readonly TextBlock alertLabel = new TextBlock { Text = "Alert tones", FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 4, 0) };
         private readonly List<Tap> alertTaps = new List<Tap>();
@@ -189,6 +198,7 @@ namespace Sidetone.Gui
                     patchBox.Refresh(palette);
                     break;
                 case "keyfile": keyBox.Show("/home/operator/keys/demo.ekc", true); keyBox.Refresh(palette); break;
+                case "tabs": ShowZones(); break;
             }
         }
 
@@ -281,6 +291,7 @@ namespace Sidetone.Gui
             keyBox = new KeyFileOverlay(UnlockKeyFile, () => root.Focus());
             patchBox = new PatchOverlay(() => console, RefreshNow, () => root.Focus());
             recallBox = new RecallOverlay(() => console, RefreshNow, () => root.Focus(), OpenRecordingsFolder);
+            zoneBox = new ZoneOverlay(() => console, RefreshNow, () => root.Focus());
 
             // console view: cards, transmit bar, recent calls and log
             ScrollViewer cardScroll = new ScrollViewer { Content = cardPanel, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
@@ -312,10 +323,12 @@ namespace Sidetone.Gui
             bottom.Children.Add(logPanel);
 
             Grid.SetRow(toolBar, 0);
-            Grid.SetRow(cardScroll, 1);
-            Grid.SetRow(txBar, 2);
-            Grid.SetRow(bottom, 3);
+            Grid.SetRow(zoneTabs.Root, 1);
+            Grid.SetRow(cardScroll, 2);
+            Grid.SetRow(txBar, 3);
+            Grid.SetRow(bottom, 4);
             consoleView.Children.Add(toolBar);
+            consoleView.Children.Add(zoneTabs.Root);
             consoleView.Children.Add(cardScroll);
             consoleView.Children.Add(txBar);
             consoleView.Children.Add(bottom);
@@ -336,6 +349,7 @@ namespace Sidetone.Gui
             Grid.SetRow(keyBox.Root, 1);
             Grid.SetRow(patchBox.Root, 1);
             Grid.SetRow(recallBox.Root, 1);
+            Grid.SetRow(zoneBox.Root, 1);
             root.Children.Add(header);
             root.Children.Add(consoleView);
             root.Children.Add(welcome);
@@ -343,6 +357,7 @@ namespace Sidetone.Gui
             root.Children.Add(settingsBox.Root);
             root.Children.Add(patchBox.Root);
             root.Children.Add(recallBox.Root);
+            root.Children.Add(zoneBox.Root);
             root.Children.Add(keyBox.Root);
             Content = root;
         }
@@ -546,6 +561,7 @@ namespace Sidetone.Gui
                     cards.Add(card);
                     cardPanel.Children.Add(card.Root);
                 }
+                zoneTabs.Build(c, ShowTab, ShowZones);
                 shownLog = shownRecent = -1;
 
                 welcome.IsVisible = false;
@@ -894,6 +910,7 @@ namespace Sidetone.Gui
             overlay?.Close();
             patchBox?.Close();
             recallBox?.Close();
+            zoneBox?.Close();
             DispatchConsole c = console;
             console = null;
             if (c == null || offline)
@@ -1053,8 +1070,17 @@ namespace Sidetone.Gui
             else
                 markerTap.Paint(Brushes.Transparent, p.Text, p.Edge);
 
-            foreach (ChannelCard card in cards)
-                card.Refresh(p);
+            // only the cards on the tab on show
+            ConsoleZone onShow = c.CurrentZone;
+            for (int i = 0; i < cards.Count && i < c.Channels.Count; i++)
+            {
+                bool shown = c.Channels[i].InZone == onShow;
+                cards[i].Root.IsVisible = shown;
+                if (shown)
+                    cards[i].Refresh(p);
+            }
+            zoneTabs.Refresh(c, p);
+            zoneBox.Refresh(p);
             overlay.Refresh(p);
             patchBox.Refresh(p);
             recallBox.Refresh(p);
@@ -1175,6 +1201,22 @@ namespace Sidetone.Gui
                 return;
             }
 
+            // the Tabs box is open: arrows pick a zone, Space hides or shows it, Esc or Enter closes it
+            if (zoneBox.IsOpen)
+            {
+                e.Handled = true;
+                switch (e.Key)
+                {
+                    case Key.Escape: case Key.Enter: case Key.Z: zoneBox.Close(); break;
+                    case Key.Up: zoneBox.MoveRow(-1); break;
+                    case Key.Down: zoneBox.MoveRow(1); break;
+                    case Key.Space: zoneBox.ToggleRow(); break;
+                    default: e.Handled = false; break;
+                }
+                RefreshNow();
+                return;
+            }
+
             // the Patches box is open: Esc or Enter closes it
             if (patchBox.IsOpen)
             {
@@ -1214,6 +1256,12 @@ namespace Sidetone.Gui
             }
 
             DispatchConsole c = console;
+            if (c != null && ctrl && TabKey(c, e))
+            {
+                e.Handled = true;
+                RefreshNow();
+                return;
+            }
             if (c == null || ctrl || e.KeyModifiers.HasFlag(KeyModifiers.Alt) || e.KeyModifiers.HasFlag(KeyModifiers.Meta))
                 return;
             ConsoleChannel focus = c.Channels[c.FocusIndex];
@@ -1289,6 +1337,9 @@ namespace Sidetone.Gui
                     case Key.P: overlay.ShowPage(false); break;
                     case Key.D: overlay.ShowPage(true); break;
                     case Key.R: overlay.ShowRadio(); break;
+                    case Key.OemOpenBrackets: c.NextZone(-1); ScrollToFocus(c); break;
+                    case Key.OemCloseBrackets: c.NextZone(1); ScrollToFocus(c); break;
+                    case Key.Z: ShowZones(); break;
                     default: return;
                 }
             }
@@ -1321,14 +1372,69 @@ namespace Sidetone.Gui
         /// <summary>How many cards fit across the window.</summary>
         private int Columns() => Math.Max(1, (int)(cardPanel.Bounds.Width / (ChannelCard.CardWidth + 12)));
 
+        /// <summary>Moves the focus among the cards on the tab on show.</summary>
         private void MoveFocus(DispatchConsole c, int delta)
         {
-            int target = c.FocusIndex + delta;
-            if (target < 0 || target >= c.Channels.Count)
+            IReadOnlyList<ConsoleChannel> onTab = c.CurrentZone.Channels;
+            int at = -1;
+            for (int i = 0; i < onTab.Count; i++)
+                if (onTab[i] == c.Channels[c.FocusIndex])
+                    at = i;
+            int to = at + delta;
+            if (at < 0 || to < 0 || to >= onTab.Count)
+                return;
+            int target = -1;
+            for (int i = 0; i < c.Channels.Count; i++)
+                if (c.Channels[i] == onTab[to])
+                    target = i;
+            if (target < 0)
                 return;
             c.SetFocus(target);
+            ScrollToFocus(c);
+        }
+
+        private void ScrollToFocus(DispatchConsole c)
+        {
+            int target = c.FocusIndex;
             if (target < cards.Count)
-                cards[target].Root.BringIntoView();
+                Dispatcher.UIThread.Post(() => cards[target].Root.BringIntoView(), DispatcherPriority.Background);    // once it's on show
+        }
+
+        /// <summary>Ctrl+PgUp / Ctrl+PgDn and Ctrl+Tab go through the tabs; Ctrl+1 to Ctrl+9 pick one. True if the key was one of them.</summary>
+        private bool TabKey(DispatchConsole c, KeyEventArgs e)
+        {
+            bool shift = e.KeyModifiers.HasFlag(KeyModifiers.Shift);
+            int n = e.Key >= Key.D1 && e.Key <= Key.D9 ? e.Key - Key.D1 + 1 : e.Key >= Key.NumPad1 && e.Key <= Key.NumPad9 ? e.Key - Key.NumPad1 + 1 : 0;
+            if (e.Key == Key.PageUp || (e.Key == Key.Tab && shift))
+                c.NextZone(-1);
+            else if (e.Key == Key.PageDown || e.Key == Key.Tab)
+                c.NextZone(1);
+            else if (n != 0)
+                c.ShowZoneNumber(n);
+            else
+                return false;
+            ScrollToFocus(c);
+            return true;
+        }
+
+        /// <summary>A click on a tab.</summary>
+        private void ShowTab(ConsoleZone z)
+        {
+            console?.ShowZone(z);
+            if (console != null)
+                ScrollToFocus(console);
+            RefreshNow();
+        }
+
+        private void ShowZones()
+        {
+            if (console == null || console.Zones.Count < 2)
+                return;
+            overlay.Close();
+            patchBox.Close();
+            recallBox.Close();
+            zoneBox.Show();
+            RefreshNow();
         }
 
         private void RefreshRecent(DispatchConsole c, Palette p)
@@ -1391,7 +1497,9 @@ systems:
     password: ""DEMO""
     encrypted: false
 zones:
-  - name: ""Demo""
+  - name: ""Dispatch""
+    tabColor: ""#1F6FEB""
+    tabTextColor: ""#FFFFFF""
     channels:
       - name: ""Dispatch""
         system: ""Demo System""
@@ -1412,6 +1520,9 @@ zones:
         system: ""Demo System""
         tgid: ""104""
         mode: ""p25""
+  - name: ""Regional""
+    tabColor: ""#2DA44E""
+    channels:
       - name: ""Weather""
         system: ""Demo System""
         tgid: ""105""
@@ -1427,6 +1538,23 @@ zones:
         system: ""Demo System""
         tgid: ""200""
         mode: ""dmr""
+  - name: ""Fire""
+    tabColor: ""#CF222E""
+    channels:
+      - name: ""Fire Dispatch""
+        system: ""Demo System""
+        tgid: ""300""
+        mode: ""p25""
+      - name: ""Fireground""
+        system: ""Demo System""
+        tgid: ""301""
+        mode: ""p25""
+  - name: ""Mutual Aid""
+    channels:
+      - name: ""Mutual Aid 1""
+        system: ""Demo System""
+        tgid: ""400""
+        mode: ""p25""
 ";
 
         /// <summary>Writes the demo codeplug to a temporary file and returns its path.</summary>
@@ -1463,6 +1591,9 @@ zones:
             c.AddDemoCall(c.Channels[1], 3012, "Unit 12", 6, false, "clear", now.AddMinutes(-11));
             c.AddDemoCall(c.Channels[0], 3012, "Unit 12", 9, false, "AES-256", now.AddMinutes(-30));
             c.SetRecord(c.Channels[1], true);
+            c.Channels[4].Active = true;        // traffic on another tab: its tab shows a mark
+            c.Channels[4].ActiveSrc = 4410;
+            c.SetZoneHidden(c.Zones[3], true);  // and one zone hidden, as in the Tabs box
         }
 
         /// <summary>Made-up audio devices for the demo's Settings box.</summary>
