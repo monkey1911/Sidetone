@@ -8,13 +8,14 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
 
 ## State at hand-off (2026-11-16)
 
-- Version **0.24.0** on `main` (set once, in `src/Directory.Build.props`): zone tabs. The last
-  release the owner published is 0.23.1; check `gh release list`.
-- 267 checks (216 in `sidetone-cli selftest`, 51 in the GUI's `--selfcheck`) plus screenshots,
-  passing locally on ARM64; check CI for both architectures.
+- Version **0.24.0** on `main` (set once, in `src/Directory.Build.props`): zone tabs, published as a
+  release; check `gh release list` for anything newer.
+- CI is green on ARM64 and x86-64: 267 checks (216 in `sidetone-cli selftest`, 51 in the GUI's
+  `--selfcheck`) plus screenshots, and the same pass in a local ARM64 build.
 - **Tested on the air by the owner:** RX/TX clear and AES, key delivery from the FNE, alias sync,
   alert tones, channel marker, QCII and digital pages, radio check (the radio answers; see the FNE
-  limitation below), GUI on x86-64 under Hyprland, keyboard shortcuts, instant recall.
+  limitation below), GUI on x86-64 under Hyprland, keyboard shortcuts, instant recall, tabs and
+  hiding zones (0.24).
 - The owner tests every release on the air and on their hardware after publishing it. The list
   below is only what the earlier sessions never heard results for, not what is known to be
   untested. Ask the owner before calling something untested, and move items up once confirmed.
@@ -22,7 +23,7 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
   to WAV, page notifications, mic processing (on by default!), local KFDtool key files and the
   keyring, selectable encryption on the air, the Settings screen with real devices, the app
   launcher entry, display scaling on a real HiDPI screen, the Motorola desk mic in the GUI, the GUI
-  on ARM64 (Surface Pro 11), `--wayland`, tabs and hiding zones (0.24, both consoles).
+  on ARM64 (Surface Pro 11), `--wayland`.
 - Next on the wishlist: item 7 (NXDN/DMR, needs live traffic) or item 10 (a CI test against a real
   dvmfne), plus the "Terminal console" gaps at the end of `WISHLIST.md`.
 
