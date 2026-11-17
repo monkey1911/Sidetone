@@ -21,8 +21,10 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
 - The owner tests every release on the air and on their hardware after publishing it. The list
   below is only what the earlier sessions never heard results for, not what is known to be
   untested. Ask the owner before calling something untested, and move items up once confirmed.
-- **Patching (0.24.2):** works across the network (another console saw both talkgroups active;
-  10503 of 10503 frames sent, source gaps up to 266 ms). Not yet heard on a radio: the owner's
+- **Patching (0.24.2):** works across the network: other consoles hear the source TG's traffic on
+  the patch target (10503 of 10503 frames sent, source gaps up to 266 ms). Not yet heard on a
+  radio through the owner's hotspot, now thought to be FNE and radio programming (being worked on
+  with the system's operators, after `affiliated: true` on both TGs didn't fix it). Earlier: the owner's
   hotspot has one voice channel, and the FNE sent the source TG (505, the hourly system update) to
   it although nothing there was affiliated (the owner's radio was on the target TG, not scanning),
   so the patch target's grant was denied ("no channels available"). Not a Sidetone fault. Retest
