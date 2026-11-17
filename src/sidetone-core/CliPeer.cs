@@ -372,21 +372,40 @@ namespace Sidetone.Core
                                   frame, packetSequence, streamId);
         }
 
-        /// <inheritdoc/>
-        public void SendP25Tdu(uint srcId, uint dstId, uint streamId, bool grantDemand)
-        {
-            RemoteCallData callData = new RemoteCallData
-            {
-                SrcId = srcId,
-                DstId = dstId,
-                LCO = P25Defines.LC_GROUP,
-                TxStreamID = streamId
-            };
+        /// <summary>Control byte flags in a P25 network message (dvmhost's NET_CTRL_*).</summary>
+        internal const byte NetCtrlGrantDemand = 0x80, NetCtrlGrantEncrypt = 0x08;
 
+        /// <inheritdoc/>
+        public void SendP25Tdu(uint srcId, uint dstId, uint streamId, bool grantDemand, bool encrypted = false)
+        {
             // one grant demand to start; the console sends four TDUs to make sure the call end lands
             int count = grantDemand ? 1 : 4;
             for (int i = 0; i < count; i++)
-                SendP25TDU(callData, grantDemand);
+            {
+                byte[] payload = BuildTdu(srcId, dstId, grantDemand, encrypted);
+                fne.pktSeq(true);
+                fne.SendMasterTraffic(FneBase.CreateOpcode(Constants.NET_FUNC_PROTOCOL, Constants.NET_PROTOCOL_SUBFUNC_P25), payload, Constants.RtpCallEndSeq, streamId);
+            }
+        }
+
+        /// <summary>
+        /// A TDU message, as fnecore builds it, plus the grant encrypt flag: a grant demand for an
+        /// encrypted call says so, as dvmhost's own tools do. A site whose talkgroup is strapped to
+        /// encryption refuses a grant demand without it ("TGID enc. strapping rejection").
+        /// </summary>
+        internal byte[] BuildTdu(uint srcId, uint dstId, bool grantDemand, bool encrypted)
+        {
+            RemoteCallData callData = new RemoteCallData { SrcId = srcId, DstId = dstId, LCO = P25Defines.LC_GROUP };
+            byte[] payload = new byte[200];
+            CreateP25MessageHdr((byte)P25DUID.TDU, callData, ref payload);
+            payload[23] = P25_MSG_HDR_SIZE;
+            if (grantDemand)
+            {
+                payload[14] |= NetCtrlGrantDemand;
+                if (encrypted)
+                    payload[14] |= NetCtrlGrantEncrypt;
+            }
+            return payload;
         }
 
         /*

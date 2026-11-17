@@ -472,6 +472,8 @@ How it behaves:
 
 Keys normally come from the FNE: the console asks for each encrypted channel's key after it logs in. Two things add to that.
 
+When the console starts an encrypted transmission (PTT, tones, or a patched call), the request for a channel (the grant demand) says the call is encrypted, as dvmhost's own tools do. A site whose talkgroup only allows encrypted calls refuses a request that doesn't say so; before 0.24.2 that showed in the site's log as `TGID enc. strapping rejection` and nothing was heard on that site.
+
 ### Local key file
 
 If the FNE doesn't deliver keys to your console, Sidetone can read them from a password-protected **KFDtool key container** (an `.ekc` file), the same kind the Windows console uses. Clear-text key files are not supported.

@@ -22,7 +22,8 @@ namespace Sidetone.Core
         void SendP25Voice(byte[] frame, ushort packetSequence, uint streamId);
 
         /// <summary>Sends a TDU; a grant demand starts a call, plain TDUs end it.</summary>
-        void SendP25Tdu(uint srcId, uint dstId, uint streamId, bool grantDemand);
+        /// <summary>Sends a TDU: one grant demand (saying whether the call is encrypted) to start a call, or the TDUs that end it.</summary>
+        void SendP25Tdu(uint srcId, uint dstId, uint streamId, bool grantDemand, bool encrypted = false);
     }
 
     /// <summary>
@@ -148,7 +149,7 @@ namespace Sidetone.Core
                 StartedAt = DateTime.Now;
                 IsTransmitting = true;
 
-                sink.SendP25Tdu(SourceId, Talkgroup, StreamId, grantDemand: true);
+                sink.SendP25Tdu(SourceId, Talkgroup, StreamId, grantDemand: true, encrypted: Encrypted);
                 return true;
             }
         }

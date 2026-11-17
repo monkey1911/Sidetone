@@ -8,9 +8,9 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
 
 ## State at hand-off (2026-11-16)
 
-- Version **0.24.1** on `main` (set once, in `src/Directory.Build.props`): patch pacing. 0.24.0
-  (zone tabs) was released; check `gh release list`.
-- 271 checks (220 in `sidetone-cli selftest`, 51 in the GUI's `--selfcheck`) plus screenshots.
+- Version **0.24.2** on `main` (set once, in `src/Directory.Build.props`): the grant encrypt flag.
+  0.24.1 (patch pacing) was released; check `gh release list`.
+- 273 checks (222 in `sidetone-cli selftest`, 51 in the GUI's `--selfcheck`) plus screenshots.
 - **Tested on the air by the owner:** RX/TX clear and AES, key delivery from the FNE, alias sync,
   alert tones, channel marker, QCII and digital pages, radio check (the radio answers; see the FNE
   limitation below), GUI on x86-64 under Hyprland, GUI on ARM64 (Surface Pro 11), display
@@ -160,6 +160,11 @@ every release on the air and on their hardware after publishing it.
   (monkey1911/dvmconsole-ARM64, our submodule) follows `r01a02_dev` on its `dev` branch. Compare
   against `r01a02_dev` when checking what the Windows console does, never `main`.
 
+- **Grant demands for encrypted calls must carry the grant encrypt flag** (control byte 14:
+  `0x80` grant demand, `0x08` grant encrypt; dvmhost's `NET_CTRL_*` in `BaseNetwork.h`). A dvmhost
+  site with the talkgroup strapped to encryption otherwise denies the grant ("TGID enc. strapping
+  rejection", `DENY_TGT_GROUP_NOT_VALID`). fnecore's `SendP25TDU` never sets it (nor does the Windows
+  console), so `CliPeer.BuildTdu` builds the TDU itself. Found on the owner's hotspot site (0.24.2).
 - **The FNE version CTRS runs does not pass extended-function replies (radio check acks) back to
   the peer that sent them.** The radio does answer over the air. Don't ask the owner about it again;
   Sidetone already decodes and logs replies if a newer FNE sends them.

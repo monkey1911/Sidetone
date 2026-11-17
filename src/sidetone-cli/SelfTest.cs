@@ -821,6 +821,14 @@ B: MSC=10
                       sentOut.Tdus.Count == 5 && sentOut.Tdus[0].Grant && sentOut.Tdus.All(t => t.Dst == secureCh.Tg && t.Src == consoleRid) &&
                       sentOut.Voice[0].Frame[P25VoiceReceiver.HduAlgOffset] == P25Defines.P25_ALGO_AES,
                       $"patch: a clear call on one member is sent on the secure member as its own call, encrypted, and ended with it ({sentOut.Voice.Count} LDUs, {sentOut.Tdus.Count} TDUs)");
+                Check(sentOut.TduEncrypted.Count == 1 && sentOut.TduEncrypted[0] && onAir.TduEncrypted.Count == 1 && !onAir.TduEncrypted[0],
+                      "grant demand: an encrypted call's says it's encrypted, a clear call's doesn't");
+                byte[] encGrant = headers.BuildTdu(consoleRid, 500, grantDemand: true, encrypted: true);
+                byte[] clearGrant = headers.BuildTdu(consoleRid, 504, grantDemand: true, encrypted: false);
+                byte[] endTdu = headers.BuildTdu(consoleRid, 500, grantDemand: false, encrypted: true);
+                Check(encGrant[14] == 0x88 && clearGrant[14] == 0x80 && endTdu[14] == 0x00 && encGrant[22] == (byte)P25DUID.TDU && encGrant[23] == 24 &&
+                      ((encGrant[8] << 16) | (encGrant[9] << 8) | encGrant[10]) == 500 && ((encGrant[5] << 16) | (encGrant[6] << 8) | encGrant[7]) == consoleRid,
+                      $"grant demand: the TDU's control byte has the grant encrypt flag (0x08) for an encrypted call, as dvmhost expects (0x{encGrant[14]:X2} / 0x{clearGrant[14]:X2} / 0x{endTdu[14]:X2})");
                 List<byte[]> heard = RoundTrip(sentOut, secureCh.Tg, consoleRid, pt.Keys, out long patchMuted);
                 Check(patchMuted == 0 && SameCodewords(heard, spoken), "patch: the voice arrives as exactly the codewords that were spoken (no second pass through the vocoder)");
 
@@ -1300,8 +1308,11 @@ B: MSC=10
                 Voice.Add(((byte[])frame.Clone(), packetSequence, streamId));
                 Interlocked.Increment(ref VoiceCount);
             }
-            public void SendP25Tdu(uint srcId, uint dstId, uint streamId, bool grantDemand)
+            public readonly List<bool> TduEncrypted = new List<bool>();
+            public void SendP25Tdu(uint srcId, uint dstId, uint streamId, bool grantDemand, bool encrypted = false)
             {
+                if (grantDemand)
+                    TduEncrypted.Add(encrypted);
                 int count = grantDemand ? 1 : 4;   // as CliPeer does
                 for (int i = 0; i < count; i++)
                     Tdus.Add((srcId, dstId, streamId, grantDemand));
