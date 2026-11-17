@@ -15,13 +15,15 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
   alert tones, channel marker, QCII and digital pages, radio check (the radio answers; see the FNE
   limitation below), GUI on x86-64 under Hyprland, GUI on ARM64 (Surface Pro 11), display
   scaling on the Surface's HiDPI screen, keyboard shortcuts, instant recall, recording to WAV,
-  selectable encryption, the app launcher entry, tabs and hiding zones (0.24).
+  selectable encryption, the app launcher entry, tabs and hiding zones (0.24), encrypted grant
+  demands accepted by a site strapped to encryption (0.24.2: the channel marker on TG 500 was
+  granted and heard through the owner's hotspot).
 - The owner tests every release on the air and on their hardware after publishing it. The list
   below is only what the earlier sessions never heard results for, not what is known to be
   untested. Ask the owner before calling something untested, and move items up once confirmed.
 - **No results reported yet:** patching: worked in 0.24.0 but was choppy on the owner's radio via
-  their hotspot site (the console itself heard the source fine); 0.24.1 adds paced sending, not
-  yet tried on the air. Also page
+  their hotspot site (the console itself heard the source fine); 0.24.1 adds paced sending and
+  0.24.2 the grant encrypt flag (grants into the secure TG had been denied); retest pending. Also page
   notifications, mic processing (on by default!), local KFDtool key files and the keyring, the
   Settings screen with real devices, the Motorola desk mic in the GUI, `--wayland`.
 - Next on the wishlist: item 7 (NXDN/DMR, needs live traffic) or item 10 (a CI test against a real
