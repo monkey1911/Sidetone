@@ -61,6 +61,8 @@ namespace Sidetone.Cli
                 throw new InvalidOperationException("the TUI needs an interactive terminal (use 'listen' for scripts)");
 
             Start();
+            if (AskForKeyFilePassword && KeyFileLocked)
+                OpenKeyFile();
 
             Terminal term = new Terminal();
             try
@@ -118,6 +120,7 @@ namespace Sidetone.Cli
         {
             pageDialog = null;
             zoneDialog = null;
+            keyDialog = null;
             radioDialog = new RadioDialog { Rid = lastPageRid };
         }
 
@@ -271,6 +274,7 @@ namespace Sidetone.Cli
             // the last page's values are filled in
             radioDialog = null;
             zoneDialog = null;
+            keyDialog = null;
             pageDialog = new PageDialog { Digital = digital, A = lastPageA, B = lastPageB, Rid = lastPageRid };
         }
 
@@ -440,6 +444,11 @@ namespace Sidetone.Cli
         /// </summary>
         internal void HandleInput(InputEvent e)
         {
+            if (keyDialog != null && e.Kind == InputKind.Key)
+            {
+                KeyFileInput(e);
+                return;
+            }
             if (zoneDialog != null && e.Kind == InputKind.Key)
             {
                 ZoneInput(e);
@@ -504,7 +513,8 @@ namespace Sidetone.Cli
                         case 'M': ToggleGlobalMute(); break;
                         case '+': case '=': Louder(c); break;
                         case '-': case '_': Quieter(c); break;
-                        case 'k': case 'K': RequestKey(c); break;
+                        case 'k': RequestKey(c); break;
+                        case 'K': OpenKeyFile(); break;
                         case 'e': case 'E': ToggleTxSecure(c); break;
                         case 'x': case 'X': CyclePatch(c); break;
                         case 'l': ReplayLast(c); break;
@@ -627,6 +637,7 @@ namespace Sidetone.Cli
             DrawPageDialog(width, height);
             DrawRadioDialog(width, height);
             DrawZoneDialog(width, height);
+            DrawKeyFileDialog(width, height);
             return screen;
         }
 
@@ -861,6 +872,35 @@ namespace Sidetone.Cli
             vx = SmallButton(vx, y + 4, "[+]", dim, () => { Focus(idx); Louder(c); }, ix + iw);
             SmallButton(vx + 1, y + 4, c.Muted ? "[MUTED]" : "[mute]",
                         c.Muted ? Style.Of(Ansi.Black, Ansi.Yellow, bold: true) : dim, () => { Focus(idx); ToggleMute(c); }, ix + iw);
+
+            // the bottom border: replay, record, patch, key request and secure/clear, as buttons
+            int by = box.Y + box.H - 1, bx = ix, limit = right;
+            bool replaying = ReplayChannel == c && Replaying != null;
+            bx = BorderButton(bx, by, replaying ? "[■]" : "[▶]", replaying ? Style.Of(Ansi.Black, Ansi.BrightCyan, bold: true) : Style.Of(Ansi.White),
+                              () => { Focus(idx); ReplayLast(c); }, limit);
+            bx = BorderButton(bx, by, c.Record ? "[●REC]" : "[rec]", c.Record ? Style.Of(Ansi.BrightWhite, Ansi.Red, bold: true) : Style.Of(Ansi.White),
+                              () => { Focus(idx); ToggleRecord(c); }, limit);
+            bx = BorderButton(bx, by, c.Patch != 0 ? $"[⇄{c.Patch}]" : "[⇄]", c.Patch != 0 ? Style.Of(Ansi.Black, Ansi.BrightCyan, bold: true) : Style.Of(Ansi.White),
+                              () => { Focus(idx); CyclePatch(c); }, limit);
+            if (c.Encrypted)
+            {
+                bx = BorderButton(bx, by, "[key]", keys.TryGet(c.KeyRequestAlg, c.KeyId, out _) ? Style.Of(Ansi.White) : Style.Of(Ansi.BrightYellow, bold: true),
+                                  () => { Focus(idx); RequestKey(c); }, limit);
+                if (c.Selectable)
+                    BorderButton(bx, by, c.TxClear ? "[CLR]" : "[sec]", c.TxClear ? Style.Of(Ansi.BrightWhite, Ansi.Red, bold: true) : Style.Of(Ansi.BrightYellow),
+                                 () => { Focus(idx); ToggleTxSecure(c); }, limit);
+            }
+        }
+
+        /// <summary>A button drawn into a card's border, with a gap after it; skipped when it doesn't fit.</summary>
+        private int BorderButton(int x, int y, string label, Style style, Action action, int limit)
+        {
+            int w = ScreenBuffer.TextWidth(label);
+            if (x + w > limit)
+                return x;
+            screen.Text(x, y, label, style);
+            screen.OnClick(new Rect(x, y, w, 1), action);
+            return x + w + 1;
         }
 
         private int SmallButton(int x, int y, string label, Style style, Action action, int limit)
@@ -985,12 +1025,23 @@ namespace Sidetone.Cli
             {
                 Chan c = chans[cursor];
                 string target = c.IsP25 ? $"PTT → {c.Cfg.Name} (tg {c.Tg}, {(c.TxSecure ? KeyStore.AlgorithmName(c.TxAlg) : "clear")})" : $"{c.Cfg.Name}: no transmit on {c.Cfg.Mode}";
-                int used = screen.Text(1, y, target, Style.Of(Ansi.White), width - 2);
+                // the key file waiting for its password: on the right, click (or K) to unlock it
+                int right = width - 1;
+                if (KeyFileLocked)
+                {
+                    const string locked = " 🔒 key file locked: K to unlock ";
+                    int lw = ScreenBuffer.TextWidth(locked);
+                    int lx = Math.Max(1, width - 1 - lw);
+                    screen.Text(lx, y, locked, Style.Of(Ansi.Black, Ansi.BrightYellow, bold: true), width - 1 - lx);
+                    screen.OnClick(new Rect(lx, y, lw, 1), OpenKeyFile);
+                    right = lx - 1;
+                }
+                int used = screen.Text(1, y, target, Style.Of(Ansi.White), right - 1);
                 if (micMuted)
-                    screen.Text(1 + used, y, "   MIC MUTED (u to unmute)", Style.Of(Ansi.BrightRed, bold: true), width - 2 - used);
+                    screen.Text(1 + used, y, "   MIC MUTED (u to unmute)", Style.Of(Ansi.BrightRed, bold: true), right - 1 - used);
             }
 
-            screen.Text(1, y + 1, (TabRows > 0 ? "[ ]: tab  z: zones  " : string.Empty) + "click card: listen  [●]: stop  Space: PTT  1-6: alert  p/d: page  r: radio cmd  c: marker  t: talk permit  v: mic meter  u: mic mute  a: aliases  m/M: mute card/all  +/-: vol  k: key  e: secure/clear  x: patch  l/L: replay  w: rec  q: quit",
+            screen.Text(1, y + 1, (TabRows > 0 ? "[ ]: tab  z: zones  " : string.Empty) + "click card: listen  [●]: stop  Space: PTT  1-6: alert  p/d: page  r: radio cmd  c: marker  t: talk permit  v: mic meter  u: mic mute  a: aliases  m/M: mute card/all  +/-: vol  k: key  K: key file  e: secure/clear  x: patch  l/L: replay  w: rec  q: quit",
                         Style.Of(Ansi.Grey), width - 2);
         }
     } // public sealed class Tui

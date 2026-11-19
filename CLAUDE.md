@@ -8,9 +8,9 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
 
 ## State at hand-off (2026-11-16)
 
-- Version **0.24.2** on `main` (set once, in `src/Directory.Build.props`): the grant encrypt flag.
-  0.24.1 (patch pacing) was released; check `gh release list`.
-- 273 checks (222 in `sidetone-cli selftest`, 51 in the GUI's `--selfcheck`) plus screenshots.
+- Version **0.25.0** on `main` (set once, in `src/Directory.Build.props`): log files, Copy log, and
+  the TUI caught up with the GUI. 0.24.2 was released; check `gh release list`.
+- 282 checks (230 in `sidetone-cli selftest`, 52 in the GUI's `--selfcheck`) plus screenshots.
 - **Tested on the air by the owner:** RX/TX clear and AES, key delivery from the FNE, alias sync,
   alert tones, channel marker, QCII and digital pages, radio check (the radio answers; see the FNE
   limitation below), GUI on x86-64 under Hyprland, GUI on ARM64 (Surface Pro 11), display
@@ -31,16 +31,18 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
   with a source TG the FNE doesn't send to the hotspot.
 - **No results reported yet:** page
   notifications, mic processing (on by default!), local KFDtool key files and the keyring, the
-  Settings screen with real devices, the Motorola desk mic in the GUI, `--wayland`.
-- Next on the wishlist: item 7 (NXDN/DMR, needs live traffic) or item 10 (a CI test against a real
-  dvmfne), plus the "Terminal console" gaps at the end of `WISHLIST.md`.
+  Settings screen with real devices, the Motorola desk mic in the GUI, `--wayland`, and from 0.25:
+  log files and Copy log, the TUI using the GUI's saved settings, the TUI's card buttons and key
+  file box.
+- Next on the wishlist: item 10 (a CI test against a real dvmfne) or item 7 (NXDN/DMR, needs live
+  traffic), per-zone audio outputs; the TUI's only remaining gap is audio over SSH.
 
 ## Layout
 
 ```
 src/Directory.Build.props   shared: Version, net10.0, nullable off, unsafe on
 src/sidetone-core/          class library, namespace Sidetone.Core: everything that isn't UI
-src/sidetone-cli/           terminal front end (TUI; `Tui` is partial, tabs in Tui.Zones.cs), commands, self-test
+src/sidetone-cli/           terminal front end (TUI; `Tui` is partial: Tui.Zones.cs tabs, Tui.KeyFile.cs key file box), commands, self-test
 src/sidetone/               graphical front end (Avalonia 12.1.6), namespace Sidetone.Gui
 extern/dvmconsole           submodule: monkey1911/dvmconsole-ARM64, branch dev (the Windows console)
 extern/dvmvocoder           submodule: DVMProject/dvmvocoder v0.2, built by CMake into libvocoder.so
@@ -74,6 +76,10 @@ tools/                      ci-status.sh, ci-screenshots.sh (see Testing)
   matching, startup report). **Nothing outside the PipeWire backend may start `pw-*` tools.**
 - `AudioProcessing.cs`: `VoiceProcessor` (low cut, gate, auto level, limiter; 8 kHz, 160-sample
   blocks), `WavFile` (reader + level description). Plain C# on purpose (portability).
+- `StartupChoices.cs`: what both consoles start with (option, else the GUI's saved setting, else
+  the default) for audio devices, PTT device, key file and time limit (5 to 900 s); and `LogFiles`
+  (a log file per day in `~/.local/state/sidetone/logs`, 14 days kept; `DispatchConsole.LogFolder`,
+  `--log FILE` wins, `--no-log` none; never set in demo, screenshots or tests).
 - `Tones.cs` (alert tones, QCII pages, marker), `LevelMeter.cs`, `RadioAliases.cs`,
   `ControlSocket.cs` (`$XDG_RUNTIME_DIR/sidetone.sock`, `ptt down|up|toggle|hold`, `status`),
   `PttDevice.cs` (evdev; Motorola desk mic 0cad:1804 known), `Settings.cs`
@@ -214,6 +220,10 @@ every release on the air and on their hardware after publishing it.
   ### Notes      (what is untested on the air goes here)
   ```
 - Put only one command per code block in answers; never several commands in one paste box.
+- **Reading the owner's logs and screens.** When this session runs on the machine with the
+  console, read its log files (`~/.local/state/sidetone/logs/`) and the owner's screenshots
+  (`~/Pictures/Screenshots/`, newest first) directly instead of asking for pastes. Both the GUI and
+  TUI log to file since 0.25. Site logs (dvmhost) are on the owner's hotspot, so those get pasted.
 - Say plainly what was tested where (CI vs on the air) and what wasn't.
 - Keep personal names out of the public repo's files (the wishlist refers to "the FNE's
   maintainers").

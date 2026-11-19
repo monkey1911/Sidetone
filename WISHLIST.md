@@ -70,10 +70,6 @@ Done since the comparison: microphone processing (0.22) and talkgroup recording 
 
 ## Terminal console
 
-Gaps between the terminal console (`sidetone-cli tui`) and the graphical one:
+Gaps between the terminal console (`sidetone-cli tui`) and the graphical one. Done in 0.25: the TUI uses the graphical console's saved audio devices, PTT device, time limit and key file; it has clickable Replay, Rec, patch, key request and secure/clear buttons on each card; both allow a 5 to 900 second time limit; and the TUI can unlock a key file after start-up (`K`). Still to do:
 
-- use the graphical console's saved audio devices, PTT device, transmit time limit and key file when no option is given (today only the recordings folder, notifications and audio processing carry over)
-- clickable buttons for the newer features, which are keyboard-only so far: Replay, Rec, patch, secure/clear and key request
-- the same transmit time limit range in both (the TUI allows up to 900 seconds, the GUI 600)
-- unlocking a key file after start-up (the TUI only asks once, before it starts)
 - sending audio to another machine's sound system, for when the TUI is run over SSH (today audio stays on the machine Sidetone runs on)

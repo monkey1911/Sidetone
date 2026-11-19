@@ -84,7 +84,7 @@ namespace Sidetone.Core
     /// </summary>
     public partial class DispatchConsole
     {
-        internal const int MaxLogLines = 500;
+        public const int MaxLogLines = 500;
         internal const int MaxRecentCalls = 100;
 
         internal readonly Codeplug.System system;
@@ -211,6 +211,9 @@ namespace Sidetone.Core
         /// </summary>
         public void Start()
         {
+            if (LogFolder != null && logFile == null)
+                LogFiles.Prune(LogFolder, DateTime.Now);
+            AddLog($"Sidetone {Version} started{(LogFilePath != null ? $"; log file {LogFilePath}" : string.Empty)}");
             peer = new CliPeer(system, keys, verbose: false);
             peer.Status += AddLog;
             peer.P25Frame += OnFrame;
@@ -270,6 +273,16 @@ namespace Sidetone.Core
         /*
         ** State for front ends
         */
+
+        /// <summary>Sidetone's version, like 0.25.0.</summary>
+        public static string Version
+        {
+            get
+            {
+                Version v = typeof(DispatchConsole).Assembly.GetName().Version;
+                return v == null ? "?" : $"{v.Major}.{v.Minor}.{v.Build}";
+            }
+        }
 
         /// <summary>The channel cards, in codeplug order.</summary>
         public IReadOnlyList<ConsoleChannel> Channels => chans;
@@ -593,7 +606,12 @@ namespace Sidetone.Core
         public void RequestKey(Chan c)
         {
             if (c.Encrypted && KeyStore.IsSupported(c.KeyRequestAlg))
-                peer?.RequestKey(c.KeyRequestAlg, c.KeyId);
+            {
+                if (peer == null || !peer.Connected)
+                    AddLog($"{c.Cfg.Name}: not connected to the FNE yet; its key is asked for once the console has logged in");
+                else
+                    peer.RequestKey(c.KeyRequestAlg, c.KeyId);
+            }
             else
                 AddLog($"{c.Cfg.Name}: clear channel, no key needed");
         }
@@ -1554,11 +1572,37 @@ namespace Sidetone.Core
                 OnLogAdded();
             }
 
-            if (logFile != null)
+            string file = LogFilePath;
+            if (file != null)
             {
-                try { File.AppendAllText(logFile, line + Environment.NewLine); }
-                catch { /* ignore */ }
+                lock (logFileLock)
+                {
+                    try
+                    {
+                        if (file != logFileMade)
+                        {
+                            string dir = Path.GetDirectoryName(file);
+                            if (!string.IsNullOrEmpty(dir))
+                                Directory.CreateDirectory(dir);
+                            logFileMade = file;
+                        }
+                        File.AppendAllText(file, $"{DateTime.Now:yyyy-MM-dd} {line}{Environment.NewLine}");
+                    }
+                    catch { /* the log on screen still has it */ }
+                }
             }
         }
+
+        private readonly object logFileLock = new object();
+        private string logFileMade;
+
+        /// <summary>
+        /// Folder for a log file per day (<see cref="LogFiles"/>), or null for none. A log file given
+        /// to the constructor (--log FILE) wins over it.
+        /// </summary>
+        public string LogFolder { get; set; }
+
+        /// <summary>The file log lines are being written to right now, or null.</summary>
+        public string LogFilePath => logFile ?? (LogFolder != null ? LogFiles.FileFor(LogFolder, DateTime.Now) : null);
     } // public class DispatchConsole
 }

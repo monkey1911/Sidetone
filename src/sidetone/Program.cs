@@ -5,7 +5,7 @@
 * Usage:
 *   sidetone [--codeplug FILE] [--system NAME] [--theme system|light|dark] [--wayland]
 *          [--output DEVICE] [--input DEVICE] [--ptt-device NAME [--ptt-button B] [--mute-button B|none]]
-*          [--socket PATH | --no-socket] [--tx-limit SECONDS] [--log FILE]
+*          [--socket PATH | --no-socket] [--tx-limit SECONDS] [--log FILE | --no-log]
 *          [--settings FILE | --no-settings] [--space hold|toggle]
 *   sidetone --demo                      a made-up system, nothing is connected
 *   sidetone --screenshot FILE.png       render the window off-screen and exit (with --demo, --theme, --size WxH,
@@ -30,7 +30,7 @@ namespace Sidetone.Gui
     public sealed class GuiOptions
     {
         public string Codeplug, SystemName, Output, Input, PttDevice, PttButton, MuteButton, Socket, LogFile, Theme, Screenshot, SettingsFile, Show, KeyFile;
-        public bool NoSocket, Wayland, Demo, NoSettings, SelfCheck, NoNotify, NoProcessing;
+        public bool NoSocket, Wayland, Demo, NoSettings, SelfCheck, NoNotify, NoProcessing, NoLog;
         public string RecordDir;
         /// <summary>Given on the command line; null leaves it to the saved settings.</summary>
         public bool? SpaceToggle;
@@ -72,6 +72,7 @@ namespace Sidetone.Gui
                     case "--socket": o.Socket = Next(); break;
                     case "--no-socket": o.NoSocket = true; break;
                     case "--log": o.LogFile = Next(); break;
+                    case "--no-log": o.NoLog = true; break;
                     case "--settings": o.SettingsFile = Next(); break;
                     case "--no-settings": o.NoSettings = true; break;
                     case "--wayland": o.Wayland = true; break;
@@ -98,8 +99,8 @@ namespace Sidetone.Gui
                         break;
                     case "--tx-limit":
                     {
-                        if (!int.TryParse(Next(), out int limit) || limit < SettingsOverlay.MinTxLimit || limit > SettingsOverlay.MaxTxLimit)
-                            throw new ArgumentException("--tx-limit must be 5-600 seconds");
+                        if (!int.TryParse(Next(), out int limit) || limit < StartupChoices.MinTxLimit || limit > StartupChoices.MaxTxLimit)
+                            throw new ArgumentException($"--tx-limit must be {StartupChoices.MinTxLimit}-{StartupChoices.MaxTxLimit} seconds");
                         o.TxLimit = limit;
                         break;
                     }
@@ -457,6 +458,9 @@ namespace Sidetone.Gui
             Check(set.IsOpen && set.Output.ItemCount == 3 && set.Input.ItemCount == 3 && set.PttDevice.ItemCount == 3,
                   $"Ctrl+, opens Settings with the audio and PTT devices listed ({set.Output.ItemCount} / {set.Input.ItemCount} / {set.PttDevice.ItemCount})");
             Check(!set.PttButton.IsEnabled && set.PttButton.ItemCount == 1, "with no PTT device chosen, there are no buttons to choose");
+            set.PressCopyLog();
+            Check(set.LogResult.StartsWith("Copied ") && (w.LastCopiedLog ?? string.Empty).Contains("demo: a made-up system"),
+                  $"Settings: Copy log puts the console's log on the clipboard ('{set.LogResult}')");
             set.PttDevice.SelectedIndex = 1;
             Dispatcher.UIThread.RunJobs();
             Check(set.PttButton.IsEnabled && set.PttButton.ItemCount == 3 && set.MuteButton.ItemCount == 4,
@@ -585,7 +589,7 @@ namespace Sidetone.Gui
             Console.WriteLine("  sidetone [--codeplug FILE] [--system NAME] [--theme system|light|dark] [--wayland]");
             Console.WriteLine("         [--output DEVICE] [--input DEVICE]");
             Console.WriteLine("         [--ptt-device NAME [--ptt-button BUTTON] [--mute-button BUTTON|none]]");
-            Console.WriteLine("         [--socket PATH | --no-socket] [--tx-limit SECONDS] [--log FILE]");
+            Console.WriteLine("         [--socket PATH | --no-socket] [--tx-limit SECONDS] [--log FILE | --no-log]");
             Console.WriteLine("         [--settings FILE | --no-settings] [--space hold|toggle]");
             Console.WriteLine("                  [--scale FACTOR] [--key-file FILE.ekc] [--record-dir DIR] [--no-notify] [--no-processing]");
             Console.WriteLine("  sidetone --install-launcher | --remove-launcher");

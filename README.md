@@ -114,6 +114,12 @@ Channels are shown as cards, up to four across. The mouse works in any terminal 
 | A card | Focus it and start listening |
 | `[●]` on a card | Stop listening |
 | `[-]` `[+]` `[mute]` on a card | That card's volume and mute |
+| `[▶]` on a card's bottom edge | Replay the card's last call (`[■]` while playing: stop) |
+| `[rec]` / `[●REC]` | Turn recording the card's calls on or off |
+| `[⇄]` / `[⇄1]` | Move the card to the next patch (none, then each patch in turn) |
+| `[key]` (encrypted cards) | Ask the FNE for the card's key again |
+| `[sec]` / `[CLR]` (selectable encryption) | Switch the card's transmit between secure and clear |
+| `🔒 key file locked` (footer) | Open the key file box, to type the key file's password |
 | Wheel | Scroll the cards, or the log when the pointer is over it |
 
 | Key | Action |
@@ -135,6 +141,7 @@ Channels are shown as cards, up to four across. The mouse works in any terminal 
 | m / M | Mute the focused card / mute everything |
 | + / - | Volume of the focused card |
 | k | Request the focused card's key from the FNE again |
+| K | Key file box: type the key file's password (Tab: remember it in the keyring, Enter: unlock, Esc: not now) |
 | e | Switch the focused card's transmit between secure and clear, where the codeplug allows it |
 | x | Move the focused card to the next patch (none, then each patch in turn) |
 | l | Replay the focused card's last call (again to stop) |
@@ -152,7 +159,9 @@ The microphone level meter sits in the bottom edge of the title box. It shows wh
 
 Settings are remembered per system in `~/.config/sidetone/settings.json`: which channels you're listening to, the focused card, volumes, mutes, global mute, the talk permit tone and the last page / radio values. Use `--settings FILE` for a different file or `--no-settings` to start fresh without saving. The channel marker always starts off. The file holds no passwords or keys.
 
-Transmit uses the system's `rid` as the source ID, and the default microphone unless you start the TUI with `--input` (see [Audio devices](#audio-devices)). A secure channel never transmits in the clear by accident: without its key, transmit is refused. The one exception is a channel the codeplug marks as selectable, which you can switch to clear yourself (see [Encryption keys](#encryption-keys)). Transmissions stop automatically after 120 seconds; change that with `--tx-limit SECONDS`. Add `--log FILE` to keep a copy of the log.
+Transmit uses the system's `rid` as the source ID, and the default microphone unless you start the TUI with `--input` (see [Audio devices](#audio-devices)). A secure channel never transmits in the clear by accident: without its key, transmit is refused. The one exception is a channel the codeplug marks as selectable, which you can switch to clear yourself (see [Encryption keys](#encryption-keys)). Transmissions stop automatically after 120 seconds; change that with `--tx-limit SECONDS` (5 to 900) or in the graphical console's Settings. The log is also written to a file each day (see [Log files](#log-files)).
+
+**The graphical console's Settings apply here too.** When no option says otherwise, the TUI uses the audio output and microphone, PTT device and buttons, time limit, key file, recordings folder, notifications and audio processing chosen there. A saved audio device or PTT device that can't be used right now (unplugged, or a button it doesn't have) is skipped with a warning in the log; one given on the command line is an error.
 
 ## Graphical console (sidetone)
 
@@ -197,7 +206,8 @@ What it has so far:
 | Recordings | Where recordings go, and a button to open that folder |
 | When paged | Desktop notifications when the console is paged, on or off |
 | Key file | A local key file to use, and its unlock state (see [Encryption keys](#encryption-keys)) |
-| Time limit | How long a transmission can last, 5 to 600 seconds |
+| Time limit | How long a transmission can last, 5 to 900 seconds |
+| Log | Where the log files are, **Copy log** (puts this run's log on the clipboard, to paste into a message) and **Open folder** |
 | Codeplug | Shows the open codeplug, and opens another one |
 | App launcher | Adds Sidetone to, or removes it from, your desktop's app launcher |
 
@@ -229,7 +239,7 @@ Started from the launcher, Sidetone reopens the last codeplug, or shows **Open c
 
 ### Command-line options
 
-The audio, PTT device and PTT socket options are the same as `sidetone-cli tui`: `--output`, `--input`, `--ptt-device`, `--ptt-button`, `--mute-button`, `--socket`, `--no-socket`, `--tx-limit`, `--log`, `--system`, `--settings`, `--no-settings`. `sidetone-cli ptt down` and friends control whichever console is running.
+The audio, PTT device and PTT socket options are the same as `sidetone-cli tui`: `--output`, `--input`, `--ptt-device`, `--ptt-button`, `--mute-button`, `--socket`, `--no-socket`, `--tx-limit`, `--log`, `--no-log`, `--system`, `--settings`, `--no-settings`. `sidetone-cli ptt down` and friends control whichever console is running.
 
 Keyboard shortcuts (the same keys as the TUI where both have the feature):
 
@@ -444,6 +454,16 @@ Each zone in the codeplug is a tab, as in the Windows console, in the same order
 
 Zones with the same name share one tab, a zone without a name is called "Zone N", and zones with no channels for the system you're connected to aren't shown.
 
+## Log files
+
+Both consoles write their log to a file as well as the screen, one file per day: `~/.local/state/sidetone/logs/sidetone-YYYY-MM-DD.log` (under `$XDG_STATE_HOME` if that is set). Files older than 14 days are deleted when a console starts. Each run begins with a `Sidetone X.Y.Z started` line, so runs on the same day can be told apart.
+
+- **Copy log** in the graphical console's Settings puts this run's log (the last 500 lines) on the clipboard; **Open folder** opens the log files' folder.
+- `--log FILE` writes this run's log to that file instead, and `--no-log` keeps no file at all.
+- The demo, screenshots and the self-tests never write a log file.
+
+The log never contains passwords or keys. It does contain radio IDs, aliases and talkgroups, so think before posting a whole file publicly.
+
 ## Patching
 
 Channels in the same patch hear each other. When a call comes in on one member, the console sends it out on the others and ends it there when it ends. When you transmit on a member, the rest of the patch gets your voice too.
@@ -484,7 +504,7 @@ Sidetone uses the first of these that is set:
 2. the file chosen under **Key file** in the graphical console's Settings
 3. the codeplug's `keyFile:` entry (a path relative to the codeplug works)
 
-The graphical console asks for the password in a box when it opens the codeplug. The terminal console asks before the TUI starts. Skipping it is fine: the console runs with whatever keys the FNE sends, and you can unlock later from Settings.
+Both consoles ask for the password in a box when they start: the graphical one when it opens the codeplug, the terminal one when the TUI comes up. Skipping it is fine: the console runs with whatever keys the FNE sends, and you can unlock later, from Settings in the graphical console, or with `K` (or the `🔒 key file locked` note in the footer) in the TUI.
 
 **Remembering the password.** If your desktop has a keyring and the `secret-tool` command (GNOME Keyring, KWallet and others provide the keyring; `secret-tool` comes with libsecret), Sidetone offers to remember the password there. Otherwise it asks each time. Sidetone never writes the password or any key to its own files or its log, and keys are wiped from memory when the console closes.
 

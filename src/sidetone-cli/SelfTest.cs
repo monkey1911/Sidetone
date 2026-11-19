@@ -205,6 +205,9 @@ namespace Sidetone.Cli
                 // 15. zones (tabs): switching, hiding, remembering, and the TUI's tab line
                 ZoneTests(tmp);
 
+                // 16. log files, the choices both consoles start with, the TUI's key file box and card buttons
+                CatchUpTests(tmp, cp, sys);
+
                 // 8. WAV writer
                 string wavPath = Path.Combine(tmp, "test.wav");
                 using (WavSink wav = new WavSink(wavPath))
@@ -1783,6 +1786,104 @@ zones:
                   "zones: if every zone was hidden, the first one is shown (names match whatever the case)");
             zthird.Shutdown();
             zt.Shutdown();
+        }
+
+        private static void CatchUpTests(string tmp, Codeplug cp, Codeplug.System sys)
+        {
+            // log files: one per day, old ones pruned, others left alone
+            string logDir = Path.Combine(tmp, "logs");
+            Directory.CreateDirectory(logDir);
+            DateTime today = new DateTime(2026, 11, 18);
+            foreach (int back in new[] { 0, 13, 14, 30 })
+                File.WriteAllText(LogFiles.FileFor(logDir, today.AddDays(-back)), "x");
+            File.WriteAllText(Path.Combine(logDir, "notes.txt"), "x");
+            int pruned = LogFiles.Prune(logDir, today);
+            Check(LogFiles.FileFor(logDir, today).EndsWith("sidetone-2026-11-18.log") && pruned == 2 &&
+                  File.Exists(LogFiles.FileFor(logDir, today.AddDays(-13))) && !File.Exists(LogFiles.FileFor(logDir, today.AddDays(-14))) &&
+                  File.Exists(Path.Combine(logDir, "notes.txt")),
+                  $"log files: one per day; those older than {LogFiles.KeepDays} days are deleted, anything else is left alone");
+
+            string liveLogs = Path.Combine(tmp, "live-logs");
+            Tui logged = new Tui(cp, sys, TimeSpan.FromSeconds(120), null) { NoAudio = true, LogFolder = liveLogs };
+            logged.AddLog("a line for the log file");
+            string todays = LogFiles.FileFor(liveLogs, DateTime.Now);
+            string written = File.Exists(todays) ? File.ReadAllText(todays) : string.Empty;
+            string fixedFile = Path.Combine(tmp, "fixed.log");
+            Tui fixedLog = new Tui(cp, sys, TimeSpan.FromSeconds(120), fixedFile) { NoAudio = true, LogFolder = liveLogs };
+            fixedLog.AddLog("goes to the --log file");
+            Check(written.Contains("a line for the log file") && written.StartsWith(DateTime.Now.ToString("yyyy-MM-dd ")) &&
+                  logged.LogFilePath == todays && fixedLog.LogFilePath == fixedFile && File.ReadAllText(fixedFile).Contains("--log file") &&
+                  !File.ReadAllText(todays).Contains("--log file") && new Tui(cp, sys, TimeSpan.FromSeconds(120), null).LogFilePath == null,
+                  "log files: lines go to today's file with the date; --log FILE wins; without a folder there's no file");
+
+            // what both consoles start with: the option, else what Settings saved, else the default
+            AppSettings chosen = new AppSettings { TxLimitSeconds = 300, PttDeviceName = "sidetone selftest no such device", PttButton = "BTN_NO_SUCH_BUTTON", KeyFile = "/keys/saved.ekc" };
+            List<string> startNotes = new List<string>();
+            var savedPtt = StartupChoices.PttDevice(null, null, null, chosen, startNotes);
+            bool optionPttRefused = false, buttonsAlone = false;
+            try { StartupChoices.PttDevice("sidetone selftest no such device", "BTN_NO_SUCH_BUTTON", null, chosen, new List<string>()); }
+            catch (ArgumentException) { optionPttRefused = true; }
+            try { StartupChoices.PttDevice(null, "BTN_THUMB", null, chosen, new List<string>()); }
+            catch (ArgumentException) { buttonsAlone = true; }
+            Check(StartupChoices.TxLimit(null, chosen) == 300 && StartupChoices.TxLimit(60, chosen) == 60 && StartupChoices.TxLimit(null, new AppSettings()) == 120 &&
+                  StartupChoices.TxLimit(5000, chosen) == StartupChoices.MaxTxLimit && StartupChoices.MaxTxLimit == 900,
+                  "start-up: the time limit is the option's, else the saved one, else 120 s; 5 to 900 s in both consoles");
+            Check(savedPtt == null && startNotes.Any(n => n.Contains("saved PTT device isn't being used")) && optionPttRefused && buttonsAlone,
+                  "start-up: a saved PTT device that can't be used (a bad button name) is a warning; on the command line it's an error");
+            Check(StartupChoices.KeyFile(cp, null, chosen) == "/keys/saved.ekc" && StartupChoices.KeyFile(cp, "/keys/option.ekc", chosen) == "/keys/option.ekc" &&
+                  StartupChoices.KeyFile(cp, null, new AppSettings()) == null,
+                  "start-up: the key file is the option's, else the one chosen in Settings, else the codeplug's");
+
+            // the TUI's key file box
+            string ekc = Path.Combine(tmp, "tui-keys.ekc");
+            WriteEkc(ekc, "q uiet", new[] { (true, (int)P25Defines.P25_ALGO_AES, (int)TestKeyId, Convert.ToHexString(TestKey)) });
+            Tui kt = new Tui(cp, sys, TimeSpan.FromSeconds(120), null) { NoAudio = true, KeyFilePath = ekc };
+            kt.Render(120, 40);
+            bool lockShown = kt.Render(120, 40).RowText(40 - Tui.FooterHeight).Contains("key file locked");
+            void TypeIn(Tui t, string text)
+            {
+                foreach (char ch in text)
+                    t.HandleInput(ch == ' ' ? new InputEvent(InputKind.Key, InputKey.Space) : new InputEvent(InputKind.Key, InputKey.Char, ch));
+            }
+            kt.HandleInput(new InputEvent(InputKind.Key, InputKey.Char, 'K'));
+            bool opened = kt.KeyFileDialogOpen;
+            TypeIn(kt, "wrong");
+            kt.HandleInput(new InputEvent(InputKind.Key, InputKey.Enter));
+            bool refused = kt.KeyFileDialogOpen && (kt.KeyFileDialogError ?? string.Empty).Contains("assword") && !kt.KeyFileLoaded;
+            TypeIn(kt, "q uiet");       // q and Space are typing here, not quit and PTT
+            kt.HandleInput(new InputEvent(InputKind.Key, InputKey.Enter));
+            Check(lockShown && opened && refused && !kt.KeyFileDialogOpen && kt.KeyFileLoaded && !kt.QuitRequested && kt.HasKey(kt.Channels.First(ch => ch.Encrypted)) &&
+                  !kt.Render(120, 40).RowText(40 - Tui.FooterHeight).Contains("key file locked") && !string.Join("\n", kt.SnapshotLog(20)).Contains("q uiet"),
+                  "TUI key file box: K opens it, a wrong password says so, the right one unlocks the keys (and is never logged)");
+            kt.HandleInput(new InputEvent(InputKind.Key, InputKey.Char, 'K'));
+            Tui none = new Tui(cp, sys, TimeSpan.FromSeconds(120), null) { NoAudio = true };
+            none.HandleInput(new InputEvent(InputKind.Key, InputKey.Char, 'K'));
+            Check(!kt.KeyFileDialogOpen && kt.SnapshotLog(1).Any(l => l.Contains("already unlocked")) && !none.KeyFileDialogOpen &&
+                  none.SnapshotLog(1).Any(l => l.Contains("no key file")),
+                  "TUI key file box: not opened when the file is unlocked already, or when there is none");
+
+            // the TUI's card buttons, on each card's bottom border
+            Tui bt = new Tui(cp, sys, TimeSpan.FromSeconds(120), null) { NoAudio = true };
+            int borderRow = Tui.TitleHeight + Tui.CardHeight - 1;
+            string border = bt.Render(120, 40).RowText(borderRow);
+            int recAt = border.IndexOf("[rec]", StringComparison.Ordinal), patchAt = border.IndexOf("[⇄]", StringComparison.Ordinal);
+            ConsoleChannel first = bt.Channels[0], secureCard = bt.Channels.First(ch => ch.Encrypted);
+            if (recAt >= 0)
+                bt.HandleInput(new InputEvent(InputKind.Click, X: recAt + 1, Y: borderRow));
+            bool recording = first.Record && first.Selected;
+            bt.Render(120, 40);
+            if (patchAt >= 0)
+                bt.HandleInput(new InputEvent(InputKind.Click, X: patchAt + 1, Y: borderRow));
+            bool patched = first.Patch == 1;
+            string border2 = bt.Render(120, 40).RowText(borderRow);
+            int keyAt = border2.IndexOf("[key]", StringComparison.Ordinal);
+            if (keyAt >= 0)
+                bt.HandleInput(new InputEvent(InputKind.Click, X: keyAt + 1, Y: borderRow));
+            Check(border.Contains("[▶]") && recording && patched && border2.Contains("[●REC]") && border2.Contains("[⇄1]") && keyAt > 0 &&
+                  bt.FocusIndex == bt.Channels.ToList().IndexOf(secureCard) && bt.SnapshotLog(3).Any(l => l.Contains($"{secureCard.Cfg.Name}: not connected")),
+                  $"TUI card buttons: replay, record, patch and key request are clickable on each card ('{border2.Trim()}')");
+            bt.ClearPatches();
+            bt.SetRecord(first, false);
         }
 
         /// <summary>A sound system that plays and records nothing, and counts what it's given.</summary>

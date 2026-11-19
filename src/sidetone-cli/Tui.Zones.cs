@@ -35,6 +35,7 @@ namespace Sidetone.Cli
             }
             pageDialog = null;
             radioDialog = null;
+            keyDialog = null;
             zoneDialog = new ZoneDialog { Row = CurrentZone.Index };
         }
 

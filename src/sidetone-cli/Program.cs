@@ -85,7 +85,7 @@ namespace Sidetone.Cli
             Console.WriteLine("  sidetone-cli list     --codeplug FILE");
             Console.WriteLine("  sidetone-cli listen   --codeplug FILE (--channel NAME | --tg TGID) [--system NAME]");
             Console.WriteLine("                  [--wav FILE] [--no-play] [--player CMD] [--output DEVICE] [--verbose]");
-            Console.WriteLine("  sidetone-cli tui      --codeplug FILE [--system NAME] [--tx-limit SECONDS] [--log FILE]");
+            Console.WriteLine("  sidetone-cli tui      --codeplug FILE [--system NAME] [--tx-limit SECONDS] [--log FILE | --no-log]");
             Console.WriteLine("                  [--marker-interval SECONDS] [--settings FILE | --no-settings]");
             Console.WriteLine("                  [--output DEVICE] [--input DEVICE] [--socket PATH | --no-socket]");
             Console.WriteLine("                  [--ptt-device NAME [--ptt-button BUTTON] [--mute-button BUTTON|none]]");
@@ -273,103 +273,52 @@ namespace Sidetone.Cli
             foreach (string problem in AudioBackend.Current.Problems())
                 Console.Error.WriteLine($"warning: {problem}");
 
-            // resolved before the TUI takes over the terminal, so a bad --output / --input is a plain error
-            AudioSelection audio = AudioSelection.Choose(opt.Output, opt.Input);
+            // the command line wins; otherwise what the graphical console's Settings saved; otherwise the defaults.
+            // Resolved before the TUI takes over the terminal, so a bad --output / --input is a plain error.
+            string settingsPath = opt.NoSettings ? null : opt.SettingsFile ?? AppSettings.DefaultPath;
+            AppSettings saved = settingsPath == null ? new AppSettings() : AppSettings.Load(settingsPath, out _);
+            List<string> notes = new List<string>();
+            AudioSelection audio = StartupChoices.Audio(opt.Output, opt.Input, saved, notes);
+            (string Device, string Button, string Mute)? ptt = StartupChoices.PttDevice(opt.PttDevice, opt.PttButton, opt.MuteButton, saved, notes);
 
             string logFile = string.IsNullOrWhiteSpace(opt.LogFile) ? null : Path.GetFullPath(opt.LogFile);
-            if (opt.PttDevice == null && (opt.PttButton != null || opt.MuteButton != null))
-                throw new ArgumentException("--ptt-button and --mute-button need --ptt-device");
-            if (opt.PttDevice != null)
-                _ = new PttDeviceWatcher(opt.PttDevice, opt.PttButton, opt.MuteButton);    // checks the button names
-
             string socket = opt.NoSocket ? null : opt.Socket != null ? Path.GetFullPath(opt.Socket) : ControlServer.DefaultPath;
-            Tui tui = new Tui(cp, system, TimeSpan.FromSeconds(opt.TxLimitSeconds), logFile, TimeSpan.FromSeconds(opt.MarkerSeconds),
-                              opt.NoSettings ? null : opt.SettingsFile ?? AppSettings.DefaultPath)
+            Tui tui = new Tui(cp, system, TimeSpan.FromSeconds(StartupChoices.TxLimit(opt.TxLimitSeconds, saved)), logFile,
+                              TimeSpan.FromSeconds(opt.MarkerSeconds), settingsPath)
             {
                 Audio = audio,
                 ControlSocketPath = socket,
-                PttDevice = opt.PttDevice != null ? (opt.PttDevice, opt.PttButton, opt.MuteButton) : null,
-                KeyFilePath = LocalKeyFile.Resolve(cp, opt.KeyFile)
+                PttDevice = ptt,
+                KeyFilePath = StartupChoices.KeyFile(cp, opt.KeyFile, saved),
+                LogFolder = opt.NoLog || logFile != null ? null : LogFiles.DefaultFolder
             };
             if (opt.RecordDir != null)
                 tui.RecordingsFolder = Path.GetFullPath(opt.RecordDir);
             if (opt.NoNotify)
                 tui.Notifications = false;
             tui.ProcessingOff = opt.NoProcessing;
+            foreach (string note in notes)
+                tui.AddLog(note);
             if (tui.KeyFilePath != null)
-                UnlockKeyFile(tui);     // before the TUI takes over the terminal
+                UnlockKeyFile(tui);     // from the keyring, before the TUI starts; otherwise the TUI asks
             return tui.Run();
         }
 
         /// <summary>
-        /// Unlocks the local key file: with the password remembered in the keyring, or by asking for it
-        /// (three tries; Enter skips, and the console starts without local keys).
+        /// Unlocks the local key file with the password remembered in the keyring, if there is one. If
+        /// not, the TUI opens its key file box when it starts (K opens it again later).
         /// </summary>
         private static void UnlockKeyFile(Tui tui)
         {
-            string file = Path.GetFileName(tui.KeyFilePath);
             if (!File.Exists(tui.KeyFilePath))
             {
-                Console.Error.WriteLine($"warning: key file not found: {tui.KeyFilePath}");
+                tui.AddLog($"warning: key file not found: {tui.KeyFilePath}");
                 return;
             }
-
-            string saved = SecretStore.Lookup(tui.KeyFilePath);
-            if (saved != null && tui.LoadKeyFile(saved, out _) == null)
-            {
-                Console.WriteLine($"keys: {file} unlocked with the password from the keyring");
+            string remembered = SecretStore.Lookup(tui.KeyFilePath);
+            if (remembered != null && tui.LoadKeyFile(remembered, out _) == null)
                 return;
-            }
-
-            for (int attempt = 0; attempt < 3; attempt++)
-            {
-                Console.Write($"Password for {file} (Enter to skip): ");
-                string password = ReadPassword();
-                if (password.Length == 0)
-                {
-                    Console.WriteLine("keys: skipped; the key file isn't loaded");
-                    return;
-                }
-                string error = tui.LoadKeyFile(password, out bool wrong);
-                if (error == null)
-                {
-                    if (SecretStore.Available && !Console.IsInputRedirected)
-                    {
-                        Console.Write("Remember this password in the keyring? [y/N] ");
-                        string answer = Console.ReadLine() ?? string.Empty;
-                        if (answer.Trim().StartsWith("y", StringComparison.OrdinalIgnoreCase))
-                            Console.WriteLine(SecretStore.Store(tui.KeyFilePath, password) ? "keys: password remembered" : "keys: the keyring didn't take it; you'll be asked again next time");
-                    }
-                    return;
-                }
-                Console.Error.WriteLine($"keys: {error}");
-                if (!wrong)
-                    return;
-            }
-        }
-
-        /// <summary>Reads a line without showing it (plainly, when input isn't a terminal).</summary>
-        private static string ReadPassword()
-        {
-            if (Console.IsInputRedirected)
-                return Console.ReadLine() ?? string.Empty;
-
-            System.Text.StringBuilder typed = new System.Text.StringBuilder();
-            while (true)
-            {
-                ConsoleKeyInfo key = Console.ReadKey(intercept: true);
-                if (key.Key == ConsoleKey.Enter)
-                    break;
-                if (key.Key == ConsoleKey.Backspace)
-                {
-                    if (typed.Length > 0)
-                        typed.Length--;
-                }
-                else if (!char.IsControl(key.KeyChar))
-                    typed.Append(key.KeyChar);
-            }
-            Console.WriteLine();
-            return typed.ToString();
+            tui.AskForKeyFilePassword = true;
         }
 
         /// <summary>
@@ -549,12 +498,12 @@ namespace Sidetone.Cli
             public string Codeplug, Channel, Tg, SystemName, Wav, Player, LogFile, Output, Input;
             public bool NoPlay, Verbose;
             public double Gain = 1.0;
-            public int TxLimitSeconds = 120;
+            public int? TxLimitSeconds;
             public int MarkerSeconds = 10;
             public string SettingsFile;
             public bool NoSettings;
             public string Socket, PttDevice, PttButton, MuteButton, KeyFile, RecordDir;
-            public bool NoNotify, NoProcessing;
+            public bool NoNotify, NoProcessing, NoLog;
             public bool NoSocket;
 
             public static Options Parse(string[] args)
@@ -580,6 +529,7 @@ namespace Sidetone.Cli
                         case "--no-play": o.NoPlay = true; break;
                         case "--verbose": case "-v": o.Verbose = true; break;
                         case "--log": o.LogFile = Next(); break;
+                        case "--no-log": o.NoLog = true; break;
                         case "--settings":
                             o.SettingsFile = Next();
                             break;
@@ -600,8 +550,9 @@ namespace Sidetone.Cli
                                 throw new ArgumentException("--marker-interval must be between 5 and 600 seconds");
                             break;
                         case "--tx-limit":
-                            if (!int.TryParse(Next(), out o.TxLimitSeconds) || o.TxLimitSeconds < 5 || o.TxLimitSeconds > 900)
-                                throw new ArgumentException("--tx-limit must be between 5 and 900 seconds");
+                            if (!int.TryParse(Next(), out int limit) || limit < StartupChoices.MinTxLimit || limit > StartupChoices.MaxTxLimit)
+                                throw new ArgumentException($"--tx-limit must be between {StartupChoices.MinTxLimit} and {StartupChoices.MaxTxLimit} seconds");
+                            o.TxLimitSeconds = limit;
                             break;
                         default: throw new ArgumentException($"unknown option '{args[i]}'");
                     }

@@ -13,6 +13,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
+using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -173,7 +174,7 @@ namespace Sidetone.Gui
         internal double? SavedScale => appSettings.UiScale;
 
         /// <summary>The transmit time limit in effect, in seconds.</summary>
-        internal int TxLimitSeconds => Math.Clamp(opt.TxLimit ?? appSettings.TxLimitSeconds ?? 120, SettingsOverlay.MinTxLimit, SettingsOverlay.MaxTxLimit);
+        internal int TxLimitSeconds => StartupChoices.TxLimit(opt.TxLimit, appSettings);
 
         /// <summary>Opens a box by name: page, digital or radio (for screenshots).</summary>
         internal void OpenBox(string which)
@@ -287,7 +288,11 @@ namespace Sidetone.Gui
             overlay = new CommandOverlay(() => console, RefreshNow, () => root.Focus());
             settingsBox = new SettingsOverlay(SaveSettings, () => _ = PickCodeplug(), LauncherAction, () => root.Focus(),
                                               () => _ = PickKeyFile(), ClearKeyFile, ShowKeyBox,
-                                              () => _ = PickRecordingsFolder(), () => SetRecordingsFolder(null), OpenRecordingsFolder);
+                                              () => _ = PickRecordingsFolder(), () => SetRecordingsFolder(null), OpenRecordingsFolder)
+            {
+                CopyLog = CopyLog,
+                OpenLogFolder = OpenLogFolder
+            };
             keyBox = new KeyFileOverlay(UnlockKeyFile, () => root.Focus());
             patchBox = new PatchOverlay(() => console, RefreshNow, () => root.Focus());
             recallBox = new RecallOverlay(() => console, RefreshNow, () => root.Focus(), OpenRecordingsFolder);
@@ -476,25 +481,8 @@ namespace Sidetone.Gui
 
                 // the command line wins; otherwise what Settings saved; otherwise the defaults
                 List<string> notes = new List<string>();
-                (string Device, string Button, string Mute)? pttDevice = null;
-                if (opt.PttDevice != null)
-                {
-                    _ = new PttDeviceWatcher(opt.PttDevice, opt.PttButton, opt.MuteButton);    // checks the button names
-                    pttDevice = (opt.PttDevice, opt.PttButton, opt.MuteButton);
-                }
-                else if (!string.IsNullOrWhiteSpace(appSettings.PttDeviceName))
-                {
-                    try
-                    {
-                        _ = new PttDeviceWatcher(appSettings.PttDeviceName, appSettings.PttButton, appSettings.MuteButton);
-                        pttDevice = (appSettings.PttDeviceName, appSettings.PttButton, appSettings.MuteButton);
-                    }
-                    catch (ArgumentException ex)
-                    {
-                        notes.Add($"warning: the saved PTT device isn't being used: {ex.Message}");
-                    }
-                }
-                AudioSelection audio = offline ? null : ChooseAudio(notes);
+                (string Device, string Button, string Mute)? pttDevice = StartupChoices.PttDevice(opt.PttDevice, opt.PttButton, opt.MuteButton, appSettings, notes);
+                AudioSelection audio = offline ? null : StartupChoices.Audio(opt.Output, opt.Input, appSettings, notes);
 
                 if (settingsPath != null)
                 {
@@ -514,7 +502,8 @@ namespace Sidetone.Gui
                     Notifications = !opt.NoNotify && appSettings.Notifications != false,
                     ProcessingOff = opt.NoProcessing,
                     ControlSocketPath = offline || opt.NoSocket ? null : opt.Socket != null ? Path.GetFullPath(opt.Socket) : ControlServer.DefaultPath,
-                    PttDevice = !offline && pttDevice != null ? (pttDevice.Value.Device, pttDevice.Value.Button, pttDevice.Value.Mute) : null
+                    PttDevice = !offline && pttDevice != null ? (pttDevice.Value.Device, pttDevice.Value.Button, pttDevice.Value.Mute) : null,
+                    LogFolder = offline || opt.NoLog || !string.IsNullOrWhiteSpace(opt.LogFile) ? null : LogFiles.DefaultFolder
                 };
 
                 // a local key file: the command line's, the one chosen in Settings, or the codeplug's
@@ -522,7 +511,7 @@ namespace Sidetone.Gui
                 bool askForPassword = false;
                 if (!offline)
                 {
-                    c.KeyFilePath = LocalKeyFile.Resolve(cp, opt.KeyFile ?? appSettings.KeyFile);
+                    c.KeyFilePath = StartupChoices.KeyFile(cp, opt.KeyFile, appSettings);
                     if (c.KeyFilePath != null && !File.Exists(c.KeyFilePath))
                         notes.Add($"warning: key file not found: {c.KeyFilePath}");
                     else if (c.KeyFilePath != null)
@@ -575,47 +564,6 @@ namespace Sidetone.Gui
             {
                 console = null;
                 ShowWelcome($"{Path.GetFileName(path)}: {ex.Message}");
-            }
-        }
-
-        /// <summary>
-        /// The audio devices to use. A saved device that isn't connected right now falls back to the
-        /// system default with a warning; one named on the command line is still an error.
-        /// </summary>
-        private AudioSelection ChooseAudio(List<string> notes)
-        {
-            string output = opt.Output ?? appSettings.AudioOutput, input = opt.Input ?? appSettings.AudioInput;
-            bool savedOutput = opt.Output == null && !string.IsNullOrWhiteSpace(output);
-            bool savedInput = opt.Input == null && !string.IsNullOrWhiteSpace(input);
-            if (savedOutput || savedInput)
-            {
-                AudioDeviceList list = null;
-                try { list = AudioDeviceList.Query(); }
-                catch (Exception) { /* can't check; the sound system gets the name as saved */ }
-                if (list != null && savedOutput && !Connected(list.Outputs, output))
-                {
-                    notes.Add($"warning: the saved audio output '{output}' isn't connected; using the system default");
-                    output = null;
-                }
-                if (list != null && savedInput && !Connected(list.Inputs, input))
-                {
-                    notes.Add($"warning: the saved microphone '{input}' isn't connected; using the system default");
-                    input = null;
-                }
-            }
-            return AudioSelection.Choose(string.IsNullOrWhiteSpace(output) ? null : output, string.IsNullOrWhiteSpace(input) ? null : input);
-        }
-
-        private static bool Connected(List<AudioDevice> devices, string name)
-        {
-            try
-            {
-                AudioDeviceList.Resolve(devices, name, "--output");
-                return true;
-            }
-            catch (ArgumentException)
-            {
-                return false;
             }
         }
 
@@ -821,7 +769,7 @@ namespace Sidetone.Gui
                 PttButton = appSettings.PttButton,
                 MuteButton = appSettings.MuteButton,
                 Scale = appSettings.UiScale,
-                TxLimit = Math.Clamp(appSettings.TxLimitSeconds ?? 120, SettingsOverlay.MinTxLimit, SettingsOverlay.MaxTxLimit),
+                TxLimit = StartupChoices.TxLimit(null, appSettings),
                 SpaceToggle = appSettings.SpaceToggle,
                 Notifications = appSettings.Notifications != false,
                 LowCut = appSettings.MicLowCut ?? VoiceProcessing.MicDefault.LowCut,
@@ -834,6 +782,7 @@ namespace Sidetone.Gui
                appSettings.KeyFile != null && opt.KeyFile == null,
                console?.RecordingsFolder ?? appSettings.RecordingsFolder ?? DispatchConsole.DefaultRecordingsFolder,
                appSettings.RecordingsFolder != null && opt.RecordDir == null);
+            settingsBox.SetLog(LogSummary());
             settingsBox.Refresh(palette);
         }
 
@@ -852,7 +801,7 @@ namespace Sidetone.Gui
             static bool Same(string a, string b) => string.Equals(a ?? string.Empty, b ?? string.Empty, StringComparison.Ordinal);
             bool reconnect = !Same(appSettings.AudioOutput, v.Output) || !Same(appSettings.AudioInput, v.Input) ||
                              !Same(appSettings.PttDeviceName, v.PttDevice) || !Same(appSettings.PttButton, v.PttButton) ||
-                             !Same(appSettings.MuteButton, v.MuteButton) || (appSettings.TxLimitSeconds ?? 120) != v.TxLimit;
+                             !Same(appSettings.MuteButton, v.MuteButton) || StartupChoices.TxLimit(null, appSettings) != v.TxLimit;
 
             bool rescaled = appSettings.UiScale != v.Scale;
             ChangeSettings(s =>
@@ -863,7 +812,7 @@ namespace Sidetone.Gui
                 s.PttDeviceName = v.PttDevice;
                 s.PttButton = v.PttButton;
                 s.MuteButton = v.MuteButton;
-                s.TxLimitSeconds = v.TxLimit == 120 ? null : v.TxLimit;
+                s.TxLimitSeconds = v.TxLimit == StartupChoices.DefaultTxLimit ? null : v.TxLimit;
                 s.SpaceToggle = v.SpaceToggle;
                 s.Notifications = v.Notifications ? null : false;
                 VoiceProcessing d = VoiceProcessing.MicDefault;
@@ -881,6 +830,69 @@ namespace Sidetone.Gui
             if (rescaled)
                 console?.AddLog($"display scale: {(v.Scale == null ? "automatic" : DisplayScale.Percent(v.Scale.Value))} the next time Sidetone starts");
             return null;
+        }
+
+        /*
+        ** The log
+        */
+
+        /// <summary>The Log line in Settings: where the log files are.</summary>
+        private string LogSummary()
+        {
+            if (offline)
+                return "The demo keeps no log file.";
+            string file = console?.LogFilePath;
+            if (file == null)
+                return opt.NoLog ? "No log file this run (--no-log)." : "No log file.";
+            return !string.IsNullOrWhiteSpace(opt.LogFile) ? $"This run's log goes to {file} (--log)."
+                 : $"A log file is kept for each day, for {LogFiles.KeepDays} days, in {Path.GetDirectoryName(file)}.";
+        }
+
+        /// <summary>The console's log as text, for the clipboard (self-check hook).</summary>
+        internal string LogText() => console == null ? string.Empty : string.Join(Environment.NewLine, console.SnapshotLog(DispatchConsole.MaxLogLines));
+
+        /// <summary>Copies this run's log to the clipboard; returns what happened, as a sentence.</summary>
+        private string CopyLog()
+        {
+            string text = LogText();
+            if (text.Length == 0)
+                return "The log is empty.";
+            try
+            {
+                if (Clipboard == null)
+                    return "There's no clipboard to copy to.";
+                _ = Clipboard.SetTextAsync(text);
+                int lines = text.Split(Environment.NewLine).Length;
+                LastCopiedLog = text;
+                return $"Copied {lines} log line{(lines == 1 ? string.Empty : "s")} to the clipboard.";
+            }
+            catch (Exception ex)
+            {
+                return $"Couldn't copy the log: {ex.Message}";
+            }
+        }
+
+        /// <summary>What Copy log last put on the clipboard (self-check hook).</summary>
+        internal string LastCopiedLog { get; private set; }
+
+        /// <summary>Opens the folder with the log files.</summary>
+        private void OpenLogFolder()
+        {
+            string file = console?.LogFilePath;
+            if (offline || file == null)
+                return;
+            string folder = Path.GetDirectoryName(file);
+            try
+            {
+                Directory.CreateDirectory(folder);
+                System.Diagnostics.ProcessStartInfo psi = new System.Diagnostics.ProcessStartInfo("xdg-open") { UseShellExecute = false };
+                psi.ArgumentList.Add(folder);
+                System.Diagnostics.Process.Start(psi)?.Dispose();
+            }
+            catch (Exception ex)
+            {
+                console?.AddLog($"warning: couldn't open {folder} ({ex.Message})");
+            }
         }
 
         /// <summary>Adds or removes the app launcher entry; returns what happened, as a sentence.</summary>

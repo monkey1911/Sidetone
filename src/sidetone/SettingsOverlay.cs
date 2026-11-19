@@ -39,7 +39,7 @@ namespace Sidetone.Gui
             public override string ToString() => Label;
         }
 
-        public const int MinTxLimit = 5, MaxTxLimit = 600;
+        public const int MinTxLimit = StartupChoices.MinTxLimit, MaxTxLimit = StartupChoices.MaxTxLimit;
         private const int MaxButtonsListed = 40;    // more than this is a keyboard, not a PTT device
 
         /// <summary>Covers the window below the header while the box is open.</summary>
@@ -76,7 +76,27 @@ namespace Sidetone.Gui
         private readonly List<TextBlock> headings = new List<TextBlock>();
         private readonly TextBlock keyFileText = new TextBlock { FontSize = 12, TextWrapping = TextWrapping.Wrap };
         private readonly TextBlock recordingsText = new TextBlock { FontSize = 12, TextWrapping = TextWrapping.Wrap };
-        private Tap recChoose, recOpen, recDefault, notifyOn, notifyOff;
+        private Tap recChoose, recOpen, recDefault, notifyOn, notifyOff, logCopy, logOpen;
+        private readonly TextBlock logText = new TextBlock { FontSize = 12, TextWrapping = TextWrapping.Wrap };
+        private readonly TextBlock logResult = new TextBlock { FontSize = 12, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
+
+        /// <summary>Copies the log to the clipboard; returns what happened, as a sentence.</summary>
+        public Func<string> CopyLog;
+        /// <summary>Opens the folder with the log files.</summary>
+        public Action OpenLogFolder;
+
+        /// <summary>What the Log section says about the log files.</summary>
+        public void SetLog(string text)
+        {
+            logText.Text = text;
+            logResult.Text = string.Empty;
+        }
+
+        /// <summary>The result of the last Copy log (self-check hook).</summary>
+        public string LogResult => logResult.Text ?? string.Empty;
+
+        /// <summary>Presses Copy log (self-check hook).</summary>
+        public void PressCopyLog() => logResult.Text = CopyLog?.Invoke() ?? string.Empty;
         private readonly Tap lowCutTap, autoLevelTap, gateTap, limiterTap, rxLevelTap;
         private bool lowCut, autoLevel, gate, limiter, rxLevel;
         /// <summary>The processing switches as they are in the box: low cut, auto level, gate, limiter, receive leveling (self-check hook).</summary>
@@ -147,6 +167,13 @@ namespace Sidetone.Gui
             StackPanel notifyRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
             notifyRow.Children.Add(notifyOn.Root);
             notifyRow.Children.Add(notifyOff.Root);
+
+            logCopy = new Tap("Copy log", PressCopyLog, fontSize: 12, padX: 10, padY: 5);
+            logOpen = new Tap("Open folder", () => OpenLogFolder?.Invoke(), fontSize: 12, padX: 10, padY: 5);
+            StackPanel logRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+            logRow.Children.Add(logCopy.Root);
+            logRow.Children.Add(logOpen.Root);
+            logRow.Children.Add(logResult);
 
             keyChoose = new Tap("Choose…", () => { Close(); pickKeyFile(); }, fontSize: 12, padX: 10, padY: 5);
             keyNone = new Tap("Stop using it", () => { Close(); clearKeyFile(); }, fontSize: 12, padX: 10, padY: 5);
@@ -228,6 +255,9 @@ namespace Sidetone.Gui
             stack.Children.Add(recordingsText);
             stack.Children.Add(recRow);
             stack.Children.Add(Field("When paged", notifyRow));
+            stack.Children.Add(Heading("Log"));
+            stack.Children.Add(logText);
+            stack.Children.Add(logRow);
             stack.Children.Add(Heading("Key file"));
             stack.Children.Add(keyFileText);
             stack.Children.Add(keyRow);
@@ -476,6 +506,10 @@ namespace Sidetone.Gui
             openCodeplug.Paint(Brushes.Transparent, p.Text, p.Edge);
             keyFileText.Foreground = p.Dim;
             recordingsText.Foreground = p.Dim;
+            logText.Foreground = p.Dim;
+            logResult.Foreground = p.Dim;
+            logCopy.Paint(Brushes.Transparent, p.Text, p.Edge);
+            logOpen.Paint(Brushes.Transparent, p.Text, p.Edge);
             recChoose.Paint(Brushes.Transparent, p.Text, p.Edge);
             recOpen.Paint(Brushes.Transparent, p.Text, p.Edge);
             recDefault.Paint(Brushes.Transparent, p.Text, p.Edge);
