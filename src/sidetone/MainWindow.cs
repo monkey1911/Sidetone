@@ -776,7 +776,9 @@ namespace Sidetone.Gui
                 AutoLevel = appSettings.MicAutoLevel ?? VoiceProcessing.MicDefault.AutoLevel,
                 NoiseGate = appSettings.MicNoiseGate ?? VoiceProcessing.MicDefault.NoiseGate,
                 Limiter = appSettings.MicLimiter ?? VoiceProcessing.MicDefault.Limiter,
-                RxLevel = appSettings.RxAutoLevel
+                RxLevel = appSettings.RxAutoLevel,
+                RecordingFormat = appSettings.RecordingFormat == DispatchConsole.FormatWav ? DispatchConsole.FormatWav : DispatchConsole.FormatOpus,
+                KeepDays = appSettings.RecordingKeepDays
             }, audio, inputs, opt.Demo ? "The demo system (no codeplug file)." : currentPath, CommandLineOverrides(),
                !offline && AppLauncher.IsInstalled(AppLauncher.DataHome), KeyFileSummary(out bool locked), locked,
                appSettings.KeyFile != null && opt.KeyFile == null,
@@ -804,6 +806,7 @@ namespace Sidetone.Gui
                              !Same(appSettings.MuteButton, v.MuteButton) || StartupChoices.TxLimit(null, appSettings) != v.TxLimit;
 
             bool rescaled = appSettings.UiScale != v.Scale;
+            bool pruneNow = appSettings.RecordingKeepDays != v.KeepDays;
             ChangeSettings(s =>
             {
                 s.UiScale = v.Scale;
@@ -821,7 +824,11 @@ namespace Sidetone.Gui
                 s.MicNoiseGate = v.NoiseGate == d.NoiseGate ? null : v.NoiseGate;
                 s.MicLimiter = v.Limiter == d.Limiter ? null : v.Limiter;
                 s.RxAutoLevel = v.RxLevel;
+                s.RecordingFormat = v.RecordingFormat == DispatchConsole.FormatWav ? DispatchConsole.FormatWav : null;
+                s.RecordingKeepDays = v.KeepDays;
             });
+            if (pruneNow && !offline)
+                console?.PruneRecordingsSoon();
             UpdateKeyHints();
 
             console?.ReloadAudioProcessing();     // takes effect straight away, no reconnect

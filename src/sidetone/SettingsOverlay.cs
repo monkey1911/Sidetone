@@ -29,6 +29,9 @@ namespace Sidetone.Gui
             public bool Notifications = true;
             /// <summary>Microphone processing stages, and receive leveling.</summary>
             public bool LowCut = true, AutoLevel = true, NoiseGate, Limiter = true, RxLevel;
+            /// <summary>Recording format ("opus" or "wav"), and the days after which recordings are deleted (null: kept).</summary>
+            public string RecordingFormat = DispatchConsole.FormatOpus;
+            public int? KeepDays;
         }
 
         /// <summary>One line in a drop-down list.</summary>
@@ -46,6 +49,16 @@ namespace Sidetone.Gui
         public readonly Grid Root = new Grid { IsVisible = false };
         public readonly ComboBox Output = Combo(), Input = Combo(), PttDevice = Combo(), PttButton = Combo(), MuteButton = Combo();
         public readonly ComboBox Scale = new ComboBox { Width = 150, FontSize = 13, HorizontalAlignment = HorizontalAlignment.Left };
+        public readonly ComboBox KeepDays = new ComboBox { Width = 150, FontSize = 13, HorizontalAlignment = HorizontalAlignment.Left };
+        private Tap formatOpus, formatWav;
+        /// <summary>The recording format as chosen in the box.</summary>
+        public string RecordingFormat { get; private set; } = DispatchConsole.FormatOpus;
+        /// <summary>Picks a recording format (self-check hook).</summary>
+        public void SetFormat(string format)
+        {
+            RecordingFormat = format == DispatchConsole.FormatWav ? DispatchConsole.FormatWav : DispatchConsole.FormatOpus;
+            message.Text = string.Empty;
+        }
         private readonly TextBlock scaleNote = new TextBlock { FontSize = 12, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap };
         private static readonly double[] Scales = { 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3.0 };
         public readonly TextBox TxLimit = new TextBox { Width = 90, MaxLength = 3, FontSize = 14, HorizontalAlignment = HorizontalAlignment.Left };
@@ -124,7 +137,7 @@ namespace Sidetone.Gui
 
         public bool IsOpen => Root.IsVisible;
         /// <summary>A drop-down list is showing (Esc closes that, not the box).</summary>
-        public bool DropDownOpen => Scale.IsDropDownOpen || Output.IsDropDownOpen || Input.IsDropDownOpen || PttDevice.IsDropDownOpen || PttButton.IsDropDownOpen || MuteButton.IsDropDownOpen;
+        public bool DropDownOpen => Scale.IsDropDownOpen || KeepDays.IsDropDownOpen || Output.IsDropDownOpen || Input.IsDropDownOpen || PttDevice.IsDropDownOpen || PttButton.IsDropDownOpen || MuteButton.IsDropDownOpen;
         /// <summary>Space starts and stops transmit (as chosen in the box).</summary>
         public bool SpaceToggle { get; private set; }
         /// <summary>The error being shown.</summary>
@@ -164,6 +177,11 @@ namespace Sidetone.Gui
             recRow.Children.Add(recDefault.Root);
             notifyOn = new Tap("On", () => { Notify = true; message.Text = string.Empty; }, fontSize: 12, padX: 12, padY: 5);
             notifyOff = new Tap("Off", () => { Notify = false; message.Text = string.Empty; }, fontSize: 12, padX: 12, padY: 5);
+            formatOpus = new Tap("Opus (small files)", () => SetFormat(DispatchConsole.FormatOpus), fontSize: 12, padX: 10, padY: 5);
+            formatWav = new Tap("WAV", () => SetFormat(DispatchConsole.FormatWav), fontSize: 12, padX: 12, padY: 5);
+            StackPanel formatRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
+            formatRow.Children.Add(formatOpus.Root);
+            formatRow.Children.Add(formatWav.Root);
             StackPanel notifyRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
             notifyRow.Children.Add(notifyOn.Root);
             notifyRow.Children.Add(notifyOff.Root);
@@ -254,6 +272,8 @@ namespace Sidetone.Gui
             stack.Children.Add(Heading("Recordings and notifications"));
             stack.Children.Add(recordingsText);
             stack.Children.Add(recRow);
+            stack.Children.Add(Field("Format", formatRow));
+            stack.Children.Add(Field("Delete after", KeepDays));
             stack.Children.Add(Field("When paged", notifyRow));
             stack.Children.Add(Heading("Log"));
             stack.Children.Add(logText);
@@ -323,6 +343,11 @@ namespace Sidetone.Gui
                          string keyFile, bool keyFileLocked, bool keyFileChosen, string recordings, bool recordingsChosen)
         {
             recordingsText.Text = $"Recordings go to {recordings}";
+            RecordingFormat = current.RecordingFormat == DispatchConsole.FormatWav ? DispatchConsole.FormatWav : DispatchConsole.FormatOpus;
+            filling = true;
+            Fill(KeepDays, current.KeepDays?.ToString(System.Globalization.CultureInfo.InvariantCulture), "Keep them",
+                 DispatchConsole.KeepDayChoices.Select(d => new Choice(d.ToString(System.Globalization.CultureInfo.InvariantCulture), $"{d} days")), "days");
+            filling = false;
             recDefault.Root.IsVisible = recordingsChosen;
             Notify = current.Notifications;
             (lowCut, autoLevel, gate, limiter, rxLevel) = (current.LowCut, current.AutoLevel, current.NoiseGate, current.Limiter, current.RxLevel);
@@ -466,7 +491,9 @@ namespace Sidetone.Gui
                 AutoLevel = autoLevel,
                 NoiseGate = gate,
                 Limiter = limiter,
-                RxLevel = rxLevel
+                RxLevel = rxLevel,
+                RecordingFormat = RecordingFormat,
+                KeepDays = int.TryParse(Selected(KeepDays), out int days) && days > 0 ? days : null
             };
             string error = save(v);
             if (error != null)
@@ -506,6 +533,16 @@ namespace Sidetone.Gui
             openCodeplug.Paint(Brushes.Transparent, p.Text, p.Edge);
             keyFileText.Foreground = p.Dim;
             recordingsText.Foreground = p.Dim;
+            if (RecordingFormat == DispatchConsole.FormatWav)
+            {
+                formatWav.Paint(p.Accent, p.OnStrong);
+                formatOpus.Paint(Brushes.Transparent, p.Text, p.Edge);
+            }
+            else
+            {
+                formatOpus.Paint(p.Accent, p.OnStrong);
+                formatWav.Paint(Brushes.Transparent, p.Text, p.Edge);
+            }
             logText.Foreground = p.Dim;
             logResult.Foreground = p.Dim;
             logCopy.Paint(Brushes.Transparent, p.Text, p.Edge);

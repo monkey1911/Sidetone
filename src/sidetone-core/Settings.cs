@@ -70,6 +70,10 @@ namespace Sidetone.Core
         public bool RxAutoLevel { get; set; }
         /// <summary>Folder for talkgroup recordings, or null for the default (~/.local/share/sidetone/recordings).</summary>
         public string RecordingsFolder { get; set; }
+        /// <summary>Recording file format: "wav", or null for Opus (.opus).</summary>
+        public string RecordingFormat { get; set; }
+        /// <summary>Recordings older than this many days are deleted; null keeps them.</summary>
+        public int? RecordingKeepDays { get; set; }
         /// <summary>Show a desktop notification when the console is paged (null means yes).</summary>
         public bool? Notifications { get; set; }
         /// <summary>Display scale for the graphical console (1.0 = 100%), or null to work it out.</summary>

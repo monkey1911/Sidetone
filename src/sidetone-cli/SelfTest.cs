@@ -208,6 +208,9 @@ namespace Sidetone.Cli
                 // 16. log files, the choices both consoles start with, the TUI's key file box and card buttons
                 CatchUpTests(tmp, cp, sys);
 
+                // 17. deleting old recordings
+                RecordingPruneTests(tmp);
+
                 // 8. WAV writer
                 string wavPath = Path.Combine(tmp, "test.wav");
                 using (WavSink wav = new WavSink(wavPath))
@@ -1123,6 +1126,7 @@ B: MSC=10
                     rt.ReplayLast(calling);
                     Check(rt.Replaying == null && rt.SnapshotLog(1)[0].Contains("no calls to replay"), "recall: nothing to replay on a channel that isn't listening");
 
+                    rt.Settings.RecordingFormat = DispatchConsole.FormatWav;   // WAV first: its size is exact
                     rt.SetRecord(calling, true);
                     Call(18, 0);
                     List<RecalledCall> kept = rt.RecalledCalls(calling);
@@ -1137,8 +1141,75 @@ B: MSC=10
                     Check(rt.RecordingsWritten == 1 && named && size == 44 + 18 * 160 * 2 && (mode & (UnixFileMode.GroupRead | UnixFileMode.OtherRead)) == 0,
                           $"recording: the call is saved as a WAV named for its time, talkgroup and talker, readable only by the user ({size} bytes)");
 
+
                     rt.ReplayLast(calling);
                     Check(played.Count == 18 && rt.Replaying == null, "recall: the last call plays back in full");
+
+                    // the default: Opus, an eighth of the size, and the same call when decoded
+                    rt.Settings.RecordingFormat = null;
+                    const int opusFrames = 252;     // 5 s, in whole LDUs (a part LDU at the end isn't sent)
+                    List<short[]> spokenPcm = new List<short[]>();
+                    {
+                        MBEEncoder enc = new MBEEncoder(MBE_MODE.IMBE_88BIT);
+                        MBEDecoder dec = new MBEDecoder(MBE_MODE.IMBE_88BIT);
+                        for (int i = 0; i < opusFrames; i++)
+                        {
+                            byte[] cw = new byte[P25VoiceReceiver.ImbeLength];
+                            enc.encode(VoicedFrame(i + 500), cw);
+                            short[] spokenFrame = new short[P25VoiceReceiver.FrameSamples];
+                            dec.decode(cw, spokenFrame);
+                            spokenPcm.Add(spokenFrame);
+                        }
+                    }
+                    Call(opusFrames, 500);
+                    string opus = rt.lastRecording;
+                    byte[] opusBytes = opus != null && File.Exists(opus) ? File.ReadAllBytes(opus) : Array.Empty<byte>();
+                    string head = System.Text.Encoding.ASCII.GetString(opusBytes, 0, Math.Min(200, opusBytes.Length));
+                    long wavEquivalent = 44 + opusFrames * 160 * 2;
+                    List<short> decoded = new List<short>();
+                    if (opusBytes.Length > 0)
+                    {
+                        Concentus.OpusCodecFactory.AttemptToUseNativeLibrary = false;
+                        Concentus.IOpusDecoder od = Concentus.OpusCodecFactory.CreateDecoder(8000, 1);
+                        Concentus.Oggfile.OpusOggReadStream oggIn = new Concentus.Oggfile.OpusOggReadStream(od, new MemoryStream(opusBytes));
+                        while (oggIn.HasNextPacket)
+                        {
+                            short[] packet = oggIn.DecodeNextPacket();
+                            if (packet != null)
+                                decoded.AddRange(packet);
+                        }
+                    }
+                    // the Ogg pages as a strict player (ffmpeg) wants them: valid checksums, pre-skip set, no empty
+                    // last page, the last page ends the stream at the exact end
+                    bool pagesOk = false;
+                    string pagesSaid = "no file";
+                    if (opusBytes.Length > 0)
+                    {
+                        var pages = OpusFileSink.Pages(opusBytes);
+                        bool crcs = pages.All(pg =>
+                        {
+                            byte[] copy = opusBytes.AsSpan(pg.Offset, pg.Length).ToArray();
+                            uint stored = BitConverter.ToUInt32(copy, 22);
+                            Array.Clear(copy, 22, 4);
+                            return OpusFileSink.OggCrc(copy, 0, copy.Length) == stored;
+                        });
+                        var lastPage = pages[^1];
+                        int preSkip = opusBytes[pages[0].Offset + pages[0].HeaderLength + 10] | (opusBytes[pages[0].Offset + pages[0].HeaderLength + 11] << 8);
+                        long endGranule = BitConverter.ToInt64(opusBytes, lastPage.Offset + 6);
+                        bool onlyLastEnds = pages.Take(pages.Count - 1).All(pg => (opusBytes[pg.Offset + 5] & 0x04) == 0) && (opusBytes[lastPage.Offset + 5] & 0x04) != 0;
+                        pagesOk = crcs && lastPage.Offset + lastPage.Length == opusBytes.Length && lastPage.BodyLength > 0 && onlyLastEnds &&
+                                  preSkip > 0 && endGranule == preSkip + (long)opusFrames * 160 * 6;
+                        pagesSaid = $"{pages.Count} pages, checksums {(crcs ? "ok" : "bad")}, pre-skip {preSkip}, end {endGranule}";
+                    }
+                    Check(pagesOk, $"recording: the Opus file's pages are well formed, with pre-skip and an exact end ({pagesSaid})");
+                    double Rms(IEnumerable<short> xs) { double sum = 0; int n = 0; foreach (short x in xs) { sum += (double)x * x; n++; } return n == 0 ? 0 : Math.Sqrt(sum / n); }
+                    double spokenRms = Rms(spokenPcm.SelectMany(f => f)), decodedRms = Rms(decoded);
+                    int expectSamples = opusFrames * 160;
+                    Check(opus != null && opus.EndsWith(".opus") && head.StartsWith("OggS") && head.Contains("OpusHead") && opusBytes.Length < wavEquivalent / 5 &&
+                          Math.Abs(decoded.Count - expectSamples) <= 480 && decodedRms > spokenRms * 0.6 && decodedRms < spokenRms * 1.5 &&
+                          (File.GetUnixFileMode(opus) & (UnixFileMode.GroupRead | UnixFileMode.OtherRead)) == 0,
+                          $"recording: by default the call is saved as Opus, about an eighth of the WAV's size, and decodes to the same length and level " +
+                          $"({opusBytes.Length} bytes vs {wavEquivalent}; {decoded.Count} samples vs {expectSamples}; level {decodedRms:F0} vs {spokenRms:F0})");
 
                     for (int n = 0; n < 11; n++)
                         Call(9, 100 + n);
@@ -1786,6 +1857,34 @@ zones:
                   "zones: if every zone was hidden, the first one is shown (names match whatever the case)");
             zthird.Shutdown();
             zt.Shutdown();
+        }
+
+        private static void RecordingPruneTests(string tmp)
+        {
+            // old recordings: only Sidetone's audio files in date-named day folders are deleted
+            string recRoot = Path.Combine(tmp, "prune-recordings");
+            DateTime pruneToday = new DateTime(2026, 11, 18);
+            string Day(string systemName, int back) => Path.Combine(recRoot, systemName, pruneToday.AddDays(-back).ToString("yyyy-MM-dd"));
+            foreach ((string sysName, int back) in new[] { ("CTRS", 0), ("CTRS", 29), ("CTRS", 30), ("CTRS", 45), ("Other", 60) })
+            {
+                Directory.CreateDirectory(Day(sysName, back));
+                File.WriteAllText(Path.Combine(Day(sysName, back), "120000_Calling_TG504_RX_x.opus"), "x");
+                File.WriteAllText(Path.Combine(Day(sysName, back), "120500_Calling_TG504_RX_y.wav"), "x");
+            }
+            File.WriteAllText(Path.Combine(Day("CTRS", 45), "notes.txt"), "keep me");
+            Directory.CreateDirectory(Path.Combine(recRoot, "CTRS", "not-a-date"));
+            File.WriteAllText(Path.Combine(recRoot, "CTRS", "not-a-date", "old.opus"), "x");
+            File.WriteAllText(Path.Combine(recRoot, "loose.opus"), "x");
+
+            int prunedRec = Recordings.Prune(recRoot, pruneToday, 30);
+            Check(prunedRec == 6 && Directory.Exists(Day("CTRS", 29)) && File.Exists(Path.Combine(Day("CTRS", 29), "120000_Calling_TG504_RX_x.opus")) &&
+                  !Directory.Exists(Day("CTRS", 30)) && !Directory.Exists(Day("Other", 60)) &&
+                  File.Exists(Path.Combine(Day("CTRS", 45), "notes.txt")) && !File.Exists(Path.Combine(Day("CTRS", 45), "120500_Calling_TG504_RX_y.wav")) &&
+                  File.Exists(Path.Combine(recRoot, "CTRS", "not-a-date", "old.opus")) && File.Exists(Path.Combine(recRoot, "loose.opus")),
+                  $"recordings: those from more than N days ago are deleted (and their emptied day folders); anything else is left alone ({prunedRec} deleted)");
+            Check(Recordings.Prune(recRoot, pruneToday, 0) == 0 && Recordings.Prune(Path.Combine(tmp, "no-such-folder"), pruneToday, 7) == 0 &&
+                  Recordings.Prune(null, pruneToday, 7) == 0,
+                  "recordings: keeping them, or a folder that doesn't exist, deletes nothing");
         }
 
         private static void CatchUpTests(string tmp, Codeplug cp, Codeplug.System sys)

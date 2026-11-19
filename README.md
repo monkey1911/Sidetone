@@ -204,6 +204,8 @@ What it has so far:
 | PTT button, Mute button | Which of that device's buttons do what. Automatic uses the buttons Sidetone knows for the device, or its only button. |
 | Space and PTT | Hold to talk, or press to start and press again to stop. Applies to Space and the on-screen PTT buttons. |
 | Recordings | Where recordings go, and a button to open that folder |
+| Format | Opus (small files, the default) or WAV for new recordings |
+| Delete after | Keep recordings, or delete them after 7 to 365 days |
 | When paged | Desktop notifications when the console is paged, on or off |
 | Key file | A local key file to use, and its unlock state (see [Encryption keys](#encryption-keys)) |
 | Time limit | How long a transmission can last, 5 to 900 seconds |
@@ -426,12 +428,14 @@ All of this is plain C# inside Sidetone, independent of PipeWire, so it will beh
 
 Replays play at the channel's volume, even when the channel or the console is muted, alongside any live audio. Only calls on listening channels are kept, because only those are received; a secure call is kept only if its key was loaded. Calls are kept in memory and are gone when Sidetone closes.
 
-**Recording.** A channel set to record also saves every call to a WAV file when it ends:
+**Recording.** A channel set to record also saves every call to a file when it ends:
 
 - **Rec** on a card, **Record** in Instant recall, `W` (GUI) or `w` (TUI) turns it on and off. Recording a channel starts listening to it, and a channel that stops listening stops recording.
-- Files go to `~/.local/share/sidetone/recordings/SYSTEM/YYYY-MM-DD/`, named like `143107_CT-OPS_TG500_RX_Kara-M.wav`. Choose another folder in Settings or with `--record-dir DIR` (both programs).
+- Files go to `~/.local/share/sidetone/recordings/SYSTEM/YYYY-MM-DD/`, named like `143107_CT-OPS_TG500_RX_Kara-M.opus`. Choose another folder in Settings or with `--record-dir DIR` (both programs).
 - Recording is remembered per channel, so it carries on after a restart.
-- Files are 8 kHz mono WAV, about 1 MB a minute of speech. Nothing is deleted automatically.
+- Files are **Opus** (`.opus`), about 120 kB a minute of speech; any media player plays them, and each file's title, artist and date say which channel, who spoke and when. **Format** in Settings can switch to 8 kHz mono WAV instead (about 1 MB a minute).
+- **Delete after** in Settings deletes recordings older than 7 to 365 days, when a console starts and every hour after; the default is to keep them. Only Sidetone's own `.opus` and `.wav` files in the `SYSTEM/YYYY-MM-DD` folders are deleted (and a day's folder once it's empty), so nothing else is touched even if the recordings folder is shared. The log says how many went.
+- The terminal console uses the same choices.
 
 **Secure calls are saved decrypted.** A recording of a secure channel is plain audio anyone with the file can play. The folders and files are made readable by your user only, and the log says so when you start recording a secure channel.
 

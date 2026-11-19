@@ -231,6 +231,7 @@ namespace Sidetone.Core
                 AddLog(settingsError);
             aliases.Load();
             RestoreSettings();
+            PruneRecordingsSoon();
             StartControl();
             StartPttDevice();
             peer.Start();
@@ -1151,6 +1152,7 @@ namespace Sidetone.Core
         {
             PatchHousekeeping();
             RecallHousekeeping();
+            RecordingHousekeeping();
             string micFail = pendingMicFail;
             if (micFail != null)
             {

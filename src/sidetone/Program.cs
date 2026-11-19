@@ -458,6 +458,8 @@ namespace Sidetone.Gui
             Check(set.IsOpen && set.Output.ItemCount == 3 && set.Input.ItemCount == 3 && set.PttDevice.ItemCount == 3,
                   $"Ctrl+, opens Settings with the audio and PTT devices listed ({set.Output.ItemCount} / {set.Input.ItemCount} / {set.PttDevice.ItemCount})");
             Check(!set.PttButton.IsEnabled && set.PttButton.ItemCount == 1, "with no PTT device chosen, there are no buttons to choose");
+            Check(set.RecordingFormat == DispatchConsole.FormatOpus && set.KeepDays.ItemCount == DispatchConsole.KeepDayChoices.Length + 1 && set.KeepDays.SelectedIndex == 0,
+                  $"Settings: recordings are Opus by default, kept until a 'delete after' is chosen ({set.KeepDays.ItemCount} choices)");
             set.PressCopyLog();
             Check(set.LogResult.StartsWith("Copied ") && (w.LastCopiedLog ?? string.Empty).Contains("demo: a made-up system"),
                   $"Settings: Copy log puts the console's log on the clipboard ('{set.LogResult}')");
@@ -494,6 +496,18 @@ namespace Sidetone.Gui
             set.Save();
             Check(automatic && w.SavedScale == 2.0 && c.SnapshotLog(1).Any(l => l.Contains("next time Sidetone starts")),
                   "the display scale is automatic until one is chosen; a new one is saved for the next start");
+            Press(PhysicalKey.Comma, RawInputModifiers.Control);
+            set.SetFormat(DispatchConsole.FormatWav);
+            set.KeepDays.SelectedIndex = 3;     // 30 days
+            set.Save();
+            bool savedRec = c.RecordingFormat == DispatchConsole.FormatWav && c.RecordingKeepDays == 30;
+            Press(PhysicalKey.Comma, RawInputModifiers.Control);
+            bool reopened = set.RecordingFormat == DispatchConsole.FormatWav && set.KeepDays.SelectedIndex == 3;
+            set.SetFormat(DispatchConsole.FormatOpus);
+            set.KeepDays.SelectedIndex = 0;
+            set.Save();
+            Check(savedRec && reopened && c.RecordingFormat == DispatchConsole.FormatOpus && c.RecordingKeepDays == null,
+                  "Settings: the recording format and 'delete after' are saved, shown again, and can go back to Opus and keeping them");
             bool holdBefore = !w.SpaceIsToggle;
             Press(PhysicalKey.Comma, RawInputModifiers.Control);
             Check(set.IsOpen && set.TxLimit.Text == "90", "Settings reopens on what was saved");

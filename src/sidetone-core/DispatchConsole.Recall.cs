@@ -246,28 +246,69 @@ namespace Sidetone.Core
         /// <summary>Recordings are written straight away instead of in the background (self-test).</summary>
         internal bool recordInline;
 
+        /// <summary>Recording formats: Opus (the default) or WAV.</summary>
+        public const string FormatOpus = "opus", FormatWav = "wav";
+
+        /// <summary>The choices for deleting old recordings, in days (Settings offers these, and "keep").</summary>
+        public static readonly int[] KeepDayChoices = { 7, 14, 30, 60, 90, 180, 365 };
+
+        /// <summary>The format new recordings are written in: "opus" or "wav".</summary>
+        public string RecordingFormat => string.Equals(Settings?.RecordingFormat, FormatWav, StringComparison.OrdinalIgnoreCase) ? FormatWav : FormatOpus;
+
+        /// <summary>Recordings older than this many days are deleted (at start and every hour); null keeps them.</summary>
+        public int? RecordingKeepDays => Settings?.RecordingKeepDays is int d && d > 0 ? d : null;
+
+        private DateTime nextRecordingPrune;
+
+        /// <summary>
+        /// Deletes recordings older than the chosen number of days, in the background, and logs how
+        /// many went. Nothing happens when they are kept. Called at start, every hour, and when the
+        /// choice changes.
+        /// </summary>
+        public void PruneRecordingsSoon()
+        {
+            nextRecordingPrune = DateTime.Now + TimeSpan.FromHours(1);
+            if (RecordingKeepDays is not int days)
+                return;
+            string folder = RecordingsFolder;
+            Task.Run(() =>
+            {
+                int removed = Recordings.Prune(folder, DateTime.Now, days);
+                if (removed > 0)
+                    AddLog($"recordings: deleted {removed} older than {days} days from {folder}");
+            });
+        }
+
+        private void RecordingHousekeeping()
+        {
+            if (DateTime.Now >= nextRecordingPrune && nextRecordingPrune != default)
+                PruneRecordingsSoon();
+        }
+
         private void SaveRecording(RecalledCall call)
         {
             string folder = RecordingsFolder;
             string systemName = system.Name;
+            string format = RecordingFormat;
             void Write()
             {
                 try
                 {
-                    string path = RecordingPath(folder, systemName, call);
+                    string path = RecordingPath(folder, systemName, call, format);
                     MakePrivateFolder(folder);
                     MakePrivateFolder(Path.GetDirectoryName(path));
                     string partial = path + ".part";
-                    using (WavSink wav = new WavSink(partial))
+                    using (IAudioSink sink = format == FormatWav ? new WavSink(partial)
+                           : new OpusFileSink(partial, $"{call.Channel} (TG {call.Talkgroup}) {(call.Tx ? "TX" : "RX")}", call.Who, call.Started))
                     {
                         if (!OperatingSystem.IsWindows())
                             File.SetUnixFileMode(partial, UnixFileMode.UserRead | UnixFileMode.UserWrite);
                         MBEDecoder decoder = new MBEDecoder(MBE_MODE.IMBE_88BIT);
-                        short[] samples = new short[P25VoiceReceiver.FrameSamples];
                         foreach (byte[] imbe in call.Frames.ToList())
                         {
+                            short[] samples = new short[P25VoiceReceiver.FrameSamples];
                             decoder.decode(imbe, samples);
-                            wav.Write(samples);
+                            sink.Write(samples);
                         }
                     }
                     File.Move(partial, path, overwrite: false);
@@ -297,16 +338,17 @@ namespace Sidetone.Core
         }
 
         /// <summary>
-        /// Where a call's recording goes: FOLDER/SYSTEM/YYYY-MM-DD/HHMMSS_CHANNEL_TGnnn_RX_WHO.wav, with
-        /// anything that doesn't belong in a file name replaced.
+        /// Where a call's recording goes: FOLDER/SYSTEM/YYYY-MM-DD/HHMMSS_CHANNEL_TGnnn_RX_WHO.opus (or
+        /// .wav), with anything that doesn't belong in a file name replaced.
         /// </summary>
-        public static string RecordingPath(string folder, string systemName, RecalledCall call)
+        public static string RecordingPath(string folder, string systemName, RecalledCall call, string format = FormatOpus)
         {
+            string ext = format == FormatWav ? ".wav" : ".opus";
             string name = $"{call.Started:HHmmss}_{Safe(call.Channel)}_TG{call.Talkgroup}_{(call.Tx ? "TX" : "RX")}_{Safe(call.Who)}";
             string day = Path.Combine(folder, Safe(systemName), call.Started.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
-            string path = Path.Combine(day, name + ".wav");
+            string path = Path.Combine(day, name + ext);
             for (int n = 2; File.Exists(path) || File.Exists(path + ".part"); n++)
-                path = Path.Combine(day, $"{name}-{n}.wav");
+                path = Path.Combine(day, $"{name}-{n}{ext}");
             return path;
         }
 

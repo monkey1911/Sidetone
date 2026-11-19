@@ -5,9 +5,13 @@
 * Audio outputs for decoded 8 kHz mono 16-bit PCM:
 *  - PipeWireSink streams to a PipeWire output (the default, or --output) through pw-play (or pw-cat).
 *  - WavSink records to a .wav file.
+*  - OpusFileSink records to an Ogg Opus (.opus) file, with Concentus (a C# port of libopus).
 */
 
 using System.Diagnostics;
+using Concentus;
+using Concentus.Enums;
+using Concentus.Oggfile;
 
 namespace Sidetone.Core
 {
@@ -185,4 +189,162 @@ namespace Sidetone.Core
             file.Dispose();
         }
     } // public sealed class WavSink
+
+    /// <summary>
+    /// Records 8 kHz mono voice to an Ogg Opus (.opus) file: about 16 kbit/s, an eighth of the
+    /// size of the same call as WAV, and played by any media player. Always the C# encoder (never
+    /// a system libopus), so a recording comes out the same on every machine.
+    ///
+    /// Concentus.OggFile's own ending isn't quite right for strict players (ffmpeg calls it invalid
+    /// data): it ends with an extra page holding an empty packet, and leaves the encoder's start-up
+    /// delay (pre-skip) at 0. So when the file is finished, those pages are mended: pre-skip is set
+    /// from the encoder, the empty last page is dropped, the last page with audio is marked as the
+    /// end of the stream with the exact end position, and their checksums are recomputed.
+    /// </summary>
+    public sealed class OpusFileSink : IAudioSink
+    {
+        /// <summary>Bits per second: plenty for 8 kHz voice that has been through IMBE already.</summary>
+        public const int Bitrate = 16000;
+
+        private const int To48k = 48000 / PipeWireSink.SampleRate;
+
+        private readonly string path;
+        private readonly IOpusEncoder encoder;
+        private readonly OpusOggWriteStream ogg;
+        private long samplesIn;
+        private bool finished;
+
+        /// <summary>Creates the file (overwriting any existing file). Tags go into the file's metadata.</summary>
+        public OpusFileSink(string path, string title = null, string artist = null, DateTime? when = null)
+        {
+            this.path = path;
+            OpusCodecFactory.AttemptToUseNativeLibrary = false;
+            encoder = OpusCodecFactory.CreateEncoder(PipeWireSink.SampleRate, 1, OpusApplication.OPUS_APPLICATION_VOIP);
+            encoder.Bitrate = Bitrate;
+            encoder.SignalType = OpusSignal.OPUS_SIGNAL_VOICE;
+
+            OpusTags tags = new OpusTags();
+            if (!string.IsNullOrWhiteSpace(title))
+                tags.Fields[OpusTagName.Title] = title;
+            if (!string.IsNullOrWhiteSpace(artist))
+                tags.Fields[OpusTagName.Artist] = artist;
+            if (when.HasValue)
+                tags.Fields["date"] = when.Value.ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture);
+
+            FileStream file = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.Read);
+            ogg = new OpusOggWriteStream(encoder, file, tags, PipeWireSink.SampleRate);
+        }
+
+        /// <inheritdoc/>
+        public void Write(short[] samples)
+        {
+            ogg.WriteSamples(samples, 0, samples.Length);
+            samplesIn += samples.Length;
+        }
+
+        /// <inheritdoc/>
+        public void Dispose()
+        {
+            if (finished)
+                return;
+            finished = true;
+            ogg.Finish();       // writes the last pages and closes the file
+            int preSkip = encoder.Lookahead * To48k;
+            File.WriteAllBytes(path, Mend(File.ReadAllBytes(path), preSkip, preSkip + samplesIn * To48k));
+        }
+
+        /// <summary>One Ogg page: where it starts, its header length and its body length.</summary>
+        internal readonly record struct OggPage(int Offset, int HeaderLength, int BodyLength)
+        {
+            public int Length => HeaderLength + BodyLength;
+        }
+
+        /// <summary>The pages of an Ogg file; stops at anything that isn't one.</summary>
+        internal static List<OggPage> Pages(byte[] b)
+        {
+            List<OggPage> pages = new List<OggPage>();
+            int pos = 0;
+            while (pos + 27 <= b.Length && b[pos] == 'O' && b[pos + 1] == 'g' && b[pos + 2] == 'g' && b[pos + 3] == 'S')
+            {
+                int segments = b[pos + 26], header = 27 + segments;
+                if (pos + header > b.Length)
+                    break;
+                int body = 0;
+                for (int i = 0; i < segments; i++)
+                    body += b[pos + 27 + i];
+                if (pos + header + body > b.Length)
+                    break;
+                pages.Add(new OggPage(pos, header, body));
+                pos += header + body;
+            }
+            return pages;
+        }
+
+        /// <summary>
+        /// Mends a finished Ogg Opus file (see the class notes): pre-skip, the end of the stream and its
+        /// exact end position (in 48 kHz samples, pre-skip included). Returns the new bytes.
+        /// </summary>
+        internal static byte[] Mend(byte[] b, int preSkip, long endGranule)
+        {
+            List<OggPage> pages = Pages(b);
+            if (pages.Count < 3)
+                return b;
+            HashSet<int> changed = new HashSet<int>();
+
+            // pre-skip: in OpusHead, 10 bytes into the first page's body
+            OggPage head = pages[0];
+            int preSkipAt = head.Offset + head.HeaderLength + 10;
+            b[preSkipAt] = (byte)preSkip;
+            b[preSkipAt + 1] = (byte)(preSkip >> 8);
+            changed.Add(0);
+
+            // an empty last page (one zero-length packet): drop it, the page before ends the stream
+            OggPage last = pages[^1];
+            if (pages.Count > 3 && last.BodyLength == 0)
+            {
+                pages.RemoveAt(pages.Count - 1);
+                last = pages[^1];
+            }
+            int lastIndex = pages.Count - 1;
+            b[last.Offset + 5] |= 0x04;     // end of stream
+            long granule = BitConverter.ToInt64(b, last.Offset + 6);
+            long before = lastIndex >= 3 ? BitConverter.ToInt64(b, pages[lastIndex - 1].Offset + 6) : 0;
+            if (endGranule > before && endGranule <= granule)
+                BitConverter.TryWriteBytes(new Span<byte>(b, last.Offset + 6, 8), endGranule);   // players trim the padding after it
+            changed.Add(lastIndex);
+
+            foreach (int i in changed)
+            {
+                OggPage page = pages[i];
+                Array.Clear(b, page.Offset + 22, 4);
+                uint crc = OggCrc(b, page.Offset, page.Length);
+                BitConverter.TryWriteBytes(new Span<byte>(b, page.Offset + 22, 4), crc);
+            }
+            return b.AsSpan(0, last.Offset + last.Length).ToArray();
+        }
+
+        private static readonly uint[] CrcTable = MakeCrcTable();
+
+        private static uint[] MakeCrcTable()
+        {
+            uint[] table = new uint[256];
+            for (uint i = 0; i < 256; i++)
+            {
+                uint r = i << 24;
+                for (int k = 0; k < 8; k++)
+                    r = (r & 0x80000000) != 0 ? (r << 1) ^ 0x04C11DB7 : r << 1;
+                table[i] = r;
+            }
+            return table;
+        }
+
+        /// <summary>Ogg's page checksum (CRC-32, polynomial 0x04C11DB7, not reflected), over a page whose checksum field is zero.</summary>
+        internal static uint OggCrc(byte[] b, int offset, int length)
+        {
+            uint crc = 0;
+            for (int i = offset; i < offset + length; i++)
+                crc = (crc << 8) ^ CrcTable[((crc >> 24) & 0xFF) ^ b[i]];
+            return crc;
+        }
+    } // public sealed class OpusFileSink
 }

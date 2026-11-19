@@ -8,9 +8,9 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
 
 ## State at hand-off (2026-11-16)
 
-- Version **0.25.0** on `main` (set once, in `src/Directory.Build.props`): log files, Copy log, and
-  the TUI caught up with the GUI. 0.24.2 was released; check `gh release list`.
-- 282 checks (230 in `sidetone-cli selftest`, 52 in the GUI's `--selfcheck`) plus screenshots.
+- Version **0.26.0** on `main` (set once, in `src/Directory.Build.props`): Opus recordings and
+  deleting old ones. 0.25.0 was released; check `gh release list`.
+- 288 checks (234 in `sidetone-cli selftest`, 54 in the GUI's `--selfcheck`) plus screenshots.
 - **Tested on the air by the owner:** RX/TX clear and AES, key delivery from the FNE, alias sync,
   alert tones, channel marker, QCII and digital pages, radio check (the radio answers; see the FNE
   limitation below), GUI on x86-64 under Hyprland, GUI on ARM64 (Surface Pro 11), display
@@ -33,7 +33,7 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
   notifications, mic processing (on by default!), local KFDtool key files and the keyring, the
   Settings screen with real devices, the Motorola desk mic in the GUI, `--wayland`, and from 0.25:
   log files and Copy log, the TUI using the GUI's saved settings, the TUI's card buttons and key
-  file box.
+  file box; from 0.26: Opus recordings and Delete after.
 - Next on the wishlist: item 10 (a CI test against a real dvmfne) or item 7 (NXDN/DMR, needs live
   traffic), per-zone audio outputs; the TUI's only remaining gap is audio over SSH.
 
@@ -74,6 +74,11 @@ tools/                      ci-status.sh, ci-screenshots.sh (see Testing)
   the only real one; `NoAudioBackend` elsewhere). `AudioSinks.cs` (`PipeWireSink` = `pw-play`,
   `WavSink`), `PipeWireCapture.cs` (`pw-record`), `AudioDevices.cs` (`pw-dump` parsing, device
   matching, startup report). **Nothing outside the PipeWire backend may start `pw-*` tools.**
+- Recordings: `OpusFileSink` (in `AudioSinks.cs`; Concentus 2.2.2 + Concentus.OggFile, pure C#,
+  `AttemptToUseNativeLibrary = false`; it mends Concentus.OggFile's ending: pre-skip, an empty
+  last page dropped, EOS and the exact end granule, CRCs recomputed, checked with ffmpeg) or
+  `WavSink`; `Recordings.Prune` deletes only `.opus/.wav/.part` in `FOLDER/SYSTEM/YYYY-MM-DD`.
+  ffmpeg warns "non monotonically increasing dts" when decoding any trimmed Opus file, its own too.
 - `AudioProcessing.cs`: `VoiceProcessor` (low cut, gate, auto level, limiter; 8 kHz, 160-sample
   blocks), `WavFile` (reader + level description). Plain C# on purpose (portability).
 - `StartupChoices.cs`: what both consoles start with (option, else the GUI's saved setting, else
@@ -225,6 +230,8 @@ every release on the air and on their hardware after publishing it.
   (`~/Pictures/Screenshots/`, newest first) directly instead of asking for pastes. Both the GUI and
   TUI log to file since 0.25. Site logs (dvmhost) are on the owner's hotspot, so those get pasted.
 - Say plainly what was tested where (CI vs on the air) and what wasn't.
+- **WISHLIST.md:** when something is done, strike it through (`~~...~~`) with "Done in X.Y" rather
+  than deleting or rewording it, and that includes each "Still to do" sub-item, one per line.
 - Keep personal names out of the public repo's files (the wishlist refers to "the FNE's
   maintainers").
 - **Never print or commit a codeplug**: they contain FNE passwords. `.gitignore` ignores `*.yml`
