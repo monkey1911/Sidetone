@@ -121,6 +121,7 @@ namespace Sidetone.Cli
             pageDialog = null;
             zoneDialog = null;
             keyDialog = null;
+            outputsDialog = null;
             radioDialog = new RadioDialog { Rid = lastPageRid };
         }
 
@@ -275,6 +276,7 @@ namespace Sidetone.Cli
             radioDialog = null;
             zoneDialog = null;
             keyDialog = null;
+            outputsDialog = null;
             pageDialog = new PageDialog { Digital = digital, A = lastPageA, B = lastPageB, Rid = lastPageRid };
         }
 
@@ -449,6 +451,11 @@ namespace Sidetone.Cli
                 KeyFileInput(e);
                 return;
             }
+            if (outputsDialog != null && e.Kind == InputKind.Key)
+            {
+                OutputsInput(e);
+                return;
+            }
             if (zoneDialog != null && e.Kind == InputKind.Key)
             {
                 ZoneInput(e);
@@ -515,6 +522,7 @@ namespace Sidetone.Cli
                         case '-': case '_': Quieter(c); break;
                         case 'k': RequestKey(c); break;
                         case 'K': OpenKeyFile(); break;
+                        case 'o': case 'O': OpenOutputs(); break;
                         case 'e': case 'E': ToggleTxSecure(c); break;
                         case 'x': CyclePatch(c); break;
                         case 'X': CyclePatchRole(c); break;
@@ -639,6 +647,7 @@ namespace Sidetone.Cli
             DrawRadioDialog(width, height);
             DrawZoneDialog(width, height);
             DrawKeyFileDialog(width, height);
+            DrawOutputsDialog(width, height);
             return screen;
         }
 
@@ -1042,7 +1051,7 @@ namespace Sidetone.Cli
                     screen.Text(1 + used, y, "   MIC MUTED (u to unmute)", Style.Of(Ansi.BrightRed, bold: true), right - 1 - used);
             }
 
-            screen.Text(1, y + 1, (TabRows > 0 ? "[ ]: tab  z: zones  " : string.Empty) + "click card: listen  [●]: stop  Space: PTT  1-6: alert  p/d: page  r: radio cmd  c: marker  t: talk permit  v: mic meter  u: mic mute  a: aliases  m/M: mute card/all  +/-: vol  k: key  K: key file  e: secure/clear  x/X: patch/direction  l/L: replay  w: rec  q: quit",
+            screen.Text(1, y + 1, (TabRows > 0 ? "[ ]: tab  z: zones  " : string.Empty) + "click card: listen  [●]: stop  Space: PTT  1-6: alert  p/d: page  r: radio cmd  c: marker  t: talk permit  v: mic meter  u: mic mute  a: aliases  m/M: mute card/all  +/-: vol  k: key  K: key file  o: outputs  e: secure/clear  x/X: patch/direction  l/L: replay  w: rec  q: quit",
                         Style.Of(Ansi.Grey), width - 2);
         }
     } // public sealed class Tui

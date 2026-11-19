@@ -81,8 +81,8 @@ namespace Sidetone.Gui
                     case "--selfcheck": o.SelfCheck = true; break;
                     case "--show":
                         o.Show = Next().ToLowerInvariant();
-                        if (o.Show is not ("page" or "digital" or "radio" or "settings" or "keyfile" or "patch" or "recall" or "tabs"))
-                            throw new ArgumentException("--show must be page, digital, radio, settings, keyfile, patch, recall or tabs");
+                        if (o.Show is not ("page" or "digital" or "radio" or "settings" or "keyfile" or "patch" or "recall" or "tabs" or "outputs"))
+                            throw new ArgumentException("--show must be page, digital, radio, settings, keyfile, patch, recall, tabs or outputs");
                         break;
                     case "--space":
                     {
@@ -424,6 +424,20 @@ namespace Sidetone.Gui
             Press(PhysicalKey.X);
             Check(source && target && focus.PatchRole == PatchRole.Both && focus.Patch == 0,
                   "Shift+X switches a patched channel between both ways, source only and target only");
+
+            // the Audio outputs box
+            Press(PhysicalKey.O);
+            RoutingOverlay routing = w.RoutingBox;
+            bool routingOpen = routing.IsOpen;
+            Avalonia.Controls.ComboBox tabCombo = routing.ZoneBox(c.CurrentZone), chanCombo = routing.ChannelBox(focus);
+            tabCombo.SelectedIndex = 2;         // demo.headset
+            chanCombo.SelectedIndex = 1;        // demo.speakers
+            bool routed = c.CurrentZone.Output == "demo.headset" && focus.Output == "demo.speakers" && c.OutputSource(focus) == "own";
+            chanCombo.SelectedIndex = 0;
+            tabCombo.SelectedIndex = 0;
+            Press(PhysicalKey.Escape);
+            Check(routingOpen && routed && focus.Output == null && c.CurrentZone.Output == null && !routing.IsOpen,
+                  "O opens Audio outputs: a tab's and a channel's output are chosen there at once; Esc closes it");
 
             // instant recall: the demo has calls on Tac 1, the focused channel
             Press(PhysicalKey.L, RawInputModifiers.Shift);

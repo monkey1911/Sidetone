@@ -62,6 +62,10 @@ namespace Sidetone.Gui
         private readonly Grid consoleView = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*,Auto,230") };
         private readonly ZoneTabs zoneTabs = new ZoneTabs();
         private ZoneOverlay zoneBox;
+        private RoutingOverlay routingBox;
+
+        /// <summary>The Audio outputs box (self-check hook).</summary>
+        internal RoutingOverlay RoutingBox => routingBox;
 
         /// <summary>The tab strip and the Tabs box (self-check hooks).</summary>
         internal ZoneTabs ZoneStrip => zoneTabs;
@@ -200,6 +204,7 @@ namespace Sidetone.Gui
                     break;
                 case "keyfile": keyBox.Show("/home/operator/keys/demo.ekc", true); keyBox.Refresh(palette); break;
                 case "tabs": ShowZones(); break;
+                case "outputs": ShowRouting(); break;
             }
         }
 
@@ -291,12 +296,14 @@ namespace Sidetone.Gui
                                               () => _ = PickRecordingsFolder(), () => SetRecordingsFolder(null), OpenRecordingsFolder)
             {
                 CopyLog = CopyLog,
-                OpenLogFolder = OpenLogFolder
+                OpenLogFolder = OpenLogFolder,
+                OpenRouting = () => ShowRouting()
             };
             keyBox = new KeyFileOverlay(UnlockKeyFile, () => root.Focus());
             patchBox = new PatchOverlay(() => console, RefreshNow, () => root.Focus());
             recallBox = new RecallOverlay(() => console, RefreshNow, () => root.Focus(), OpenRecordingsFolder);
             zoneBox = new ZoneOverlay(() => console, RefreshNow, () => root.Focus());
+            routingBox = new RoutingOverlay(() => console, () => offline ? DemoCodeplug.AudioDevices() : AudioDeviceList.Query(), RefreshNow, () => root.Focus());
 
             // console view: cards, transmit bar, recent calls and log
             ScrollViewer cardScroll = new ScrollViewer { Content = cardPanel, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
@@ -355,6 +362,7 @@ namespace Sidetone.Gui
             Grid.SetRow(patchBox.Root, 1);
             Grid.SetRow(recallBox.Root, 1);
             Grid.SetRow(zoneBox.Root, 1);
+            Grid.SetRow(routingBox.Root, 1);
             root.Children.Add(header);
             root.Children.Add(consoleView);
             root.Children.Add(welcome);
@@ -363,6 +371,7 @@ namespace Sidetone.Gui
             root.Children.Add(patchBox.Root);
             root.Children.Add(recallBox.Root);
             root.Children.Add(zoneBox.Root);
+            root.Children.Add(routingBox.Root);
             root.Children.Add(keyBox.Root);
             Content = root;
         }
@@ -931,6 +940,7 @@ namespace Sidetone.Gui
             patchBox?.Close();
             recallBox?.Close();
             zoneBox?.Close();
+            routingBox?.Close();
             DispatchConsole c = console;
             console = null;
             if (c == null || offline)
@@ -1101,6 +1111,7 @@ namespace Sidetone.Gui
             }
             zoneTabs.Refresh(c, p);
             zoneBox.Refresh(p);
+            routingBox.Refresh(p);
             overlay.Refresh(p);
             patchBox.Refresh(p);
             recallBox.Refresh(p);
@@ -1217,6 +1228,17 @@ namespace Sidetone.Gui
                     else
                         recallBox.PlayRow(0);
                     RefreshNow();
+                }
+                return;
+            }
+
+            // the Audio outputs box is open: Esc or Enter closes it (or just an open list)
+            if (routingBox.IsOpen)
+            {
+                if ((e.Key == Key.Escape || e.Key == Key.Enter) && !routingBox.DropDownOpen)
+                {
+                    e.Handled = true;
+                    routingBox.Close();
                 }
                 return;
             }
@@ -1365,6 +1387,7 @@ namespace Sidetone.Gui
                     case Key.OemOpenBrackets: c.NextZone(-1); ScrollToFocus(c); break;
                     case Key.OemCloseBrackets: c.NextZone(1); ScrollToFocus(c); break;
                     case Key.Z: ShowZones(); break;
+                    case Key.O: ShowRouting(); break;
                     default: return;
                 }
             }
@@ -1448,6 +1471,20 @@ namespace Sidetone.Gui
             console?.ShowZone(z);
             if (console != null)
                 ScrollToFocus(console);
+            RefreshNow();
+        }
+
+        /// <summary>Opens the Audio outputs box.</summary>
+        private void ShowRouting()
+        {
+            if (console == null)
+                return;
+            overlay.Close();
+            patchBox.Close();
+            recallBox.Close();
+            zoneBox.Close();
+            settingsBox.Close();
+            routingBox.Show();
             RefreshNow();
         }
 

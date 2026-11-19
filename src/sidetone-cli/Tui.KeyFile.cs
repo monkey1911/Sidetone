@@ -56,6 +56,7 @@ namespace Sidetone.Cli
             pageDialog = null;
             radioDialog = null;
             zoneDialog = null;
+            outputsDialog = null;
             keyDialog = new KeyFileDialog();
         }
 

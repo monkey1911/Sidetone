@@ -90,6 +90,7 @@ namespace Sidetone.Gui
         private readonly TextBlock keyFileText = new TextBlock { FontSize = 12, TextWrapping = TextWrapping.Wrap };
         private readonly TextBlock recordingsText = new TextBlock { FontSize = 12, TextWrapping = TextWrapping.Wrap };
         private Tap recChoose, recOpen, recDefault, notifyOn, notifyOff, logCopy, logOpen;
+        private readonly List<Tap> routingTaps = new List<Tap>();
         private readonly TextBlock logText = new TextBlock { FontSize = 12, TextWrapping = TextWrapping.Wrap };
         private readonly TextBlock logResult = new TextBlock { FontSize = 12, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
 
@@ -97,6 +98,8 @@ namespace Sidetone.Gui
         public Func<string> CopyLog;
         /// <summary>Opens the folder with the log files.</summary>
         public Action OpenLogFolder;
+        /// <summary>Opens the Audio outputs box (outputs per tab and channel).</summary>
+        public Action OpenRouting;
 
         /// <summary>What the Log section says about the log files.</summary>
         public void SetLog(string text)
@@ -258,6 +261,10 @@ namespace Sidetone.Gui
             stack.Children.Add(Field("Scale", scaleRow));
             stack.Children.Add(Heading("Audio"));
             stack.Children.Add(Field("Output", Output));
+            Tap routingTap = new Tap("Per tab and channel…", () => { Close(); OpenRouting?.Invoke(); }, fontSize: 12, padX: 10, padY: 5);
+            routingTap.Root.HorizontalAlignment = HorizontalAlignment.Left;
+            routingTaps.Add(routingTap);
+            stack.Children.Add(Field("Other outputs", routingTap.Root));
             stack.Children.Add(Field("Microphone", Input));
             stack.Children.Add(Field("Mic processing", micRow));
             stack.Children.Add(Field("Receive", rxLevelTap.Root));
@@ -557,6 +564,8 @@ namespace Sidetone.Gui
             logText.Foreground = p.Dim;
             logResult.Foreground = p.Dim;
             logCopy.Paint(Brushes.Transparent, p.Text, p.Edge);
+            foreach (Tap t in routingTaps)
+                t.Paint(Brushes.Transparent, p.Text, p.Edge);
             logOpen.Paint(Brushes.Transparent, p.Text, p.Edge);
             recChoose.Paint(Brushes.Transparent, p.Text, p.Edge);
             recOpen.Paint(Brushes.Transparent, p.Text, p.Edge);

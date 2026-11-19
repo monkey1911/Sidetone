@@ -59,6 +59,8 @@ namespace Sidetone.Core
 
         /// <summary>The patch this channel is in (1 and up, an index into the console's patch names plus one), or 0 for none.</summary>
         public volatile int Patch;
+        /// <summary>This channel's own audio output (a device name), or null to follow its tab.</summary>
+        public string Output;
         /// <summary>Which way this channel's patch passes calls: both ways, from it only, or to it only.</summary>
         public volatile PatchRole PatchRole;
 
@@ -504,7 +506,7 @@ namespace Sidetone.Core
             {
                 try
                 {
-                    IAudioOutput sink = AudioBackend.Current.OpenOutput(Audio?.OutputTarget);
+                    IAudioOutput sink = AudioBackend.Current.OpenOutput(OutputFor(c));
                     sink.Failed += msg => AddLog($"{c.Cfg.Name}: {msg}");
                     c.Sink = sink;
                 }
@@ -1231,6 +1233,11 @@ namespace Sidetone.Core
             lastPageB = ss.PageB ?? string.Empty;
             lastPageRid = ss.PageRid ?? string.Empty;
             RestoreHiddenZones(ss);
+            foreach (ConsoleZone z in zones)
+                z.Output = ss.ZoneOutputs != null && ss.ZoneOutputs.TryGetValue(z.Name, out string zoneOut) && !string.IsNullOrWhiteSpace(zoneOut) ? zoneOut : null;
+            foreach (Chan c in chans)
+                c.Output = ss.Channels.TryGetValue(ChanKey(c), out ChannelSettings saved) && !string.IsNullOrWhiteSpace(saved.Output) ? saved.Output : null;
+            CheckSavedOutputs();
 
             List<string> restored = new List<string>();
             for (int i = 0; i < chans.Count; i++)
@@ -1279,7 +1286,8 @@ namespace Sidetone.Core
             if (ss.HiddenZones.Count == 0)
                 ss.HiddenZones = null;
             foreach (Chan c in chans)
-                ss.Channels[ChanKey(c)] = new ChannelSettings { Listening = c.Selected, Muted = c.Muted, Gain = Math.Round(c.Gain, 3), TxClear = c.Selectable && c.TxClear, Record = c.Record };
+                ss.Channels[ChanKey(c)] = new ChannelSettings { Listening = c.Selected, Muted = c.Muted, Gain = Math.Round(c.Gain, 3), TxClear = c.Selectable && c.TxClear, Record = c.Record, Output = c.Output };
+            ss.ZoneOutputs = zones.Any(z => z.Output != null) ? zones.Where(z => z.Output != null).ToDictionary(z => z.Name, z => z.Output) : null;
 
             try { settings.Save(settingsPath); }
             catch (Exception ex) { AddLog($"could not save settings to {settingsPath}: {ex.Message}"); }

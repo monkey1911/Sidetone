@@ -38,6 +38,9 @@ namespace Sidetone.Core
         /// <summary>The zone's channels, in codeplug order.</summary>
         public IReadOnlyList<ConsoleChannel> Channels => chans;
 
+        /// <summary>The audio output for this tab's channels (a device name), or null for the main output.</summary>
+        public string Output { get; internal set; }
+
         /// <summary>Hidden: the zone's channels are switched off and its tab isn't shown.</summary>
         public bool Hidden => hidden;
 

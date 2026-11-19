@@ -486,7 +486,7 @@ namespace Sidetone.Core
                 if (replaySinkForTest != null)
                     sink = replaySinkForTest();
                 else if (!NoAudio)
-                    sink = AudioBackend.Current.OpenOutput(Audio?.OutputTarget);
+                    sink = AudioBackend.Current.OpenOutput(OutputFor(c));
             }
             catch (Exception ex)
             {

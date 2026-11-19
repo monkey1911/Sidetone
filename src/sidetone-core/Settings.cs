@@ -25,6 +25,8 @@ namespace Sidetone.Core
         public bool TxClear { get; set; }
         /// <summary>Calls on this channel are recorded to disk.</summary>
         public bool Record { get; set; }
+        /// <summary>This channel's own audio output (a device name), or null to follow its tab.</summary>
+        public string Output { get; set; }
     }
 
     /// <summary>
@@ -35,6 +37,8 @@ namespace Sidetone.Core
         /// <summary>Per channel, keyed by "zone/name/tg".</summary>
         public Dictionary<string, ChannelSettings> Channels { get; set; } = new Dictionary<string, ChannelSettings>();
         public string Focused { get; set; }
+        /// <summary>Audio outputs for tabs (zone name to device name). Null for none.</summary>
+        public Dictionary<string, string> ZoneOutputs { get; set; }
         /// <summary>Zones (tabs) hidden in this system: their channels are switched off. Null for none.</summary>
         public List<string> HiddenZones { get; set; }
         public bool GlobalMute { get; set; }

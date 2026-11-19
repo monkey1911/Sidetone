@@ -113,6 +113,10 @@ namespace Sidetone.Core
                 stdin.Write(pcm, 0, pcm.Length);
                 stdin.Flush();
             }
+            catch (ObjectDisposedException)
+            {
+                failed = true;      // closed while a block was on its way (the channel moved to another output)
+            }
             catch (IOException)
             {
                 failed = true;

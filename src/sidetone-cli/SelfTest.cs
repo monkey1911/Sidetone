@@ -214,6 +214,9 @@ namespace Sidetone.Cli
                 // 18. one-way patches
                 OneWayPatchTests(cp, sys);
 
+                // 19. audio outputs per tab and per channel
+                OutputTests(tmp);
+
                 // 8. WAV writer
                 string wavPath = Path.Combine(tmp, "test.wav");
                 using (WavSink wav = new WavSink(wavPath))
@@ -1868,6 +1871,75 @@ zones:
             zt.Shutdown();
         }
 
+        private static void OutputTests(string tmp)
+        {
+            string zonePath = Path.Combine(tmp, "zones.yml");
+            Codeplug ocp = Program.LoadCodeplug(zonePath);
+            Codeplug.System osys = ocp.Systems[0];
+            AudioDeviceList Devices(params string[] names)
+            {
+                AudioDeviceList l = new AudioDeviceList();
+                uint id = 50;
+                foreach (string n in names)
+                    l.Outputs.Add(new AudioDevice { Id = id++, Name = n, Description = n + " (desc)" });
+                return l;
+            }
+            FakeAudio outFake = new FakeAudio();
+            IAudioBackend outReal = AudioBackend.Current;
+            string outSettings = Path.Combine(tmp, "output-settings.json");
+            try
+            {
+                AudioBackend.Current = outFake;
+                Tui ot = new Tui(ocp, osys, TimeSpan.FromSeconds(120), null, settingsPath: outSettings) { NoAudio = false, deviceQueryForTest = () => Devices("dev.speakers", "dev.headset") };
+                ConsoleZone alpha = ot.Zones[0];
+                ConsoleChannel a1 = ot.Channels[0], a2 = ot.Channels[1], n1 = ot.Channels[2];
+                ot.Select(a1);
+                bool mainFirst = outFake.Targets.LastOrDefault() == null && ot.OutputSource(a1) == "main";
+                ot.SetZoneOutput(alpha, "dev.headset");
+                bool zoneMoved = outFake.Targets.LastOrDefault() == "dev.headset" && ot.OutputFor(a2) == "dev.headset" && ot.OutputFor(n1) == null && ot.OutputSource(a2) == "tab";
+                ot.SetChannelOutput(a1, "dev.speakers");
+                bool ownWins = outFake.Targets.LastOrDefault() == "dev.speakers" && ot.OutputSource(a1) == "own";
+                int opened = outFake.Targets.Count;
+                ot.SetZoneOutput(alpha, "dev.speakers");
+                ot.SetZoneOutput(alpha, "dev.headset");
+                bool ownStays = ot.OutputFor(a1) == "dev.speakers";
+                ot.SetChannelOutput(a1, null);
+                Check(mainFirst && zoneMoved && ownWins && ownStays && ot.OutputFor(a1) == "dev.headset" && outFake.Targets.LastOrDefault() == "dev.headset" &&
+                      outFake.Outputs.Count(o => o != null) >= opened,
+                      "outputs: a tab's output moves its listening channels at once; a channel's own output wins; clearing it follows the tab again");
+
+                ot.SetChannelOutput(n1, "dev.speakers");
+                ot.SaveSettings();
+                string savedJson = File.ReadAllText(outSettings);
+                Tui ot2 = new Tui(ocp, osys, TimeSpan.FromSeconds(120), null, settingsPath: outSettings) { NoAudio = true, deviceQueryForTest = () => Devices("dev.speakers") };
+                ot2.RestoreSettings();
+                Check(savedJson.Contains("\"ZoneOutputs\"") && savedJson.Contains("dev.headset") && ot2.Zones[0].Output == "dev.headset" && ot2.Channels[2].Output == "dev.speakers" &&
+                      ot2.OutputFor(ot2.Channels[1]) == null && ot2.OutputFor(ot2.Channels[2]) == "dev.speakers" &&
+                      ot2.SnapshotLog(20).Any(l => l.Contains("'dev.headset'") && l.Contains("isn't connected")),
+                      "outputs: remembered per system; one that isn't connected at start is skipped with a warning (the main output plays) but stays saved");
+                ot2.SaveSettings();
+                Check(File.ReadAllText(outSettings).Contains("dev.headset"), "outputs: a missing output isn't forgotten when the settings are saved again");
+
+                // the TUI's outputs box
+                ot.Render(120, 40);
+                ot.FocusTo(1);      // A2, on tab Alpha
+                ot.HandleInput(new InputEvent(InputKind.Key, InputKey.Char, 'o'));
+                bool boxOpen = ot.OutputsDialogOpen;
+                ot.HandleInput(new InputEvent(InputKind.Key, InputKey.Right));     // A2: own output, the first device
+                string afterStep = a2.Output;
+                ot.HandleInput(new InputEvent(InputKind.Key, InputKey.Left));      // back to "same as tab"
+                ot.HandleInput(new InputEvent(InputKind.Key, InputKey.Char, 'm'));
+                ot.HandleInput(new InputEvent(InputKind.Key, InputKey.Escape));
+                Check(boxOpen && afterStep == "dev.speakers" && a2.Output == null && !ot.OutputsDialogOpen && !a2.Muted,
+                      "TUI outputs box: o opens it on the focused channel, ←/→ step through the outputs, Esc closes it");
+                ot.Shutdown();
+            }
+            finally
+            {
+                AudioBackend.Current = outReal;
+            }
+        }
+
         private static void OneWayPatchTests(Codeplug cp, Codeplug.System sys)
         {
             const uint owRid = 9000001, owRadio = 4321;
@@ -2089,7 +2161,8 @@ zones:
             public In Input;
             public string Name => "Fake";
             public AudioDeviceList ListDevices() => throw new InvalidOperationException("no devices here");
-            public IAudioOutput OpenOutput(string device) { Out o = new Out(); lock (Outputs) Outputs.Add(o); return o; }
+            public readonly List<string> Targets = new List<string>();     // the device each output was opened on
+            public IAudioOutput OpenOutput(string device) { Out o = new Out(); lock (Outputs) { Outputs.Add(o); Targets.Add(device); } return o; }
             public IAudioInput OpenInput(string device) => Input = new In();
             public IReadOnlyList<string> Problems() => Array.Empty<string>();
         }
