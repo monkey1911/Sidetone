@@ -238,6 +238,9 @@ every release on the air and on their hardware after publishing it.
   (`~/Pictures/Screenshots/`, newest first) directly instead of asking for pastes. Both the GUI and
   TUI log to file since 0.25. Site logs (dvmhost) are on the owner's hotspot, so those get pasted.
 - Say plainly what was tested where (CI vs on the air) and what wasn't.
+- **README.md has a Contents list** at the top (every `##` and `###` heading, linked by GitHub's
+  anchors: lower case, punctuation dropped, spaces to hyphens). Update it when a section is added,
+  renamed or removed.
 - **WISHLIST.md:** when something is done, strike it through (`~~...~~`) with "Done in X.Y" rather
   than deleting or rewording it, and that includes each "Still to do" sub-item, one per line.
 - Keep personal names out of the public repo's files (the wishlist refers to "the FNE's

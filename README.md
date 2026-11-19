@@ -9,9 +9,41 @@ There are two front ends over the same console:
 - **`sidetone-cli`**: a terminal console (TUI) that works anywhere, including over SSH, plus the `listen`, `ptt` and `devices` commands.
 - **`sidetone`**: a graphical console (Avalonia), with light and dark themes. See [Graphical console (sidetone)](#graphical-console-sidetone).
 
-**What works:** FNE login, P25 receive and transmit (clear, AES-256, DES, ADP/ARC4 with keys from the FNE), PipeWire audio, channel cards, push-to-talk from the keyboard, a hotkey or a PTT device, alert tones, pages, radio commands, the channel marker, radio aliases, and WAV recording.
+**What works:** FNE login, P25 receive and transmit (clear, AES-256, DES, ADP/ARC4 with keys from the FNE or a KFDtool key file), PipeWire audio, channel cards in tabs for the codeplug's zones, push-to-talk from the keyboard, a hotkey or a PTT device, alert tones, pages, radio commands, the channel marker, radio aliases, patching, instant recall, recording to Opus or WAV, and log files.
 
 **Not yet:** DMR/NXDN/analog. What we'd like to add next is in [WISHLIST.md](WISHLIST.md).
+
+## Contents
+
+- [Install](#install)
+  - [AppImage](#appimage)
+  - [Arch Linux and Omarchy](#arch-linux-and-omarchy)
+  - [Tarball](#tarball)
+- [Codeplug](#codeplug)
+- [Use](#use)
+- [Terminal console (TUI)](#terminal-console-tui)
+- [Graphical console (sidetone)](#graphical-console-sidetone)
+  - [Settings](#settings)
+  - [App launcher](#app-launcher)
+  - [Command-line options](#command-line-options)
+- [Audio devices](#audio-devices)
+  - [Microphone mute and the no-audio warning](#microphone-mute-and-the-no-audio-warning)
+- [PTT from hotkeys and scripts](#ptt-from-hotkeys-and-scripts)
+- [PTT devices (desk mics, footswitches, PTT buttons)](#ptt-devices-desk-mics-footswitches-ptt-buttons)
+- [Audio processing](#audio-processing)
+- [Instant recall and recording](#instant-recall-and-recording)
+- [Desktop notifications](#desktop-notifications)
+- [Tabs (zones)](#tabs-zones)
+- [Log files](#log-files)
+- [Patching](#patching)
+- [Encryption keys](#encryption-keys)
+  - [Local key file](#local-key-file)
+  - [Selectable encryption](#selectable-encryption)
+- [Radio aliases](#radio-aliases)
+- [Coming from dvmcli and dvmgui](#coming-from-dvmcli-and-dvmgui)
+- [Building from source](#building-from-source)
+- [How it is put together](#how-it-is-put-together)
+- [License](#license)
 
 ## Install
 
