@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Sidetone
+GenericName=Dispatch Console
+Comment=An IP dispatch console for DVMProject FNE networks
+Exec=sidetone
+Icon=sidetone
+Terminal=false
+Categories=Network;HamRadio;
+Keywords=radio;dispatch;console;P25;DVM;FNE;PTT;
+StartupWMClass=sidetone

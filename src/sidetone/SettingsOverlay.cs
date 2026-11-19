@@ -451,6 +451,17 @@ namespace Sidetone.Gui
             message.Text = string.Empty;
         }
 
+        /// <summary>
+        /// Sidetone was installed as a package, whose launcher entry is system-wide: say so, and don't
+        /// offer to add a second one.
+        /// </summary>
+        public void SetSystemLauncher(bool system)
+        {
+            launcherTap.Root.IsVisible = !system;
+            if (system)
+                launcherState.Text = "Sidetone is in your app launcher (installed as a package).";
+        }
+
         private void ToggleLauncher()
         {
             string result = launcher(!launcherInstalled);

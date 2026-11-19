@@ -1,0 +1,45 @@
+# Sidetone for Arch Linux (and Omarchy), from the release tarballs.
+# This file is a template: packaging/arch/make-pkgbuild.sh fills in the version and checksums,
+# and each GitHub release has the finished PKGBUILD attached. Install with: makepkg -si
+pkgname=sidetone-bin
+pkgver=@VERSION@
+pkgrel=1
+pkgdesc="An IP dispatch console for DVMProject FNE networks (graphical and terminal)"
+arch=('x86_64' 'aarch64')
+url="https://github.com/monkey1911/Sidetone"
+license=('AGPL-3.0-only')
+depends=('glibc' 'gcc-libs' 'zlib' 'openssl' 'fontconfig' 'freetype2' 'libpng'
+         'libx11' 'libxcursor' 'libxext' 'libxfixes' 'libxi' 'libxrandr' 'libice' 'libsm'
+         'pipewire')
+optdepends=('libsecret: remember key file passwords in the keyring (secret-tool)'
+            'libnotify: desktop notifications when paged (notify-send)'
+            'gtk3: native file dialogs'
+            'xdg-utils: opening the recordings and log folders')
+provides=('sidetone')
+conflicts=('sidetone')
+options=('!strip' '!debug')
+install=sidetone.install
+source=('sidetone.install')
+source_x86_64=("$url/releases/download/@TAG@/sidetone-@TAG@-linux-x64.tar.gz")
+source_aarch64=("$url/releases/download/@TAG@/sidetone-@TAG@-linux-arm64.tar.gz")
+sha256sums=('@SHA_INSTALL@')
+sha256sums_x86_64=('@SHA_X64@')
+sha256sums_aarch64=('@SHA_ARM64@')
+
+package() {
+    cd "$srcdir"/sidetone-*-linux-*/
+
+    install -d "$pkgdir/opt/sidetone" "$pkgdir/usr/bin"
+    cp -a . "$pkgdir/opt/sidetone/"
+    # .NET's tracing hook (needs lttng, unused), the pre-rename wrappers, and files installed below
+    rm -rf "$pkgdir/opt/sidetone/libcoreclrtraceptprovider.so" "$pkgdir/opt/sidetone/dvmcli" "$pkgdir/opt/sidetone/dvmgui" \
+           "$pkgdir/opt/sidetone/desktop" "$pkgdir/opt/sidetone/README.md" "$pkgdir/opt/sidetone/LICENSE"
+    ln -s /opt/sidetone/sidetone "$pkgdir/usr/bin/sidetone"
+    ln -s /opt/sidetone/sidetone-cli "$pkgdir/usr/bin/sidetone-cli"
+
+    install -Dm644 desktop/sidetone.desktop "$pkgdir/usr/share/applications/sidetone.desktop"
+    install -Dm644 desktop/sidetone-256.png "$pkgdir/usr/share/icons/hicolor/256x256/apps/sidetone.png"
+    install -Dm644 desktop/sidetone.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/sidetone.svg"
+    install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+    install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+}

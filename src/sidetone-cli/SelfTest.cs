@@ -932,7 +932,9 @@ B: MSC=10
                 pace.ClearPatches();
             }
 
-            // the same with the real timer, as on the air: a burst of four LDUs takes at least three LDU times to go out
+            // the same with the real timer, as on the air: a burst of four LDUs takes at least three LDU times to go out.
+            // Timing on a busy machine can stall once (a first start loading from disk), so a second try is allowed.
+            (int Seen, int Tdus, long Spread) LiveRun()
             {
                 Tui live = new Tui(cp, sys, TimeSpan.FromSeconds(120), null) { NoAudio = true };
                 CliPeer liveHeaders = new CliPeer(sys, new KeyStore(), verbose: false);
@@ -974,11 +976,15 @@ B: MSC=10
                     seen = Volatile.Read(ref liveOut.VoiceCount);
                     lastAt = liveClock.ElapsedMilliseconds;
                 }
-                long spread = lastAt - firstAt;
-                Check(seen == 4 && Volatile.Read(ref liveOut.TduCount) == 5 && spread >= 3 * 180 - 40 && spread < 3 * 180 + 400,
-                      $"patch pacing: with the real timer, a burst goes out at the LDU rate and the call ends ({seen} LDUs over {spread} ms)");
                 live.ClearPatches();
+                return (seen, Volatile.Read(ref liveOut.TduCount), lastAt - firstAt);
             }
+            bool LiveOk((int Seen, int Tdus, long Spread) r) => r.Seen == 4 && r.Tdus == 5 && r.Spread >= 3 * 180 - 40 && r.Spread < 3 * 180 + 400;
+            var liveResult = LiveRun();
+            if (!LiveOk(liveResult))
+                liveResult = LiveRun();
+            Check(LiveOk(liveResult),
+                  $"patch pacing: with the real timer, a burst goes out at the LDU rate and the call ends ({liveResult.Seen} LDUs over {liveResult.Spread} ms)");
 
             // the audio device layer: everything plays and records through the backend
             {

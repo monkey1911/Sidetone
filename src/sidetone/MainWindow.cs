@@ -126,7 +126,7 @@ namespace Sidetone.Gui
             }
             catch (Exception) { /* a window without an icon is fine */ }
             if (!offline)
-                AppLauncher.Refresh(AppLauncher.DataHome, Environment.ProcessPath);      // a new version in a new folder keeps its launcher entry
+                AppLauncher.Refresh(AppLauncher.DataHome, AppLauncher.ProgramPath);      // a new version in a new folder keeps its launcher entry
 
             BuildShell();
             ActualThemeVariantChanged += (s, e) => ApplyTheme();
@@ -785,6 +785,7 @@ namespace Sidetone.Gui
                console?.RecordingsFolder ?? appSettings.RecordingsFolder ?? DispatchConsole.DefaultRecordingsFolder,
                appSettings.RecordingsFolder != null && opt.RecordDir == null);
             settingsBox.SetLog(LogSummary());
+            settingsBox.SetSystemLauncher(!offline && !AppLauncher.IsInstalled(AppLauncher.DataHome) && AppLauncher.SystemEntry() != null);
             settingsBox.Refresh(palette);
         }
 
@@ -911,7 +912,7 @@ namespace Sidetone.Gui
             {
                 if (add)
                 {
-                    AppLauncher.Install(AppLauncher.DataHome, Environment.ProcessPath);
+                    AppLauncher.Install(AppLauncher.DataHome, AppLauncher.ProgramPath);
                     return "Added. Look for Sidetone in your app launcher.";
                 }
                 AppLauncher.Remove(AppLauncher.DataHome);

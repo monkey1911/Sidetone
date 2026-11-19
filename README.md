@@ -15,32 +15,57 @@ There are two front ends over the same console:
 
 ## Install
 
-Each release on the [Releases](../../releases) page has one download per architecture (CI runs keep the same two as artifacts):
-
-| Machine | Download |
-|---|---|
-| ARM64 (Surface Pro 11 and other aarch64) | `sidetone-*-linux-arm64.tar.gz` |
-| x86-64 (Intel / AMD PCs) | `sidetone-*-linux-x64.tar.gz` |
-
-If you're not sure which one a machine needs, this prints `aarch64` or `x86_64`:
+Each release on the [Releases](../../releases) page comes three ways, for both ARM64 (the Surface Pro 11 and other aarch64 machines) and x86-64 (Intel / AMD PCs). If you're not sure which a machine needs, this prints `aarch64` or `x86_64`:
 
 ```bash
 uname -m
 ```
 
-Extract the ARM64 build:
+| Way | ARM64 | x86-64 | Best for |
+|---|---|---|---|
+| AppImage | `Sidetone-*-aarch64.AppImage` | `Sidetone-*-x86_64.AppImage` | any distribution: one file, nothing to install |
+| Arch package | `sidetone-bin-*.tar.gz` (both) | same | Arch and Omarchy: a system install with its dependencies |
+| Tarball | `sidetone-*-linux-arm64.tar.gz` | `sidetone-*-linux-x64.tar.gz` | putting it wherever you like |
+
+All three are self-contained (no .NET install needed) and hold both programs, `sidetone` (graphical) and `sidetone-cli` (terminal). They are built on Ubuntu 24.04, so any distribution of that age or newer runs them, including current Arch / Omarchy and Fedora. Playback uses `pw-play` and transmit uses `pw-record`, which ship with PipeWire. `sidetone` also needs the usual desktop libraries (X11 and fontconfig), which any graphical install already has. Each file has a `.sha256` next to it.
+
+### AppImage
+
+Make it runnable once, then start it:
 
 ```bash
-tar -xzf ~/Downloads/sidetone-*-linux-arm64.tar.gz -C ~
+chmod +x ~/Downloads/Sidetone-*.AppImage
 ```
 
-Or the x86-64 build:
+```bash
+~/Downloads/Sidetone-*-x86_64.AppImage
+```
+
+The AppImage starts the graphical console. Put `cli` first for the terminal program, for example `Sidetone-….AppImage cli tui --codeplug FILE` or `Sidetone-….AppImage cli ptt toggle` in a key binding (a link to the AppImage named `sidetone-cli` works the same). **Add to app launcher** in Settings points the launcher at the AppImage file, so keep it somewhere permanent like `~/Applications` first. If your system has no FUSE, add `--appimage-extract-and-run`.
+
+### Arch Linux and Omarchy
+
+The release's `sidetone-bin-*.tar.gz` holds a PKGBUILD for both architectures. Unpack it and build the package (makepkg downloads the release tarball, checks it, and pacman installs it with its dependencies):
+
+```bash
+tar -xzf ~/Downloads/sidetone-bin-*.tar.gz -C ~/Downloads
+```
+
+```bash
+cd ~/Downloads/sidetone-bin && makepkg -si
+```
+
+Sidetone goes to `/opt/sidetone`, with `sidetone` and `sidetone-cli` on your PATH and an entry in the app launcher. Remove it with `sudo pacman -R sidetone-bin`. (It isn't on the AUR yet, while AUR sign-ups are closed.)
+
+### Tarball
+
+Extract it wherever you like, for example your home folder:
 
 ```bash
 tar -xzf ~/Downloads/sidetone-*-linux-x64.tar.gz -C ~
 ```
 
-Each download has both programs, `sidetone-cli` and `sidetone`. The builds are self-contained, so no .NET install is needed. They are built on Ubuntu 24.04, so any distribution of that age or newer runs them, including current Arch / Omarchy and Fedora. Playback uses `pw-play` and transmit uses `pw-record`, which ship with PipeWire. `sidetone` also needs the usual desktop libraries (X11 and fontconfig), which any graphical install already has.
+Then run `./sidetone` or `./sidetone-cli` from that folder; **Add to app launcher** in Settings adds a launcher entry for it. The `desktop/` folder holds a launcher entry and icons for anyone packaging it.
 
 ## Codeplug
 

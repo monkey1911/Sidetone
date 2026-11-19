@@ -31,9 +31,11 @@ jobs:
           - arch: arm64
             runner: ubuntu-24.04-arm
             elf: aarch64
+            appimage: aarch64
           - arch: x64
             runner: ubuntu-24.04
             elf: x86-64
+            appimage: x86_64
 
     env:
       TAG: ${{ github.event.release.tag_name || github.ref_name }}
@@ -122,17 +124,35 @@ jobs:
           install -m 755 packaging/compat/dvmcli packaging/compat/dvmgui "out/sidetone-$RID/"
           test "$("out/sidetone-$RID/dvmcli" --version)" = "$("out/sidetone-$RID/sidetone-cli" --version)"
           test "$("out/sidetone-$RID/dvmgui" --version)" = "$("out/sidetone-$RID/sidetone" --version)"
+          # the launcher entry and icons, for packages (the Arch PKGBUILD installs them from here)
+          mkdir -p "out/sidetone-$RID/desktop"
+          cp packaging/sidetone.desktop packaging/icons/sidetone-256.png packaging/icons/sidetone.svg "out/sidetone-$RID/desktop/"
           name="sidetone-${TAG//\//-}-$RID"
           echo "PKG=$name" >> "$GITHUB_ENV"
           mv "out/sidetone-$RID" "out/$name"
           tar -C out -czf "out/$name.tar.gz" "$name"
           (cd out && sha256sum "$name.tar.gz" > "$name.tar.gz.sha256")
 
+      # The AppImage: the same files in one runnable file. Run without FUSE here, as the runner may lack it.
+      - name: AppImage
+        run: |
+          image="Sidetone-${TAG//\//-}-${{ matrix.appimage }}.AppImage"
+          echo "APPIMAGE_FILE=$image" >> "$GITHUB_ENV"
+          packaging/appimage/build-appimage.sh "out/$PKG" "out/$image" "$RUNNER_TEMP/appimage-tools"
+          file -b "out/$image"
+          export APPIMAGE_EXTRACT_AND_RUN=1
+          test "$("out/$image" --version)" = "$("out/$PKG/sidetone" --version)"
+          test "$("out/$image" cli --version)" = "$("out/$PKG/sidetone-cli" --version)"
+          "out/$image" --selfcheck | tail -1
+          (cd out && sha256sum "$image" > "$image.sha256")
+
       - name: Upload build
         uses: actions/upload-artifact@v4
         with:
           name: sidetone-linux-${{ matrix.arch }}
-          path: out/${{ env.PKG }}.tar.gz*
+          path: |
+            out/${{ env.PKG }}.tar.gz*
+            out/${{ env.APPIMAGE_FILE }}*
 
       - name: Attach to release
         if: github.event_name == 'release'
@@ -146,4 +166,71 @@ jobs:
               --notes "Linux builds for ARM64 and x86-64. See README for usage." \
               || gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null
           fi
-          gh release upload "$TAG" "out/$PKG.tar.gz" "out/$PKG.tar.gz.sha256" --repo "$GITHUB_REPOSITORY" --clobber
+          gh release upload "$TAG" "out/$PKG.tar.gz" "out/$PKG.tar.gz.sha256" "out/$APPIMAGE_FILE" "out/$APPIMAGE_FILE.sha256" \
+            --repo "$GITHUB_REPOSITORY" --clobber
+
+  # The Arch Linux package: a PKGBUILD made from this run's two tarballs, built, installed and run in an
+  # Arch container (x86-64; there is no official ARM64 Arch image). Releases get it attached.
+  arch-package:
+    name: arch package (x86_64)
+    needs: build
+    runs-on: ubuntu-24.04
+    env:
+      TAG: ${{ github.event.release.tag_name || github.ref_name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get the tarballs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: sidetone-linux-*
+          path: tarballs
+          merge-multiple: true
+
+      - name: Make the PKGBUILD
+        run: |
+          version="$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' src/Directory.Build.props)"
+          tag="${TAG//\//-}"
+          if [ "${{ github.event_name }}" = "release" ] && [ "$tag" != "v$version" ]; then
+            echo "::warning::release tag $tag doesn't match the version v$version"
+          fi
+          mkdir -p arch/sidetone-bin
+          packaging/arch/make-pkgbuild.sh "$version" "$tag" \
+            "tarballs/sidetone-$tag-linux-x64.tar.gz" "tarballs/sidetone-$tag-linux-arm64.tar.gz" > arch/sidetone-bin/PKGBUILD
+          cp packaging/arch/sidetone.install arch/sidetone-bin/
+          echo "TAG_FILE=$tag" >> "$GITHUB_ENV"
+          cat arch/sidetone-bin/PKGBUILD
+
+      - name: Build, install and run it on Arch
+        run: |
+          cp "tarballs/sidetone-$TAG_FILE-linux-x64.tar.gz" arch/sidetone-bin/     # makepkg uses it instead of downloading
+          docker run --rm -v "$PWD/arch/sidetone-bin:/build" archlinux:latest bash -euo pipefail -c '
+            pacman -Syu --noconfirm --needed base-devel >/dev/null
+            cd /build
+            source PKGBUILD
+            pacman -S --noconfirm --needed "${depends[@]}" >/dev/null
+            useradd -m builder
+            cp -r /build /home/builder/pkg && chown -R builder /home/builder/pkg
+            su builder -c "cd /home/builder/pkg && makepkg -f --noconfirm"
+            pacman -U --noconfirm /home/builder/pkg/sidetone-bin-*.pkg.tar.*
+            pacman -Ql sidetone-bin | grep -E "usr/bin|applications|icons"
+            sidetone --version
+            sidetone-cli --version
+            sidetone-cli selftest | tail -1
+          '
+
+      - name: Upload the PKGBUILD
+        uses: actions/upload-artifact@v4
+        with:
+          name: sidetone-bin-PKGBUILD
+          path: arch/sidetone-bin/PKGBUILD
+
+      - name: Attach to release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -f arch/sidetone-bin/*.tar.gz
+          tar -C arch -czf "sidetone-bin-$TAG_FILE.tar.gz" sidetone-bin
+          gh release upload "$TAG" "sidetone-bin-$TAG_FILE.tar.gz" --repo "$GITHUB_REPOSITORY" --clobber

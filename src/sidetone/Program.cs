@@ -202,7 +202,7 @@ namespace Sidetone.Gui
             {
                 if (install)
                 {
-                    string entry = AppLauncher.Install(AppLauncher.DataHome, Environment.ProcessPath);
+                    string entry = AppLauncher.Install(AppLauncher.DataHome, AppLauncher.ProgramPath);
                     Console.WriteLine($"sidetone: added to the app launcher ({entry})");
                 }
                 else
@@ -530,6 +530,27 @@ namespace Sidetone.Gui
                 File.WriteAllText(entry, "[Desktop Entry]\nName=Mine\n");
                 Check(!AppLauncher.Refresh(data, "/opt/elsewhere/sidetone"), "launcher: an entry someone else wrote is left alone");
                 Check(AppLauncher.Remove(data) && !AppLauncher.IsInstalled(data) && !AppLauncher.Remove(data), "launcher: removing takes the entry and icons away");
+
+                // an AppImage: the entry must start the .AppImage file, not the temporary mount it runs from
+                string fakeAppImage = Path.Combine(data, "Sidetone-x86_64.AppImage");
+                File.WriteAllText(fakeAppImage, "x");
+                string wasAppImage = Environment.GetEnvironmentVariable("APPIMAGE");
+                Environment.SetEnvironmentVariable("APPIMAGE", fakeAppImage);
+                string inAppImage = AppLauncher.ProgramPath;
+                Environment.SetEnvironmentVariable("APPIMAGE", Path.Combine(data, "gone.AppImage"));
+                string goneAppImage = AppLauncher.ProgramPath;
+                Environment.SetEnvironmentVariable("APPIMAGE", wasAppImage);
+                Check(inAppImage == fakeAppImage && goneAppImage == Environment.ProcessPath,
+                      "launcher: from an AppImage, the entry starts the AppImage file itself");
+
+                // a package's entry in a system data folder: found, so Settings doesn't add a second one
+                string sysShare = Path.Combine(data, "usr-share"), emptyShare = Path.Combine(data, "empty-share");
+                Directory.CreateDirectory(Path.Combine(sysShare, "applications"));
+                Directory.CreateDirectory(emptyShare);
+                File.WriteAllText(Path.Combine(sysShare, "applications", AppLauncher.DesktopFileName), "[Desktop Entry]");
+                Check(AppLauncher.SystemEntry($"{emptyShare}:{sysShare}") == Path.Combine(sysShare, "applications", AppLauncher.DesktopFileName) &&
+                      AppLauncher.SystemEntry(emptyShare) == null,
+                      "launcher: a launcher entry installed by a package is found in the system data folders");
                 Check(AppLauncher.QuoteExec("/a/50% \"x\" $y") == "\"/a/50%% \\\\\"x\\\\\" \\\\$y\"", "launcher: reserved characters in the path are escaped");
             }
             finally

@@ -1,0 +1,10 @@
+post_install() {
+    echo "Sidetone is installed: run 'sidetone' (graphical) or 'sidetone-cli tui' (terminal),"
+    echo "or start it from your app launcher."
+    echo "A PTT device (desk mic, footswitch) needs read access to its /dev/input/event* file:"
+    echo "see 'PTT devices' in /usr/share/doc/sidetone-bin/README.md (a udev rule, not the input group)."
+}
+
+post_upgrade() {
+    :
+}

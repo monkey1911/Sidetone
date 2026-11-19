@@ -11,7 +11,7 @@ Things we'd like to do, roughly in the order that makes sense to do them. Nothin
    - ~~The terminal console (`sidetone-cli`) doesn't read these saved choices yet; it still takes them as options.~~ Done in 0.25: options still win, otherwise the TUI uses what Settings saved.
 
 3. ~~**Start the GUI from the desktop's launcher.**~~ Done in 0.18: Settings can add Sidetone to the app launcher, with an icon (`sidetone --install-launcher` does the same from a terminal).
-   - Still to do: system-wide packaging (see the AUR item below).
+   - ~~System-wide packaging.~~ Done in 0.27: an AppImage and an Arch package (PKGBUILD) with each release, next to the tarballs.
 
 ## Console features
 
@@ -51,6 +51,8 @@ Things we'd like to do, roughly in the order that makes sense to do them. Nothin
 10. **An automated network test.** Run a real dvmfne in CI with two console instances and check login, voice in both directions and encryption. Today every on-air check is done by hand.
 
 11. **An AUR package,** once the name is settled.
+    - ~~A PKGBUILD (`sidetone-bin`).~~ Done in 0.27: in `packaging/arch`, attached to each release, and built, installed and run on Arch in CI.
+    - Still to do: publish it on the AUR, once AUR sign-ups open again (or someone with an account publishes it with us as co-maintainers).
 
 ## Other platforms
 

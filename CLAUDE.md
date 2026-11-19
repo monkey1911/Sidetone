@@ -8,9 +8,9 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
 
 ## State at hand-off (2026-11-16)
 
-- Version **0.26.0** on `main` (set once, in `src/Directory.Build.props`): Opus recordings and
-  deleting old ones. 0.25.0 was released; check `gh release list`.
-- 288 checks (234 in `sidetone-cli selftest`, 54 in the GUI's `--selfcheck`) plus screenshots.
+- Version **0.27.0** on `main` (set once, in `src/Directory.Build.props`): AppImage and Arch
+  package. 0.26.0 is released or about to be; check `gh release list`.
+- 290 checks (234 in `sidetone-cli selftest`, 56 in the GUI's `--selfcheck`) plus screenshots.
 - **Tested on the air by the owner:** RX/TX clear and AES, key delivery from the FNE, alias sync,
   alert tones, channel marker, QCII and digital pages, radio check (the radio answers; see the FNE
   limitation below), GUI on x86-64 under Hyprland, GUI on ARM64 (Surface Pro 11), display
@@ -46,7 +46,9 @@ src/sidetone-cli/           terminal front end (TUI; `Tui` is partial: Tui.Zones
 src/sidetone/               graphical front end (Avalonia 12.1.6), namespace Sidetone.Gui
 extern/dvmconsole           submodule: monkey1911/dvmconsole-ARM64, branch dev (the Windows console)
 extern/dvmvocoder           submodule: DVMProject/dvmvocoder v0.2, built by CMake into libvocoder.so
-packaging/                  icon (SVG + 256 px PNG), dvmcli/dvmgui wrapper scripts for the rename
+packaging/                  icons, sidetone.desktop (for packages), dvmcli/dvmgui wrappers (tarball only),
+                            appimage/ (AppRun, build-appimage.sh: pinned appimagetool 1.9.1 + runtime 20251108,
+                            SHA-256 checked), arch/ (PKGBUILD.in template + make-pkgbuild.sh, sidetone.install)
 tools/                      ci-status.sh, ci-screenshots.sh (see Testing)
 .github/workflows/build.yml the only CI workflow ("Build (Linux)")
 ```
@@ -151,9 +153,15 @@ What CI does on every push to `main` (both architectures):
 3. `sidetone --selfcheck`: drives the GUI headlessly (Avalonia.Headless), presses keys, opens boxes;
 4. renders screenshots (`--screenshot FILE --demo --theme dark|light --show page|radio|settings|keyfile|patch|recall|tabs`)
    and prints them base64 into the log between `-----BEGIN PNG name-----` / `-----END PNG name-----`;
-5. packages `sidetone-<tag>-linux-<arch>.tar.gz` (with the `dvmcli`/`dvmgui` wrappers), and on a
-   published **release** attaches it (there is deliberately no tag trigger: two runs raced and
-   clobbered uploads).
+5. packages `sidetone-<tag>-linux-<arch>.tar.gz` (with the `dvmcli`/`dvmgui` wrappers and a
+   `desktop/` folder) and `Sidetone-<tag>-<x86_64|aarch64>.AppImage` (tested with
+   `APPIMAGE_EXTRACT_AND_RUN=1`: versions and `--selfcheck`), and on a published **release**
+   attaches them (there is deliberately no tag trigger: two runs raced and clobbered uploads);
+6. job `arch-package` (after both): makes the PKGBUILD from the two tarballs, builds it with
+   makepkg in an `archlinux:latest` container, installs it with pacman and runs `sidetone-cli
+   selftest` from `/usr/bin` (x86-64 only; tested on ARM64 Omarchy by hand), and on a release
+   attaches `sidetone-bin-<tag>.tar.gz` (PKGBUILD + sidetone.install). The owner can't publish to
+   the AUR yet (sign-ups closed). Inside an AppImage, `AppLauncher.ProgramPath` is `$APPIMAGE`.
 
 The loop now: build and test locally, commit, push, then `tools/ci-status.sh` (waits, prints
 errors and failed tests, saves the x64 log) to confirm the other architecture. `tools/ci-screenshots.sh`

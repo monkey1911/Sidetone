@@ -30,6 +30,38 @@ namespace Sidetone.Gui
         }
 
         public static string DesktopPath(string dataHome) => Path.Combine(dataHome, "applications", DesktopFileName);
+
+        /// <summary>
+        /// This program, as a launcher entry should start it: the AppImage file when running from one
+        /// (the program itself then runs from a temporary mount that changes every start), otherwise
+        /// this executable.
+        /// </summary>
+        public static string ProgramPath
+        {
+            get
+            {
+                string appImage = Environment.GetEnvironmentVariable("APPIMAGE");
+                return !string.IsNullOrWhiteSpace(appImage) && File.Exists(appImage) ? appImage : Environment.ProcessPath;
+            }
+        }
+
+        /// <summary>
+        /// A launcher entry installed system-wide by a package (in $XDG_DATA_DIRS, or /usr/local/share
+        /// and /usr/share), or null when there is none.
+        /// </summary>
+        public static string SystemEntry(string dataDirs = null)
+        {
+            dataDirs ??= Environment.GetEnvironmentVariable("XDG_DATA_DIRS");
+            if (string.IsNullOrWhiteSpace(dataDirs))
+                dataDirs = "/usr/local/share:/usr/share";
+            foreach (string dir in dataDirs.Split(':', StringSplitOptions.RemoveEmptyEntries))
+            {
+                string path = Path.Combine(dir, "applications", DesktopFileName);
+                if (File.Exists(path))
+                    return path;
+            }
+            return null;
+        }
         private static string SvgPath(string dataHome) => Path.Combine(dataHome, "icons", "hicolor", "scalable", "apps", IconName + ".svg");
         private static string PngPath(string dataHome) => Path.Combine(dataHome, "icons", "hicolor", "256x256", "apps", IconName + ".png");
 
