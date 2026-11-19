@@ -290,7 +290,8 @@ namespace Sidetone.Cli
                 ControlSocketPath = socket,
                 PttDevice = ptt,
                 KeyFilePath = StartupChoices.KeyFile(cp, opt.KeyFile, saved),
-                LogFolder = opt.NoLog || logFile != null ? null : LogFiles.DefaultFolder
+                LogFolder = opt.NoLog || logFile != null ? null : LogFiles.DefaultFolder,
+                HistoryFolder = settingsPath == null ? null : DispatchConsole.DefaultHistoryFolder
             };
             if (opt.RecordDir != null)
                 tui.RecordingsFolder = Path.GetFullPath(opt.RecordDir);

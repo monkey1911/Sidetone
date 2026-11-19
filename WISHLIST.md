@@ -23,7 +23,7 @@ Things we'd like to do, roughly in the order that makes sense to do them. Nothin
    - ~~The terminal console can only unlock a key file before it starts.~~ Done in 0.25: `K` opens its key file box at any time.
 
 6. ~~**Patching.**~~ Done in 0.20, passing voice frames between talkgroups without decoding and re-encoding them.
-   - Still to do: one-way patches (the Windows console has them).
+   - ~~One-way patches (the Windows console has them).~~ Done in 0.28: each patched channel goes both ways, source only or target only.
    - Still to do: remembering patches between runs, if that turns out to be wanted.
    - Still to do: patching across modes, once there are other modes.
    - ~~Patched calls come out choppy on a radio site.~~ Fixed in 0.24.1: patched voice is buffered and sent at a steady pace.
@@ -36,10 +36,10 @@ Things we'd like to do, roughly in the order that makes sense to do them. Nothin
    - ~~A compressed format (Opus).~~ Done in 0.26: recordings are Opus by default, about an eighth of the size of WAV; WAV can still be chosen.
 
 9. ~~**Desktop notifications.**~~ Done in 0.21, for pages (call alerts) to the console.
-   - Still to do: emergency alarms, once the console decodes them.
+   - Tabled: emergency alarms. Upstream added emergency support in late 2024 and removed it on purpose in March 2025 ("what do you think we are mission critical?"); to be decided later whether Sidetone shows the emergency bit at all.
 
 - ~~**Tabs (zones).**~~ Done in 0.24: each codeplug zone is a tab in both consoles, in the codeplug's colours, and a zone can be hidden (its channels switched off) as with the Windows console's Tab Manager.
-   - Still to do: sending each zone to its own audio output (the Windows console has this; see "sending different channels to different audio outputs" below).
+   - ~~Sending each zone to its own audio output.~~ Done in 0.28: an output per tab, and per channel.
 
 ## Audio
 
@@ -69,10 +69,10 @@ Things we'd like to do, roughly in the order that makes sense to do them. Nothin
 From the feature comparison, not yet placed in the order above:
 
 - more than one FNE system at a time
-- sending different channels to different audio outputs
+- ~~sending different channels to different audio outputs~~ (done in 0.28, per tab and per channel)
 - playing a WAV file onto a talkgroup
 - web streams
-- a call history that survives closing the console (instant recall keeps the last ten calls per channel, in memory only)
+- ~~a call history that survives closing the console~~ (done in 0.28: Recent calls and instant recall are kept between runs; the Windows console keeps its history in memory only)
 - ~~microphone processing~~ (done in 0.22)
 - ~~talkgroup recording in both consoles~~ (done in 0.21)
 - ~~tabs for the codeplug's zones, and hiding zones~~ (done in 0.24)

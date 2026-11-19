@@ -967,9 +967,7 @@ namespace Sidetone.Cli
             screen.Box(r, Style.Of(Ansi.Grey));
             screen.Text(r.X + 2, r.Y, " Recent calls ", Style.Of(Ansi.White, bold: true));
 
-            List<(string Time, string Chan, string Who, string Detail, bool Tx)> rows;
-            lock (uiLock)
-                rows = recent.Take(r.H - 2).ToList();    // newest first
+            List<(string Time, string Chan, string Who, string Detail, bool Tx)> rows = SnapshotRecent(r.H - 2);    // newest first
             if (rows.Count == 0)
                 screen.Text(r.X + 2, r.Y + 1, "none yet", Style.Of(Ansi.Grey), r.W - 4);
 

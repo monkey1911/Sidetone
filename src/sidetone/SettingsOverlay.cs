@@ -32,6 +32,8 @@ namespace Sidetone.Gui
             /// <summary>Recording format ("opus" or "wav"), and the days after which recordings are deleted (null: kept).</summary>
             public string RecordingFormat = DispatchConsole.FormatOpus;
             public int? KeepDays;
+            /// <summary>Keep the call history between runs, and secure calls' audio in it.</summary>
+            public bool KeepHistory = true, HistorySecure;
         }
 
         /// <summary>One line in a drop-down list.</summary>
@@ -50,7 +52,18 @@ namespace Sidetone.Gui
         public readonly ComboBox Output = Combo(), Input = Combo(), PttDevice = Combo(), PttButton = Combo(), MuteButton = Combo();
         public readonly ComboBox Scale = new ComboBox { Width = 150, FontSize = 13, HorizontalAlignment = HorizontalAlignment.Left };
         public readonly ComboBox KeepDays = new ComboBox { Width = 150, FontSize = 13, HorizontalAlignment = HorizontalAlignment.Left };
-        private Tap formatOpus, formatWav;
+        private Tap formatOpus, formatWav, historyOn, historyOff, secureOut, secureIn;
+        private readonly TextBlock historyText = new TextBlock { FontSize = 12, TextWrapping = TextWrapping.Wrap };
+        /// <summary>The call history choices as they are in the box.</summary>
+        public bool KeepHistory { get; private set; } = true;
+        public bool HistorySecure { get; private set; }
+        /// <summary>Changes the call history choices (self-check hook).</summary>
+        public void SetHistory(bool keep, bool secure)
+        {
+            KeepHistory = keep;
+            HistorySecure = secure;
+            message.Text = string.Empty;
+        }
         /// <summary>The recording format as chosen in the box.</summary>
         public string RecordingFormat { get; private set; } = DispatchConsole.FormatOpus;
         /// <summary>Picks a recording format (self-check hook).</summary>
@@ -185,6 +198,19 @@ namespace Sidetone.Gui
             StackPanel formatRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
             formatRow.Children.Add(formatOpus.Root);
             formatRow.Children.Add(formatWav.Root);
+            historyOn = new Tap("Keep", () => SetHistory(true, HistorySecure), fontSize: 12, padX: 12, padY: 5);
+            historyOff = new Tap("Don't keep", () => SetHistory(false, HistorySecure), fontSize: 12, padX: 12, padY: 5);
+            secureOut = new Tap("Leave their audio out", () => SetHistory(KeepHistory, false), fontSize: 12, padX: 10, padY: 5);
+            secureIn = new Tap("Keep their audio too", () => SetHistory(KeepHistory, true), fontSize: 12, padX: 10, padY: 5);
+            StackPanel historyRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
+            historyRow.Children.Add(historyOn.Root);
+            historyRow.Children.Add(historyOff.Root);
+            StackPanel secureRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
+            secureRow.Children.Add(secureOut.Root);
+            secureRow.Children.Add(secureIn.Root);
+            historyText.Text = "Recent calls and instant recall's last ten calls per channel are kept when Sidetone closes, so they can be replayed after a restart. " +
+                               "A secure call's audio is kept decrypted, so it's left out unless you choose otherwise; its Recent calls entry is always kept. " +
+                               "Don't keep deletes the saved history.";
             StackPanel notifyRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
             notifyRow.Children.Add(notifyOn.Root);
             notifyRow.Children.Add(notifyOff.Root);
@@ -282,6 +308,10 @@ namespace Sidetone.Gui
             stack.Children.Add(Field("Format", formatRow));
             stack.Children.Add(Field("Delete after", KeepDays));
             stack.Children.Add(Field("When paged", notifyRow));
+            stack.Children.Add(Heading("Call history"));
+            stack.Children.Add(historyText);
+            stack.Children.Add(Field("Between runs", historyRow));
+            stack.Children.Add(Field("Secure calls", secureRow));
             stack.Children.Add(Heading("Log"));
             stack.Children.Add(logText);
             stack.Children.Add(logRow);
@@ -351,6 +381,8 @@ namespace Sidetone.Gui
         {
             recordingsText.Text = $"Recordings go to {recordings}";
             RecordingFormat = current.RecordingFormat == DispatchConsole.FormatWav ? DispatchConsole.FormatWav : DispatchConsole.FormatOpus;
+            KeepHistory = current.KeepHistory;
+            HistorySecure = current.HistorySecure;
             filling = true;
             Fill(KeepDays, current.KeepDays?.ToString(System.Globalization.CultureInfo.InvariantCulture), "Keep them",
                  DispatchConsole.KeepDayChoices.Select(d => new Choice(d.ToString(System.Globalization.CultureInfo.InvariantCulture), $"{d} days")), "days");
@@ -511,6 +543,8 @@ namespace Sidetone.Gui
                 Limiter = limiter,
                 RxLevel = rxLevel,
                 RecordingFormat = RecordingFormat,
+                KeepHistory = KeepHistory,
+                HistorySecure = HistorySecure,
                 KeepDays = int.TryParse(Selected(KeepDays), out int days) && days > 0 ? days : null
             };
             string error = save(v);
@@ -562,6 +596,11 @@ namespace Sidetone.Gui
                 formatWav.Paint(Brushes.Transparent, p.Text, p.Edge);
             }
             logText.Foreground = p.Dim;
+            historyText.Foreground = p.Dim;
+            (KeepHistory ? historyOn : historyOff).Paint(p.Accent, p.OnStrong);
+            (KeepHistory ? historyOff : historyOn).Paint(Brushes.Transparent, p.Text, p.Edge);
+            (HistorySecure ? secureIn : secureOut).Paint(HistorySecure ? p.Warn : p.Accent, p.OnStrong);
+            (HistorySecure ? secureOut : secureIn).Paint(Brushes.Transparent, p.Text, p.Edge);
             logResult.Foreground = p.Dim;
             logCopy.Paint(Brushes.Transparent, p.Text, p.Edge);
             foreach (Tap t in routingTaps)

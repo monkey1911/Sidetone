@@ -189,6 +189,7 @@ namespace Sidetone.Core
             while (list.Count > RecallPerChannel)
                 list.RemoveLast();
             recallVersion++;
+            HistoryChanged();
 
             if (c.Record)
                 SaveRecording(call);

@@ -485,6 +485,7 @@ namespace Sidetone.Gui
             Check(!set.PttButton.IsEnabled && set.PttButton.ItemCount == 1, "with no PTT device chosen, there are no buttons to choose");
             Check(set.RecordingFormat == DispatchConsole.FormatOpus && set.KeepDays.ItemCount == DispatchConsole.KeepDayChoices.Length + 1 && set.KeepDays.SelectedIndex == 0,
                   $"Settings: recordings are Opus by default, kept until a 'delete after' is chosen ({set.KeepDays.ItemCount} choices)");
+            Check(set.KeepHistory && !set.HistorySecure, "Settings: the call history is kept between runs, without secure calls' audio, unless chosen");
             set.PressCopyLog();
             Check(set.LogResult.StartsWith("Copied ") && (w.LastCopiedLog ?? string.Empty).Contains("demo: a made-up system"),
                   $"Settings: Copy log puts the console's log on the clipboard ('{set.LogResult}')");

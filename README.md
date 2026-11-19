@@ -9,7 +9,7 @@ There are two front ends over the same console:
 - **`sidetone-cli`**: a terminal console (TUI) that works anywhere, including over SSH, plus the `listen`, `ptt` and `devices` commands.
 - **`sidetone`**: a graphical console (Avalonia), with light and dark themes. See [Graphical console (sidetone)](#graphical-console-sidetone).
 
-**What works:** FNE login, P25 receive and transmit (clear, AES-256, DES, ADP/ARC4 with keys from the FNE or a KFDtool key file), PipeWire audio, channel cards in tabs for the codeplug's zones, push-to-talk from the keyboard, a hotkey or a PTT device, alert tones, pages, radio commands, the channel marker, radio aliases, patching, instant recall, recording to Opus or WAV, and log files.
+**What works:** FNE login, P25 receive and transmit (clear, AES-256, DES, ADP/ARC4 with keys from the FNE or a KFDtool key file), PipeWire audio, channel cards in tabs for the codeplug's zones, push-to-talk from the keyboard, a hotkey or a PTT device, alert tones, pages, radio commands, the channel marker, radio aliases, patching (two-way and one-way), instant recall with a call history kept between runs, audio outputs per tab and channel, recording to Opus or WAV, and log files.
 
 **Not yet:** DMR/NXDN/analog. What we'd like to add next is in [WISHLIST.md](WISHLIST.md).
 
@@ -27,11 +27,13 @@ There are two front ends over the same console:
   - [App launcher](#app-launcher)
   - [Command-line options](#command-line-options)
 - [Audio devices](#audio-devices)
+  - [Outputs per tab and channel](#outputs-per-tab-and-channel)
   - [Microphone mute and the no-audio warning](#microphone-mute-and-the-no-audio-warning)
 - [PTT from hotkeys and scripts](#ptt-from-hotkeys-and-scripts)
 - [PTT devices (desk mics, footswitches, PTT buttons)](#ptt-devices-desk-mics-footswitches-ptt-buttons)
 - [Audio processing](#audio-processing)
 - [Instant recall and recording](#instant-recall-and-recording)
+  - [Call history](#call-history)
 - [Desktop notifications](#desktop-notifications)
 - [Tabs (zones)](#tabs-zones)
 - [Log files](#log-files)
@@ -184,6 +186,7 @@ Channels are shown as cards, up to four across. The mouse works in any terminal 
 | Arrows, Tab, PgUp / PgDn, Home / End | Move between the cards on the tab on show |
 | [ / ] | Previous / next tab |
 | z | Zones box: ↑/↓ pick a zone, Space or Enter hides or shows it, Esc closes |
+| o | Outputs box: ↑/↓ pick a tab or channel, ←/→ choose its audio output, Esc closes |
 | Enter | Start or stop listening on the focused card |
 | Space | Toggle transmit on the focused card (press again to stop) |
 | Esc | Stop transmitting or stop a tone |
@@ -201,6 +204,7 @@ Channels are shown as cards, up to four across. The mouse works in any terminal 
 | K | Key file box: type the key file's password (Tab: remember it in the keyring, Enter: unlock, Esc: not now) |
 | e | Switch the focused card's transmit between secure and clear, where the codeplug allows it |
 | x | Move the focused card to the next patch (none, then each patch in turn) |
+| X | Switch the focused card's patch direction: both ways, source only, target only |
 | l | Replay the focused card's last call (again to stop) |
 | L | Replay the call before the one playing, stepping back through the last ten |
 | w | Turn recording on the focused card on or off |
@@ -255,6 +259,7 @@ What it has so far:
 |---|---|
 | Scale | The size of everything in the window, for high-DPI screens. Automatic, or 100% to 300%. Takes effect the next time Sidetone starts. |
 | Output, Microphone | The audio devices to use, or the system default |
+| Other outputs | **Per tab and channel…** opens Audio outputs (see [Outputs per tab and channel](#outputs-per-tab-and-channel)) |
 | Mic processing | Low cut, Auto level, Noise gate and Limiter on your transmit audio (see [Audio processing](#audio-processing)) |
 | Receive | Even out the level of received audio between talkers |
 | PTT device | A desk microphone, footswitch or PTT button that keys the console (see [PTT devices](#ptt-devices)) |
@@ -310,6 +315,7 @@ Keyboard shortcuts (the same keys as the TUI where both have the feature):
 | [ / ] | Previous / next tab (also Ctrl+PgUp / Ctrl+PgDn, and Ctrl+Shift+Tab / Ctrl+Tab) |
 | Ctrl+1 to Ctrl+9 | Go to tab 1 to 9 |
 | Z | Open the Tabs box (hide or show zones) |
+| O | Open Audio outputs (an output per tab or channel) |
 | Enter | Start or stop listening on the focused card |
 | M / Shift+M | Mute the focused channel / mute all receive audio |
 | + / - | Volume of the focused channel |
@@ -318,6 +324,7 @@ Keyboard shortcuts (the same keys as the TUI where both have the feature):
 | K | Request the focused channel's key from the FNE |
 | E | Switch the focused channel's transmit between secure and clear, where the codeplug allows it |
 | X | Move the focused channel to the next patch (none, then each patch in turn) |
+| Shift+X | Switch the focused channel's patch direction: both ways, source only, target only |
 | L | Replay the focused channel's last call (again to stop) |
 | Shift+L | Open Instant recall for the focused channel |
 | W | Turn recording on the focused channel on or off |
@@ -370,6 +377,14 @@ To use a different device, give `--output` (playback) or `--input` (microphone, 
 ```
 
 The ID from `sidetone-cli devices` or `wpctl status` works too, but IDs can change after a reboot or replug, so names are more reliable. If a name matches nothing or more than one device, Sidetone stops and lists the choices. If the chosen device disappears while Sidetone is running, PipeWire moves the audio to the default device.
+
+### Outputs per tab and channel
+
+Each tab (zone) and each channel can have its own audio output, for example one tab on a headset and another on the desk speakers. A channel plays to its own output if it has one, otherwise to its tab's, otherwise to the main output above. Replays play where the channel does.
+
+- Graphical console: **Audio outputs** (O, or **Per tab and channel…** in Settings) lists each tab with its channels; pick an output from each list.
+- TUI: `o` opens the same list; ↑/↓ pick a row and ←/→ go through the outputs.
+- A change takes effect at once, even on channels that are listening, and is remembered for the system. An output that isn't connected when Sidetone starts is skipped with a warning in the log (the main output plays instead) and used again once it's back.
 
 ### Microphone mute and the no-audio warning
 
@@ -483,7 +498,16 @@ All of this is plain C# inside Sidetone, independent of PipeWire, so it will beh
 - **Recall…** in the tool bar (or `Shift+L`) lists a channel's last ten calls with a **Play** button each, and buttons across the top to switch channels.
 - `L` replays the focused channel's last call in the graphical console. In the TUI, `l` does the same and `L` steps back to older calls.
 
-Replays play at the channel's volume, even when the channel or the console is muted, alongside any live audio. Only calls on listening channels are kept, because only those are received; a secure call is kept only if its key was loaded. Calls are kept in memory and are gone when Sidetone closes.
+Replays play at the channel's volume, even when the channel or the console is muted, alongside any live audio. Only calls on listening channels are kept, because only those are received; a secure call is kept only if its key was loaded. Calls are kept when Sidetone closes (see [Call history](#call-history)).
+
+### Call history
+
+The Recent calls list and each channel's last ten calls (with their audio) are saved when Sidetone closes, and a minute after calls come in, and come back when it starts, so Replay and Recall work on calls from before a restart. Entries from an earlier day show their date.
+
+- One file per system, `~/.local/state/sidetone/history/SYSTEM.json`, readable only by you. It holds the calls' voice frames (about 0.5 kB a second), up to 20 MB; past that the oldest calls are left out.
+- **Secure calls' audio is left out** unless **Call history → Secure calls → Keep their audio too** is chosen in Settings, because it is kept decrypted. Their Recent calls entries are always kept.
+- **Call history → Between runs → Don't keep** stops saving it and deletes the saved file.
+- The terminal console uses the same file and choices. The demo, `--no-settings` and the self-tests keep no history.
 
 **Recording.** A channel set to record also saves every call to a file when it ends:
 
@@ -535,6 +559,7 @@ Channels in the same patch hear each other. When a call comes in on one member, 
 
 How it behaves:
 
+- **One-way patches.** Each patched channel goes **both ways** (the default), **source only** (its calls go to the rest of the patch, and nothing is sent on it) or **target only** (it gets the patch's calls; its own aren't passed on, and neither is your transmission on it). A one-way patch from A to B is A as source only. Set it with the direction button in the Patches box, Shift+X (graphical console) or `X` (TUI). Cards show `⇄`, `→` or `←` before the patch name, and the log describes the patch, for example `Patch 1: one-way, CT HELP → DVM Calling`. Leaving a patch resets the direction.
 - **One talker at a time.** While one member's call is being passed on, calls on the other members are not; the next call starts fresh.
 - **A patched channel is always listening.** Joining a patch starts listening, and a channel that stops listening leaves its patch.
 - **Receive-only channels** can be heard into a patch but are never sent to.

@@ -74,6 +74,10 @@ namespace Sidetone.Core
         public bool RxAutoLevel { get; set; }
         /// <summary>Folder for talkgroup recordings, or null for the default (~/.local/share/sidetone/recordings).</summary>
         public string RecordingsFolder { get; set; }
+        /// <summary>Keep the call history (Recent calls and instant recall) between runs; null means yes.</summary>
+        public bool? KeepHistory { get; set; }
+        /// <summary>Keep secure calls' (decrypted) voice in that history too.</summary>
+        public bool HistoryKeepSecure { get; set; }
         /// <summary>Recording file format: "wav", or null for Opus (.opus).</summary>
         public string RecordingFormat { get; set; }
         /// <summary>Recordings older than this many days are deleted; null keeps them.</summary>

@@ -512,7 +512,8 @@ namespace Sidetone.Gui
                     ProcessingOff = opt.NoProcessing,
                     ControlSocketPath = offline || opt.NoSocket ? null : opt.Socket != null ? Path.GetFullPath(opt.Socket) : ControlServer.DefaultPath,
                     PttDevice = !offline && pttDevice != null ? (pttDevice.Value.Device, pttDevice.Value.Button, pttDevice.Value.Mute) : null,
-                    LogFolder = offline || opt.NoLog || !string.IsNullOrWhiteSpace(opt.LogFile) ? null : LogFiles.DefaultFolder
+                    LogFolder = offline || opt.NoLog || !string.IsNullOrWhiteSpace(opt.LogFile) ? null : LogFiles.DefaultFolder,
+                    HistoryFolder = offline || settingsPath == null ? null : DispatchConsole.DefaultHistoryFolder
                 };
 
                 // a local key file: the command line's, the one chosen in Settings, or the codeplug's
@@ -787,7 +788,9 @@ namespace Sidetone.Gui
                 Limiter = appSettings.MicLimiter ?? VoiceProcessing.MicDefault.Limiter,
                 RxLevel = appSettings.RxAutoLevel,
                 RecordingFormat = appSettings.RecordingFormat == DispatchConsole.FormatWav ? DispatchConsole.FormatWav : DispatchConsole.FormatOpus,
-                KeepDays = appSettings.RecordingKeepDays
+                KeepDays = appSettings.RecordingKeepDays,
+                KeepHistory = appSettings.KeepHistory != false,
+                HistorySecure = appSettings.HistoryKeepSecure
             }, audio, inputs, opt.Demo ? "The demo system (no codeplug file)." : currentPath, CommandLineOverrides(),
                !offline && AppLauncher.IsInstalled(AppLauncher.DataHome), KeyFileSummary(out bool locked), locked,
                appSettings.KeyFile != null && opt.KeyFile == null,
@@ -817,6 +820,7 @@ namespace Sidetone.Gui
 
             bool rescaled = appSettings.UiScale != v.Scale;
             bool pruneNow = appSettings.RecordingKeepDays != v.KeepDays;
+            bool historyChanged = (appSettings.KeepHistory != false) != v.KeepHistory || appSettings.HistoryKeepSecure != v.HistorySecure;
             ChangeSettings(s =>
             {
                 s.UiScale = v.Scale;
@@ -836,7 +840,11 @@ namespace Sidetone.Gui
                 s.RxAutoLevel = v.RxLevel;
                 s.RecordingFormat = v.RecordingFormat == DispatchConsole.FormatWav ? DispatchConsole.FormatWav : null;
                 s.RecordingKeepDays = v.KeepDays;
+                s.KeepHistory = v.KeepHistory ? null : false;
+                s.HistoryKeepSecure = v.HistorySecure;
             });
+            if (historyChanged && !offline)
+                console?.HistorySettingsChanged();
             if (pruneNow && !offline)
                 console?.PruneRecordingsSoon();
             UpdateKeyHints();

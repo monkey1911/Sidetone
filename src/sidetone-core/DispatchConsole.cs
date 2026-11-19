@@ -98,7 +98,7 @@ namespace Sidetone.Core
         internal readonly List<Chan> chans = new List<Chan>();
         internal readonly object uiLock = new object();
         internal readonly LinkedList<string> log = new LinkedList<string>();
-        internal readonly LinkedList<(string Time, string Chan, string Who, string Detail, bool Tx)> recent = new();
+        internal readonly LinkedList<(DateTime When, string Chan, string Who, string Detail, bool Tx)> recent = new();
 
         internal CliPeer peer;
         internal int cursor;
@@ -235,6 +235,7 @@ namespace Sidetone.Core
                 AddLog(settingsError);
             aliases.Load();
             RestoreSettings();
+            LoadHistory();
             PruneRecordingsSoon();
             StartControl();
             StartPttDevice();
@@ -262,6 +263,7 @@ namespace Sidetone.Core
             RunControlCalls();  // answer anything still queued
             CancelTones(wait: true);
             SaveSettings();     // before the channels are closed below
+            SaveHistory();
             StopTx("console closed");
             StopReplay();
             ClearPatches(quiet: true);
@@ -377,8 +379,9 @@ namespace Sidetone.Core
         /// <summary>The newest <paramref name="max"/> recent calls, newest first.</summary>
         public List<(string Time, string Chan, string Who, string Detail, bool Tx)> SnapshotRecent(int max)
         {
+            DateTime today = DateTime.Today;
             lock (uiLock)
-                return recent.Take(max).ToList();
+                return recent.Take(max).Select(r => (r.When.Date == today ? r.When.ToString("HH:mm") : r.When.ToString("MM-dd HH:mm"), r.Chan, r.Who, r.Detail, r.Tx)).ToList();
         }
 
         /// <summary>What a channel is doing right now, for its card.</summary>
@@ -1157,6 +1160,7 @@ namespace Sidetone.Core
             PatchHousekeeping();
             RecallHousekeeping();
             RecordingHousekeeping();
+            HistoryHousekeeping();
             string micFail = pendingMicFail;
             if (micFail != null)
             {
@@ -1556,11 +1560,12 @@ namespace Sidetone.Core
         {
             lock (uiLock)
             {
-                recent.AddFirst(($"{DateTime.Now:HH:mm}", chan ?? "?", who, detail, tx));
+                recent.AddFirst((DateTime.Now, chan ?? "?", who, detail, tx));
                 while (recent.Count > MaxRecentCalls)
                     recent.RemoveLast();
                 recentVersion++;
             }
+            HistoryChanged();
         }
 
         /*

@@ -217,6 +217,9 @@ namespace Sidetone.Cli
                 // 19. audio outputs per tab and per channel
                 OutputTests(tmp);
 
+                // 20. call history kept between runs
+                HistoryTests(tmp, cp, sys);
+
                 // 8. WAV writer
                 string wavPath = Path.Combine(tmp, "test.wav");
                 using (WavSink wav = new WavSink(wavPath))
@@ -1869,6 +1872,82 @@ zones:
                   "zones: if every zone was hidden, the first one is shown (names match whatever the case)");
             zthird.Shutdown();
             zt.Shutdown();
+        }
+
+        private static void HistoryTests(string tmp, Codeplug cp, Codeplug.System sys)
+        {
+            string histDir = Path.Combine(tmp, "history"), histSettings = Path.Combine(tmp, "history-settings.json");
+            Tui NewConsole()
+            {
+                Tui t = new Tui(cp, sys, TimeSpan.FromSeconds(120), null, settingsPath: histSettings) { NoAudio = true, HistoryFolder = histDir };
+                t.Keys.Store(P25Defines.P25_ALGO_AES, TestKeyId, TestKey);
+                return t;
+            }
+            void CallOn(Tui t, ConsoleChannel ch, int frames)
+            {
+                KeyStore talkerKeys = new KeyStore();
+                talkerKeys.Store(P25Defines.P25_ALGO_AES, TestKeyId, TestKey);
+                CaptureSink air = new CaptureSink(new CliPeer(sys, new KeyStore(), verbose: false));
+                P25Transmitter talker = new P25Transmitter(air, talkerKeys, 4321, ch.Tg, ch.Encrypted ? P25Defines.P25_ALGO_AES : P25Defines.P25_ALGO_UNENCRYPT, ch.Encrypted ? TestKeyId : (ushort)0);
+                talker.Start(out _);
+                for (int i = 0; i < frames; i++) talker.PushAudio(VoicedFrame(i));
+                uint stream = talker.StreamId;
+                talker.Stop();
+                foreach (var v in air.Voice)
+                    ch.Rx.Handle(ch.Tg, 4321, (P25DUID)v.Frame[22], stream, v.Frame);
+                ch.Rx.Handle(ch.Tg, 4321, P25DUID.TDU, stream, new byte[24]);
+            }
+
+            Tui h1 = NewConsole();
+            ConsoleChannel hClear = h1.Channels.First(ch => ch.IsP25 && !ch.Encrypted), hSecure = h1.Channels.First(ch => ch.Encrypted);
+            h1.Select(hClear);
+            h1.Select(hSecure);
+            CallOn(h1, hClear, 27);
+            CallOn(h1, hSecure, 18);
+            bool heard = h1.RecalledCalls(hClear).Count == 1 && h1.RecalledCalls(hSecure).Count == 1 && h1.SnapshotRecent(10).Count == 2;
+            h1.SaveHistory();
+            string histFile = h1.HistoryPath;
+            string histJson = File.Exists(histFile) ? File.ReadAllText(histFile) : string.Empty;
+            UnixFileMode histMode = File.Exists(histFile) ? File.GetUnixFileMode(histFile) : 0;
+            Check(heard && histFile == Path.Combine(histDir, "Test_FNE.json") && histJson.Length > 0 &&
+                  (histMode & (UnixFileMode.GroupRead | UnixFileMode.OtherRead)) == 0 && !Directory.GetFiles(histDir, "*.part").Any(),
+                  "history: saved to one file per system, readable only by the user");
+
+            Tui h2 = NewConsole();
+            h2.LoadHistory();
+            ConsoleChannel h2Clear = h2.Channels.First(ch => ch.IsP25 && !ch.Encrypted), h2Secure = h2.Channels.First(ch => ch.Encrypted);
+            List<RecalledCall> back = h2.RecalledCalls(h2Clear);
+            List<short[]> replayed = new List<short[]>();
+            h2.replaySinkForTest = () => new ListSink(replayed);
+            h2.Select(h2Clear);
+            h2.ReplayLast(h2Clear);
+            Check(back.Count == 1 && back[0].Length == h1.RecalledCalls(hClear)[0].Length && back[0].Who == h1.RecalledCalls(hClear)[0].Who &&
+                  replayed.Count == 27 && h2.SnapshotRecent(10).Count == 2 && h2.SnapshotLog(10).Any(l => l.Contains("history: 2 recent calls and 1 calls")),
+                  "history: after a restart, Recent calls and the kept calls come back, and a call from before replays in full");
+            Check(h2.RecalledCalls(h2Secure).Count == 0 && h2.SnapshotRecent(10).Any(r => r.Chan == hSecure.Cfg.Name),
+                  "history: a secure call's audio isn't saved unless chosen, but its Recent calls entry is");
+
+            h1.Settings.HistoryKeepSecure = true;
+            h1.SaveHistory();
+            Tui h3 = NewConsole();
+            h3.LoadHistory();
+            Check(h3.RecalledCalls(h3.Channels.First(ch => ch.Encrypted)).Count == 1, "history: with secure calls kept, their audio comes back too");
+
+            // older entries show their date
+            string dated = System.Text.RegularExpressions.Regex.Replace(File.ReadAllText(histFile), "\"When\":\"\\d{4}-\\d{2}-\\d{2}", "\"When\":\"2026-01-02");
+            File.WriteAllText(histFile, dated);
+            Tui h4 = NewConsole();
+            h4.LoadHistory();
+            Check(h4.SnapshotRecent(10).All(r => r.Time.StartsWith("01-02 ")), "history: Recent calls from an earlier day show the date");
+
+            h1.Settings.KeepHistory = false;
+            h1.HistorySettingsChanged();
+            bool deleted = !File.Exists(histFile);
+            Tui h5 = NewConsole();
+            h5.Settings.KeepHistory = false;
+            h5.LoadHistory();
+            Check(deleted && h5.SnapshotRecent(10).Count == 0 && new Tui(cp, sys, TimeSpan.FromSeconds(120), null).HistoryPath == null,
+                  "history: turning it off deletes the saved history; without a history folder nothing is kept");
         }
 
         private static void OutputTests(string tmp)

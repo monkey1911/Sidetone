@@ -8,9 +8,9 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
 
 ## State at hand-off (2026-11-16)
 
-- Version **0.27.0** on `main` (set once, in `src/Directory.Build.props`): AppImage and Arch
-  package. 0.26.0 is released or about to be; check `gh release list`.
-- 290 checks (234 in `sidetone-cli selftest`, 56 in the GUI's `--selfcheck`) plus screenshots.
+- Version **0.28.0** on `main` (set once, in `src/Directory.Build.props`): one-way patches, audio
+  outputs per tab and channel, call history kept between runs. 0.27.0 was released; check `gh release list`.
+- 308 checks (249 in `sidetone-cli selftest`, 59 in the GUI's `--selfcheck`) plus screenshots.
 - **Tested on the air by the owner:** RX/TX clear and AES, key delivery from the FNE, alias sync,
   alert tones, channel marker, QCII and digital pages, radio check (the radio answers; see the FNE
   limitation below), GUI on x86-64 under Hyprland, GUI on ARM64 (Surface Pro 11), display
@@ -33,7 +33,8 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
   notifications, mic processing (on by default!), local KFDtool key files and the keyring, the
   Settings screen with real devices, the Motorola desk mic in the GUI, `--wayland`, and from 0.25:
   log files and Copy log, the TUI using the GUI's saved settings, the TUI's card buttons and key
-  file box; from 0.26: Opus recordings and Delete after.
+  file box; from 0.26: Opus recordings and Delete after; from 0.28: one-way patches, outputs per
+  tab and channel, the call history between runs.
 - Next on the wishlist: item 10 (a CI test against a real dvmfne) or item 7 (NXDN/DMR, needs live
   traffic), per-zone audio outputs; the TUI's only remaining gap is audio over SSH.
 
@@ -55,7 +56,7 @@ tools/                      ci-status.sh, ci-screenshots.sh (see Testing)
 
 ### Core (`src/sidetone-core`)
 
-- `DispatchConsole` (partial: `.cs`, `.Patch.cs`, `.Recall.cs`, `.Zones.cs`) is the console: channels,
+- `DispatchConsole` (partial: `.cs`, `.Patch.cs`, `.Recall.cs`, `.Zones.cs`, `.Outputs.cs`, `.History.cs`) is the console: channels,
   receive, transmit, tones, pages, radio commands, patching, recall/recording, zones (tabs),
   notifications, settings. Both front ends drive the same instance; `Tui` *derives* from it, the GUI *owns* one.
 - `ConsoleChannel` is one codeplug channel (talkgroup, encryption, listening, mute, gain, patch,
@@ -201,6 +202,13 @@ every release on the air and on their hardware after publishing it.
   Sidetone already decodes and logs replies if a newer FNE sends them.
 - Tones go out as IMBE tone frames (as the Windows console does), so QCII tones are quantised to
   about 31 Hz steps.
+- Patch members have a `PatchRole` (Both, SourceOnly, TargetOnly); the Windows console's one-way
+  mode is "only the first member is a source". Outputs: `OutputFor(c)` = channel's own, else its
+  zone's, else `Audio.OutputTarget`; saved by node.name in `ChannelSettings.Output` and
+  `SystemSettings.ZoneOutputs`. History: `~/.local/state/sidetone/history/SYSTEM.json` (Recent
+  calls with dates, recall frames base64), secure audio only with `HistoryKeepSecure`; the
+  Windows console keeps call history in memory only. Emergency alarms are tabled (upstream removed
+  its emergency support on purpose in March 2025).
 - Patching passes clear IMBE codewords between talkgroups (decrypt on receive, re-encrypt per
   target), so patched voice is not decoded and re-encoded. Since 0.24.1 it is buffered and sent
   one LDU per 180 ms (2-LDU prebuffer, a 10 ms `Timer`; tests drive `PatchPump` by hand), because
