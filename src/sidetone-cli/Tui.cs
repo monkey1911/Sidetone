@@ -516,7 +516,8 @@ namespace Sidetone.Cli
                         case 'k': RequestKey(c); break;
                         case 'K': OpenKeyFile(); break;
                         case 'e': case 'E': ToggleTxSecure(c); break;
-                        case 'x': case 'X': CyclePatch(c); break;
+                        case 'x': CyclePatch(c); break;
+                        case 'X': CyclePatchRole(c); break;
                         case 'l': ReplayLast(c); break;
                         case 'L': ReplayOlder(c); break;
                         case 'w': case 'W': ToggleRecord(c); break;
@@ -833,7 +834,7 @@ namespace Sidetone.Cli
 
             // line 1: talkgroup and crypto
             string patch = PatchName(c);
-            screen.Text(ix, y, $"TG {c.Tg}{(patch != null ? $" ⇄ {patch}" : string.Empty)}", patch != null ? Style.Of(Ansi.BrightCyan, bold: true) : Style.Of(Ansi.BrightWhite), iw);
+            screen.Text(ix, y, $"TG {c.Tg}{(patch != null ? $" {PatchMark(c)} {patch}" : string.Empty)}", patch != null ? Style.Of(Ansi.BrightCyan, bold: true) : Style.Of(Ansi.BrightWhite), iw);
             // a selectable channel switched to clear still decrypts what it receives, so say which half is clear
             string crypt = !c.Encrypted ? "clear" : c.TxSecure ? $"{KeyStore.AlgorithmName(c.TxAlg)} 🔒" : "TX CLEAR 🔓";
             screen.TextRight(right, y, crypt, !c.Encrypted ? dim : c.TxSecure ? Style.Of(Ansi.BrightYellow) : Style.Of(Ansi.BrightRed, bold: true));
@@ -880,7 +881,7 @@ namespace Sidetone.Cli
                               () => { Focus(idx); ReplayLast(c); }, limit);
             bx = BorderButton(bx, by, c.Record ? "[●REC]" : "[rec]", c.Record ? Style.Of(Ansi.BrightWhite, Ansi.Red, bold: true) : Style.Of(Ansi.White),
                               () => { Focus(idx); ToggleRecord(c); }, limit);
-            bx = BorderButton(bx, by, c.Patch != 0 ? $"[⇄{c.Patch}]" : "[⇄]", c.Patch != 0 ? Style.Of(Ansi.Black, Ansi.BrightCyan, bold: true) : Style.Of(Ansi.White),
+            bx = BorderButton(bx, by, c.Patch != 0 ? $"[{PatchMark(c)}{c.Patch}]" : "[⇄]", c.Patch != 0 ? Style.Of(Ansi.Black, Ansi.BrightCyan, bold: true) : Style.Of(Ansi.White),
                               () => { Focus(idx); CyclePatch(c); }, limit);
             if (c.Encrypted)
             {
@@ -1041,7 +1042,7 @@ namespace Sidetone.Cli
                     screen.Text(1 + used, y, "   MIC MUTED (u to unmute)", Style.Of(Ansi.BrightRed, bold: true), right - 1 - used);
             }
 
-            screen.Text(1, y + 1, (TabRows > 0 ? "[ ]: tab  z: zones  " : string.Empty) + "click card: listen  [●]: stop  Space: PTT  1-6: alert  p/d: page  r: radio cmd  c: marker  t: talk permit  v: mic meter  u: mic mute  a: aliases  m/M: mute card/all  +/-: vol  k: key  K: key file  e: secure/clear  x: patch  l/L: replay  w: rec  q: quit",
+            screen.Text(1, y + 1, (TabRows > 0 ? "[ ]: tab  z: zones  " : string.Empty) + "click card: listen  [●]: stop  Space: PTT  1-6: alert  p/d: page  r: radio cmd  c: marker  t: talk permit  v: mic meter  u: mic mute  a: aliases  m/M: mute card/all  +/-: vol  k: key  K: key file  e: secure/clear  x/X: patch/direction  l/L: replay  w: rec  q: quit",
                         Style.Of(Ansi.Grey), width - 2);
         }
     } // public sealed class Tui

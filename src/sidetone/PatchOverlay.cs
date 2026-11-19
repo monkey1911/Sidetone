@@ -34,7 +34,7 @@ namespace Sidetone.Gui
         private readonly TextBlock title = new TextBlock { Text = "Patches", FontSize = 19, FontWeight = FontWeight.Bold };
         private readonly TextBlock note = new TextBlock { FontSize = 12, TextWrapping = TextWrapping.Wrap, MaxWidth = 520, HorizontalAlignment = HorizontalAlignment.Left };
         private readonly StackPanel rows = new StackPanel { Spacing = 6 };
-        private readonly List<(ConsoleChannel Chan, TextBlock Name, List<Tap> Taps)> lines = new List<(ConsoleChannel, TextBlock, List<Tap>)>();
+        private readonly List<(ConsoleChannel Chan, TextBlock Name, List<Tap> Taps, Tap Role)> lines = new List<(ConsoleChannel, TextBlock, List<Tap>, Tap)>();
         private readonly Tap clear, done;
 
         public bool IsOpen => Root.IsVisible;
@@ -46,6 +46,7 @@ namespace Sidetone.Gui
             this.closed = closed;
 
             note.Text = "Channels in the same patch hear each other: a call on one is sent out on the others, and so is your own PTT. " +
+                        "For a one-way patch, set the channel calls come from to Source only (or the others to Target only). " +
                         "A patched channel is always listening. Patches aren't remembered when Sidetone closes.";
             clear = new Tap("Clear all", () => { console()?.ClearPatches(); changed(); }, fontSize: 13, minWidth: 90, padY: 8);
             done = new Tap("Done", Close, fontSize: 13, minWidth: 110, padY: 8);
@@ -95,7 +96,11 @@ namespace Sidetone.Gui
                     taps.Add(t);
                     row.Children.Add(t.Root);
                 }
-                lines.Add((chan, name, taps));
+                // which way: both ways, source only, target only (shown once the channel is in a patch)
+                Tap role = new Tap("Both ways", () => { console()?.CyclePatchRole(channel); changed(); }, fontSize: 12, minWidth: 96, padX: 10, padY: 4);
+                role.Root.Margin = new Thickness(10, 0, 0, 0);
+                row.Children.Add(role.Root);
+                lines.Add((chan, name, taps, role));
                 rows.Children.Add(row);
             }
             Root.IsVisible = true;
@@ -117,8 +122,14 @@ namespace Sidetone.Gui
             card.BorderBrush = p.Edge;
             title.Foreground = p.Text;
             note.Foreground = p.Dim;
-            foreach ((ConsoleChannel chan, TextBlock name, List<Tap> taps) in lines)
+            foreach ((ConsoleChannel chan, TextBlock name, List<Tap> taps, Tap role) in lines)
             {
+                role.Root.IsVisible = chan.Patch != 0;
+                role.Text = $"{DispatchConsole.PatchMark(chan)} {DispatchConsole.PatchRoleText(chan.PatchRole)}";
+                if (chan.PatchRole == PatchRole.Both)
+                    role.Paint(Brushes.Transparent, p.Text, p.Edge);
+                else
+                    role.Paint(p.Warn, p.OnStrong);
                 name.Foreground = p.Text;
                 for (int i = 0; i < taps.Count; i++)
                 {

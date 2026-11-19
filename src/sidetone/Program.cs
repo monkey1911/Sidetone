@@ -413,6 +413,17 @@ namespace Sidetone.Gui
             bool inThird = focus.Patch == 3;
             Press(PhysicalKey.X);
             Check(inFirst && inThird && focus.Patch == 0 && c.PatchName(focus) == null, "X moves the focused channel through the patches and back to none");
+            Press(PhysicalKey.X);
+            Press(PhysicalKey.X, RawInputModifiers.Shift);
+            bool source = focus.PatchRole == PatchRole.SourceOnly;
+            Press(PhysicalKey.X, RawInputModifiers.Shift);
+            bool target = focus.PatchRole == PatchRole.TargetOnly && DispatchConsole.PatchMark(focus) == "←";
+            Press(PhysicalKey.X, RawInputModifiers.Shift);
+            Press(PhysicalKey.X);
+            Press(PhysicalKey.X);
+            Press(PhysicalKey.X);
+            Check(source && target && focus.PatchRole == PatchRole.Both && focus.Patch == 0,
+                  "Shift+X switches a patched channel between both ways, source only and target only");
 
             // instant recall: the demo has calls on Tac 1, the focused channel
             Press(PhysicalKey.L, RawInputModifiers.Shift);

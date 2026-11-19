@@ -59,6 +59,8 @@ namespace Sidetone.Core
 
         /// <summary>The patch this channel is in (1 and up, an index into the console's patch names plus one), or 0 for none.</summary>
         public volatile int Patch;
+        /// <summary>Which way this channel's patch passes calls: both ways, from it only, or to it only.</summary>
+        public volatile PatchRole PatchRole;
 
         public volatile bool Selected;
         public volatile bool Muted;

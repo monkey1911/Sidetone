@@ -211,6 +211,9 @@ namespace Sidetone.Cli
                 // 17. deleting old recordings
                 RecordingPruneTests(tmp);
 
+                // 18. one-way patches
+                OneWayPatchTests(cp, sys);
+
                 // 8. WAV writer
                 string wavPath = Path.Combine(tmp, "test.wav");
                 using (WavSink wav = new WavSink(wavPath))
@@ -1863,6 +1866,77 @@ zones:
                   "zones: if every zone was hidden, the first one is shown (names match whatever the case)");
             zthird.Shutdown();
             zt.Shutdown();
+        }
+
+        private static void OneWayPatchTests(Codeplug cp, Codeplug.System sys)
+        {
+            const uint owRid = 9000001, owRadio = 4321;
+            Tui ow = new Tui(cp, sys, TimeSpan.FromSeconds(120), null) { NoAudio = true };
+            CliPeer owHeaders = new CliPeer(sys, new KeyStore(), verbose: false);
+            CaptureSink owOut = new CaptureSink(owHeaders);
+            ow.sinkForTest = owOut;
+            ow.consoleRidForTest = owRid;
+            ow.patchManualPump = true;
+            ow.Keys.Store(P25Defines.P25_ALGO_AES, TestKeyId, TestKey);
+            ConsoleChannel calling = ow.Channels.First(ch => ch.IsP25 && !ch.Encrypted), secure = ow.Channels.First(ch => ch.Encrypted);
+            ow.SetPatch(calling, 1);
+            ow.SetPatch(secure, 1);
+            double owClock = 0;
+
+            // a call on a channel, played into the console; returns the talkgroups the patch sent it to
+            List<uint> CallOn(ConsoleChannel ch)
+            {
+                KeyStore talkerKeys = new KeyStore();
+                talkerKeys.Store(P25Defines.P25_ALGO_AES, TestKeyId, TestKey);
+                CaptureSink air = new CaptureSink(owHeaders);
+                P25Transmitter talker = new P25Transmitter(air, talkerKeys, owRadio, ch.Tg, ch.Encrypted ? P25Defines.P25_ALGO_AES : P25Defines.P25_ALGO_UNENCRYPT, ch.Encrypted ? TestKeyId : (ushort)0);
+                talker.Start(out _);
+                for (int i = 0; i < 27; i++) talker.PushAudio(VoicedFrame(i));
+                uint stream = talker.StreamId;
+                talker.Stop();
+                int before = owOut.Tdus.Count;
+                foreach (var v in air.Voice)
+                    ch.Rx.Handle(ch.Tg, owRadio, (P25DUID)v.Frame[22], stream, v.Frame);
+                ch.Rx.Handle(ch.Tg, owRadio, P25DUID.TDU, stream, new byte[24]);
+                for (int n = 0; n < 300; n++)
+                    ow.PatchPump(TimeSpan.FromMilliseconds(owClock += 10));
+                return owOut.Tdus.Skip(before).Where(t => t.Grant).Select(t => t.Dst).ToList();
+            }
+
+            List<uint> twoWayA = CallOn(calling), twoWayB = CallOn(secure);
+            Check(twoWayA.SequenceEqual(new[] { secure.Tg }) && twoWayB.SequenceEqual(new[] { calling.Tg }) && calling.PatchRole == PatchRole.Both,
+                  "one-way patch: a patch starts both ways, each member's calls going to the other");
+
+            ow.SetPatchRole(secure, PatchRole.TargetOnly);
+            string described = string.Join("\n", ow.SnapshotLog(3));
+            List<uint> oneWayA = CallOn(calling), oneWayB = CallOn(secure);
+            Check(oneWayA.SequenceEqual(new[] { secure.Tg }) && oneWayB.Count == 0 && DispatchConsole.PatchMark(secure) == "←" &&
+                  described.Contains($"one-way, {calling.Cfg.Name} → {secure.Cfg.Name}"),
+                  "one-way patch: a target only member gets the patch's calls, but its own aren't passed on (and the log says one-way)");
+
+            CaptureSink owMain = new CaptureSink(owHeaders);
+            P25Transmitter owTx = new P25Transmitter(owMain, ow.Keys, owRid, secure.Tg, P25Defines.P25_ALGO_AES, TestKeyId);
+            owTx.Start(out _);
+            int tdusBefore = owOut.Tdus.Count;
+            ow.StartPatchTx(secure, owTx);
+            for (int i = 0; i < 18; i++) owTx.PushAudio(VoicedFrame(i));
+            ow.StopPatchTx();
+            owTx.Stop();
+            Check(owOut.Tdus.Count == tdusBefore, "one-way patch: the console transmitting on a target only member stays on that channel");
+
+            ow.SetPatchRole(secure, PatchRole.Both);
+            ow.SetPatchRole(calling, PatchRole.SourceOnly);
+            List<uint> srcA = CallOn(calling), srcB = CallOn(secure);
+            Check(srcA.SequenceEqual(new[] { secure.Tg }) && srcB.Count == 0 && DispatchConsole.PatchMark(calling) == "→",
+                  "one-way patch: a source only member's calls go out, and nothing is sent on it");
+
+            ow.CyclePatchRole(calling);
+            bool cycled = calling.PatchRole == PatchRole.TargetOnly;
+            ow.SetPatch(calling, 0);
+            ow.SetPatchRole(calling, PatchRole.SourceOnly);
+            Check(cycled && calling.PatchRole == PatchRole.Both && calling.Patch == 0 && ow.SnapshotLog(1).Any(l => l.Contains("not in a patch")),
+                  "one-way patch: the direction cycles both ways → source → target, resets on leaving the patch, and needs a patch");
+            ow.ClearPatches();
         }
 
         private static void RecordingPruneTests(string tmp)

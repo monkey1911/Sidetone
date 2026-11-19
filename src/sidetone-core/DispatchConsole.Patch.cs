@@ -30,6 +30,20 @@ using Chan = Sidetone.Core.ConsoleChannel;
 
 namespace Sidetone.Core
 {
+    /// <summary>
+    /// Which way a patch member's traffic goes. A one-way patch from A to B has A as a source:
+    /// A's calls go to B, and B's calls aren't sent back (the Windows console's one-way patch).
+    /// </summary>
+    public enum PatchRole
+    {
+        /// <summary>Its calls go to the rest of the patch, and the patch's calls are sent on it.</summary>
+        Both,
+        /// <summary>Its calls go to the rest of the patch; nothing is sent on it.</summary>
+        SourceOnly,
+        /// <summary>The patch's calls are sent on it; its own calls aren't passed on.</summary>
+        TargetOnly
+    }
+
     public partial class DispatchConsole
     {
         public const int MaxPatches = 6;
@@ -153,6 +167,8 @@ namespace Sidetone.Core
                 if (patch != 0)
                     EndRun(patchRuns[patch - 1], "patch changed");
                 c.Patch = patch;
+                if (patch == 0)
+                    c.PatchRole = PatchRole.Both;      // a channel joins a patch both ways
             }
 
             if (patch != 0 && !c.Selected)
@@ -168,6 +184,49 @@ namespace Sidetone.Core
             if (patch != 0)
                 DescribePatch(patch);
         }
+
+        /// <summary>A channel's patch direction as a mark: ⇄ both ways, → source only, ← target only (null when not patched).</summary>
+        public static string PatchMark(ConsoleChannel c) => c.Patch == 0 ? null
+            : c.PatchRole == PatchRole.SourceOnly ? "→" : c.PatchRole == PatchRole.TargetOnly ? "←" : "⇄";
+
+        /// <summary>A patch direction in words, for buttons and the log.</summary>
+        public static string PatchRoleText(PatchRole role) => role switch
+        {
+            PatchRole.SourceOnly => "source only",
+            PatchRole.TargetOnly => "target only",
+            _ => "both ways"
+        };
+
+        /// <summary>
+        /// Sets which way a patched channel's traffic goes. A call being passed on right now ends; the
+        /// next one follows the new direction.
+        /// </summary>
+        public void SetPatchRole(ConsoleChannel c, PatchRole role)
+        {
+            if (c.Patch == 0)
+            {
+                AddLog($"{c.Cfg.Name}: not in a patch");
+                return;
+            }
+            if (c.PatchRole == role)
+                return;
+            if (Transmitting && txChan != null && txChan.Patch == c.Patch)
+            {
+                AddLog("can't change a patch while transmitting into it");
+                return;
+            }
+            lock (patchLock)
+            {
+                EndRun(patchRuns[c.Patch - 1], "patch changed");
+                c.PatchRole = role;
+            }
+            AddLog($"{c.Cfg.Name}: {PatchRoleText(role)} in {patchNames[c.Patch - 1]}");
+            DescribePatch(c.Patch);
+        }
+
+        /// <summary>Moves a patched channel to the next direction: both ways, source only, target only.</summary>
+        public void CyclePatchRole(ConsoleChannel c) =>
+            SetPatchRole(c, c.PatchRole == PatchRole.Both ? PatchRole.SourceOnly : c.PatchRole == PatchRole.SourceOnly ? PatchRole.TargetOnly : PatchRole.Both);
 
         /// <summary>Moves a channel to the next patch: none, the first, the second, and so on, then none again.</summary>
         public void CyclePatch(ConsoleChannel c) => SetPatch(c, c.Patch >= patchNames.Count ? 0 : c.Patch + 1);
@@ -187,6 +246,7 @@ namespace Sidetone.Core
                 {
                     any |= c.Patch != 0;
                     c.Patch = 0;
+                    c.PatchRole = PatchRole.Both;
                 }
             }
             if (any && !quiet)
@@ -203,9 +263,25 @@ namespace Sidetone.Core
                 AddLog($"{name}: {members[0].Cfg.Name} (add another channel to patch it to)");
             else
             {
-                AddLog($"{name}: {string.Join(" + ", members.Select(m => m.Cfg.Name))}");
-                List<Chan> clear = members.Where(m => !m.TxSecure && !m.Cfg.RxOnly).ToList();
-                if (clear.Count > 0 && members.Any(m => m.Encrypted))
+                List<Chan> sources = members.Where(m => m.PatchRole != PatchRole.TargetOnly).ToList();
+                List<Chan> targets = members.Where(m => m.PatchRole != PatchRole.SourceOnly && !m.Cfg.RxOnly).ToList();
+                if (members.All(m => m.PatchRole == PatchRole.Both))
+                    AddLog($"{name}: {string.Join(" + ", members.Select(m => m.Cfg.Name))}");
+                else
+                {
+                    // as people say it: "A → B". A both-ways member sides with the sources when the others
+                    // are targets, and with the targets when the others are sources.
+                    bool anySource = members.Any(m => m.PatchRole == PatchRole.SourceOnly), anyTarget = members.Any(m => m.PatchRole == PatchRole.TargetOnly);
+                    IEnumerable<string> left = members.Where(m => m.PatchRole == PatchRole.SourceOnly || (m.PatchRole == PatchRole.Both && (anyTarget || !anySource))).Select(m => m.Cfg.Name);
+                    IEnumerable<string> right = members.Where(m => !m.Cfg.RxOnly && (m.PatchRole == PatchRole.TargetOnly || (m.PatchRole == PatchRole.Both && (anySource || !anyTarget)))).Select(m => m.Cfg.Name);
+                    List<Chan> both = members.Where(m => m.PatchRole == PatchRole.Both).ToList();
+                    AddLog($"{name}: one-way, {string.Join(" + ", left)} → {string.Join(" + ", right)}" +
+                           (both.Count >= 2 ? $" ({string.Join(" + ", both.Select(m => m.Cfg.Name))} both ways between them)" : string.Empty));
+                }
+                if (!sources.Any(s => targets.Any(t => t != s)))
+                    AddLog($"warning: {name} passes nothing on: it needs a source and a different target");
+                List<Chan> clear = targets.Where(m => !m.TxSecure).ToList();
+                if (clear.Count > 0 && sources.Any(m => m.Encrypted))
                     AddLog($"warning: {name} joins secure and clear channels; secure traffic will go out in the clear on {string.Join(", ", clear.Select(m => m.Cfg.Name))}");
             }
         }
@@ -218,8 +294,8 @@ namespace Sidetone.Core
         private void PatchCodeword(Chan c, P25VoiceReceiver rx, byte[] imbe)
         {
             int p = c.Patch;
-            if (p == 0)
-                return;
+            if (p == 0 || c.PatchRole == PatchRole.TargetOnly)
+                return;     // not patched, or a one-way patch's target: its calls aren't passed on
             uint stream = rx.CurrentStreamId;
             DateTime now = DateTime.UtcNow;
 
@@ -298,7 +374,7 @@ namespace Sidetone.Core
             {
                 if (m == source || m.Patch != patch || !m.Selected || !m.IsP25)
                     continue;
-                if (m.Cfg.RxOnly)
+                if (m.Cfg.RxOnly || m.PatchRole == PatchRole.SourceOnly)
                     continue;       // can be heard into the patch, never sent to
                 if (m.Rx?.InCall == true)
                 {
@@ -505,8 +581,8 @@ namespace Sidetone.Core
         internal void StartPatchTx(Chan c, P25Transmitter main)
         {
             int p = c.Patch;
-            if (p == 0)
-                return;
+            if (p == 0 || c.PatchRole == PatchRole.TargetOnly)
+                return;     // a one-way patch's target: the console's own transmission stays on it
 
             lock (patchLock)
             {
@@ -519,7 +595,7 @@ namespace Sidetone.Core
                 consolePatch = p;
                 foreach (Chan m in chans)
                 {
-                    if (m == c || m.Patch != p || !m.Selected || !m.IsP25 || m.Cfg.RxOnly)
+                    if (m == c || m.Patch != p || !m.Selected || !m.IsP25 || m.Cfg.RxOnly || m.PatchRole == PatchRole.SourceOnly)
                         continue;
                     P25Transmitter t = new P25Transmitter(TrafficSink, keys, main.SourceId, m.Tg, m.ActiveTxAlg, m.ActiveKeyId);
                     if (!t.Start(out string error))

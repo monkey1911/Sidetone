@@ -1343,7 +1343,12 @@ namespace Sidetone.Gui
                     case Key.V: c.ToggleMicMonitor(); break;
                     case Key.K: c.RequestKey(focus); break;
                     case Key.E: c.ToggleTxSecure(focus); break;
-                    case Key.X: c.CyclePatch(focus); break;
+                    case Key.X:
+                        if (e.KeyModifiers.HasFlag(KeyModifiers.Shift))
+                            c.CyclePatchRole(focus);
+                        else
+                            c.CyclePatch(focus);
+                        break;
                     case Key.W: c.ToggleRecord(focus); break;
                     case Key.L:
                         if (e.KeyModifiers.HasFlag(KeyModifiers.Shift))
