@@ -35,8 +35,8 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
   log files and Copy log, the TUI using the GUI's saved settings, the TUI's card buttons and key
   file box; from 0.26: Opus recordings and Delete after; from 0.28: one-way patches, outputs per
   tab and channel, the call history between runs.
-- Next on the wishlist: item 10 (a CI test against a real dvmfne) or item 7 (NXDN/DMR, needs live
-  traffic), per-zone audio outputs; the TUI's only remaining gap is audio over SSH.
+- Next on the wishlist ("To be implemented"): a CI test against a real dvmfne, then NXDN/DMR
+  (needs live traffic); the TUI's only remaining gap is audio over SSH.
 
 ## Layout
 
@@ -249,8 +249,10 @@ every release on the air and on their hardware after publishing it.
 - **README.md has a Contents list** at the top (every `##` and `###` heading, linked by GitHub's
   anchors: lower case, punctuation dropped, spaces to hyphens). Update it when a section is added,
   renamed or removed.
-- **WISHLIST.md:** when something is done, strike it through (`~~...~~`) with "Done in X.Y" rather
-  than deleting or rewording it, and that includes each "Still to do" sub-item, one per line.
+- **WISHLIST.md** has three sections, top to bottom: To be implemented, Partially implemented,
+  Fully implemented. When something is done, strike it through (`~~...~~`) with "Done in X.Y"
+  rather than deleting or rewording it, including each "Still to do" sub-item (one per line), and
+  move the entry down once nothing in it is left.
 - Keep personal names out of the public repo's files (the wishlist refers to "the FNE's
   maintainers").
 - **Never print or commit a codeplug**: they contain FNE passwords. `.gitignore` ignores `*.yml`
