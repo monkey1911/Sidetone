@@ -8,13 +8,14 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
 
 ## State at hand-off (2026-11-16)
 
-- Version **0.30.2** on `main` (set once, in `src/Directory.Build.props`): a fix for the time
+- Version **0.30.3** on `main` (set once, in `src/Directory.Build.props`): announcements levelled
+  like the mic (speech at -20 dBFS) and a Level setting; 0.30.2 fixed the time
   announcement playing again when its schedule was turned on just after the hour; 0.30.1 added a
   speed setting for text to speech; 0.30.0 brought spoken announcements (Piper or espeak-ng) and the time
   announcement; 0.29 brought WAV
   announcements, `listen --key-file`, the dvmcli/dvmgui wrappers removed. Check
   `gh release list` for what was last published.
-- 342 checks (281 in `sidetone-cli selftest`, one of which runs only when a speech engine is
+- 344 checks (283 in `sidetone-cli selftest`, one of which runs only when a speech engine is
   installed; 61 in the GUI's `--selfcheck`) plus screenshots.
 - **Tested on the air by the owner:** RX/TX clear and AES, key delivery from the FNE, alias sync,
   alert tones, channel marker, QCII and digital pages, radio check (the radio answers; see the FNE
@@ -40,7 +41,7 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
   Settings screen with real devices, the Motorola desk mic in the GUI, `--wayland`, and from 0.25:
   log files and Copy log, the TUI using the GUI's saved settings, the TUI's card buttons and key
   file box; from 0.26: Opus recordings and Delete after; from 0.28: one-way patches, outputs per
-  tab and channel, the call history between runs; from 0.29: announcements, `listen --key-file`; from 0.30: the scheduled time announcement
+  tab and channel, the call history between runs; from 0.29: announcements, `listen --key-file`; from 0.30: the scheduled time announcement, the new announcement level (0.30.3)
   (Piper is installed on the owner's Surface, through `uv tool install piper-tts`, with the
   en_US-lessac-medium voice).
 - Next on the wishlist ("To be implemented"): a CI test against a real dvmfne, then NXDN/DMR
@@ -223,7 +224,10 @@ every release on the air and on their hardware after publishing it.
   from run to run (its noise), so compare speeds over several runs. The AUR's `piper-tts` is
   x86-64 only and its onnxruntime pulls in CUDA/TensorRT: don't suggest it.
 - Announcements: `WavFile.ReadAnnouncement` reads any PCM/float WAV, resamples through a
-  windowed-sinc low-pass (`WavFile.Resample`) and levels to -3 dBFS peak (+12 dB at most);
+  windowed-sinc low-pass (`WavFile.Resample`) and levels the speech (`WavFile.SpeechLevel`: RMS of
+  the 20 ms blocks within 25 dB of the loudest) to the mic's -20 dBFS target, +12 dB at most, peaks
+  under -1 dBFS (0.30.3; it was -3 dBFS peak, which put speech about 3 dB above the mic and was
+  reported hot on RF). `AnnouncementLevel` (-9 to +3 dB) is applied at send time and in Hear it;
   `TonePlan.FromAudio` sends it through the voice encoder like a tone job. IMBE mangles pure sines,
   so test announcements with speech-like audio (`VoicedFrame`), compared with the vocoder alone.
 - **libvocoder's `MBEDecoder` never initialised `m_autoGain`** (upstream too, as of 2026-11), so a decoder

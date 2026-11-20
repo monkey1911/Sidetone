@@ -275,7 +275,7 @@ namespace Sidetone.Core
                     AddLog($"{name} is {length.TotalSeconds:F0} s, longer than the {txLimit.TotalSeconds:F0} s transmit time limit");
                     return;
                 }
-                SendAnnouncement(TonePlan.FromAudio(name, samples), targets);
+                SendAnnouncement(TonePlan.FromAudio(name, AtAnnouncementLevel(samples)), targets);
             });
             return null;
         }
@@ -357,7 +357,7 @@ namespace Sidetone.Core
                     AddLog($"hear it: {error}");
                     return;
                 }
-                PlayThroughVocoder(c, samples);
+                PlayThroughVocoder(c, AtAnnouncementLevel(samples));
             });
             return null;
         }

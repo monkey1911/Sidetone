@@ -247,11 +247,47 @@ namespace Sidetone.Core
         /// <summary>The longest announcement accepted, in seconds (the transmit limit also applies).</summary>
         public const int MaxAnnouncementSeconds = 600;
 
+        /// <summary>An announcement is raised at most this much (so quiet hiss isn't pumped up).</summary>
+        public const double MaxAnnouncementBoostDb = 12;
+
+        /// <summary>An announcement's peaks are kept at or below this.</summary>
+        public const double AnnouncementCeilingDb = -1;
+
+        /// <summary>
+        /// How loud the speech in some audio is (RMS, 1.0 = full scale): the 20 ms blocks within 25 dB of the
+        /// loudest, so pauses and silence don't count. The same idea as the microphone's auto level.
+        /// </summary>
+        public static double SpeechLevel(float[] audio)
+        {
+            const int block = 160;
+            List<double> blocks = new List<double>();
+            for (int i = 0; i + block <= audio.Length; i += block)
+            {
+                double sum = 0;
+                for (int j = i; j < i + block; j++)
+                    sum += (double)audio[j] * audio[j];
+                blocks.Add(sum / block);
+            }
+            if (blocks.Count == 0)
+                return 0;
+            double loudest = blocks.Max(), floor = loudest * Math.Pow(10, -25 / 10.0);
+            List<double> speech = blocks.Where(b => b >= floor && b > 1e-12).ToList();
+            return speech.Count == 0 ? 0 : Math.Sqrt(speech.Average());
+        }
+
+        /// <summary>The speech level of 16-bit audio, in dBFS (see <see cref="SpeechLevel(float[])"/>).</summary>
+        public static double SpeechLevelDb(short[] audio)
+        {
+            double level = SpeechLevel(audio.Select(v => v / 32768f).ToArray());
+            return level <= 0 ? -120 : 20 * Math.Log10(level);
+        }
+
         /// <summary>
         /// An announcement's audio, as 8 kHz mono: from any PCM WAV file (8, 16, 24 or 32-bit integer, or
         /// 32-bit float; any sample rate; mono or more channels, mixed down), resampled through a low-pass
-        /// filter when it isn't 8 kHz already, and levelled (peak at -3 dBFS, never more than 12 dB up, so
-        /// quiet hiss isn't pumped up). Anything else is refused with a plain message.
+        /// filter when it isn't 8 kHz already, and levelled like the microphone (its speech at
+        /// <see cref="VoiceProcessor.TargetDb"/>, never more than 12 dB up, so quiet hiss isn't pumped up, and peaks
+        /// no higher than -1 dBFS). Anything else is refused with a plain message.
         /// </summary>
         public static short[] ReadAnnouncement(string path)
         {
@@ -314,11 +350,15 @@ namespace Sidetone.Core
 
             float[] at8k = rate == VoiceProcessor.SampleRate ? mono : Resample(mono, rate, VoiceProcessor.SampleRate);
 
-            // level: peak at -3 dBFS, at most 12 dB up
+            // level: the speech as loud as the microphone's, at most 12 dB up, peaks no higher than -1 dBFS
             float peak = 0;
             foreach (float v in at8k)
                 peak = Math.Max(peak, Math.Abs(v));
-            double gain = peak <= 1e-6 ? 1.0 : Math.Min(0.708 / peak, 4.0);
+            double speech = SpeechLevel(at8k);
+            double gain = speech <= 1e-6 ? 1.0 : Math.Pow(10, VoiceProcessor.TargetDb / 20) / speech;
+            gain = Math.Min(gain, Math.Pow(10, MaxAnnouncementBoostDb / 20));
+            if (peak > 1e-6)
+                gain = Math.Min(gain, Math.Pow(10, AnnouncementCeilingDb / 20) / peak);
             short[] samples = new short[at8k.Length];
             for (int i = 0; i < at8k.Length; i++)
                 samples[i] = (short)Math.Clamp(Math.Round(at8k[i] * gain * 32767.0), -32768, 32767);

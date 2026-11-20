@@ -464,6 +464,10 @@ namespace Sidetone.Gui
             bool clock24 = c.TimeAnnouncement.Hour24 && !said24.Contains(" AM") && !said24.Contains(" PM") && said24.StartsWith("Demo system time is ");
             announce.Use24Hour(false);
             bool clock12 = !c.TimeAnnouncement.Hour24 && (announce.WillSay.Contains(" AM") || announce.WillSay.Contains(" PM"));
+            announce.ChooseLevel(-3);
+            bool levelled = c.AnnouncementLevel == -3;
+            announce.ChooseLevel(0);
+            levelled &= c.AnnouncementLevel == 0;
             announce.ChooseSpeed(0.9);
             bool slowed = c.SpeechRate == 0.9;
             announce.ChooseSpeed(1.0);
@@ -471,8 +475,8 @@ namespace Sidetone.Gui
             announce.NewText.Focus();
             Dispatcher.UIThread.RunJobs();
             Press(PhysicalKey.Escape);
-            Check(stillOpen && textAdded && clock24 && clock12 && slowed && normal && !announce.IsOpen,
-                  $"Announcements: a text to say is typed and added with Enter (N types, it doesn't close the box); the speed and the time announcement's clock switch ({said24})");
+            Check(stillOpen && textAdded && clock24 && clock12 && slowed && normal && levelled && !announce.IsOpen,
+                  $"Announcements: a text to say is typed and added with Enter (N types, it doesn't close the box); the level, the speed and the time announcement's clock switch ({said24})");
 
             // instant recall: the demo has calls on Tac 1, the focused channel
             Press(PhysicalKey.L, RawInputModifiers.Shift);

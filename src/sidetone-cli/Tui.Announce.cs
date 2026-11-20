@@ -35,13 +35,14 @@ namespace Sidetone.Cli
             public string Engine;           // null (automatic), "piper", "espeak-ng"
             public string Voice;            // a Piper model, or null for the first found
             public double Rate = 1.0;       // speaking speed
+            public int Level;               // announcements' level, dB compared with the microphone's
             public List<string> Voices = new List<string>();
             public TimeAnnouncementSettings Time;
             public List<string> Channels = new List<string>();   // names that can take it (null first: every listening channel)
             public string Error;
         }
 
-        private const int FormFields = 11;
+        private const int FormFields = 12;
 
         private AnnounceDialog announceDialog;
 
@@ -208,6 +209,7 @@ namespace Sidetone.Cli
                 Voice = Settings?.SpeechVoice,
                 Voices = Speech.PiperVoices(),
                 Rate = SpeechRate,
+                Level = AnnouncementLevel,
                 Time = TimeAnnouncement
             };
             f.Channels.Add(null);
@@ -223,13 +225,17 @@ namespace Sidetone.Cli
             return choices[((at + delta) % choices.Count + choices.Count) % choices.Count];
         }
 
+        // the form's fields, top to bottom
+        private const int FLevel = 0, FEngine = 1, FVoice = 2, FSpeed = 3, FBefore = 4, FAfter = 5, FClock = 6,
+                          FZone = 7, FSayZone = 8, FZoneName = 9, FEvery = 10, FChannel = 11;
+
         /// <summary>The text being typed in a field, or null when the field is a choice.</summary>
         private static string FieldText(TimeForm f, int field) => field switch
         {
-            3 => f.Time.Before ?? string.Empty,
-            4 => f.Time.After ?? string.Empty,
-            6 => f.Time.TimeZone ?? string.Empty,
-            8 => f.Time.ZoneName ?? string.Empty,
+            FBefore => f.Time.Before ?? string.Empty,
+            FAfter => f.Time.After ?? string.Empty,
+            FZone => f.Time.TimeZone ?? string.Empty,
+            FZoneName => f.Time.ZoneName ?? string.Empty,
             _ => null
         };
 
@@ -237,10 +243,10 @@ namespace Sidetone.Cli
         {
             switch (field)
             {
-                case 3: f.Time.Before = text; break;
-                case 4: f.Time.After = text; break;
-                case 6: f.Time.TimeZone = text; break;
-                case 8: f.Time.ZoneName = text; break;
+                case FBefore: f.Time.Before = text; break;
+                case FAfter: f.Time.After = text; break;
+                case FZone: f.Time.TimeZone = text; break;
+                case FZoneName: f.Time.ZoneName = text; break;
             }
         }
 
@@ -248,17 +254,18 @@ namespace Sidetone.Cli
         {
             switch (f.Field)
             {
-                case 0: f.Engine = Step(new List<string> { null, Speech.PiperSetting, Speech.EspeakSetting }, f.Engine, delta); break;
-                case 1:
+                case FLevel: f.Level = Step(AnnouncementLevels.ToList(), f.Level, delta); break;
+                case FEngine: f.Engine = Step(new List<string> { null, Speech.PiperSetting, Speech.EspeakSetting }, f.Engine, delta); break;
+                case FVoice:
                     List<string> voices = new List<string> { null };
                     voices.AddRange(f.Voices);
                     f.Voice = Step(voices, f.Voices.Contains(f.Voice) ? f.Voice : null, delta);
                     break;
-                case 2: f.Rate = Step(Speech.Rates.ToList(), f.Rate, delta); break;
-                case 5: f.Time.Hour24 = !f.Time.Hour24; break;
-                case 7: f.Time.SayZone = !f.Time.SayZone; break;
-                case 9: f.Time.EveryMinutes = Step(Speech.Intervals.ToList(), f.Time.EveryMinutes, delta); break;
-                case 10: f.Time.Channel = Step(f.Channels, f.Time.Channel, delta); break;
+                case FSpeed: f.Rate = Step(Speech.Rates.ToList(), f.Rate, delta); break;
+                case FClock: f.Time.Hour24 = !f.Time.Hour24; break;
+                case FSayZone: f.Time.SayZone = !f.Time.SayZone; break;
+                case FEvery: f.Time.EveryMinutes = Step(Speech.Intervals.ToList(), f.Time.EveryMinutes, delta); break;
+                case FChannel: f.Time.Channel = Step(f.Channels, f.Time.Channel, delta); break;
             }
             f.Error = null;
         }
@@ -270,9 +277,10 @@ namespace Sidetone.Cli
             if (why != null)
             {
                 f.Error = char.ToUpperInvariant(why[0]) + why.Substring(1) + ".";
-                f.Field = 6;
+                f.Field = FZone;
                 return false;
             }
+            SetAnnouncementLevel(f.Level);
             SetSpeechEngine(f.Engine, f.Voices.Contains(f.Voice) ? f.Voice : null);
             SetSpeechRate(f.Rate);
             return true;
@@ -325,20 +333,21 @@ namespace Sidetone.Cli
 
         private string FormValue(TimeForm f, int field) => field switch
         {
-            0 => f.Engine == null ? "Automatic (Piper if it has a voice, else espeak-ng)" : f.Engine == Speech.PiperSetting ? "Piper" : "espeak-ng",
-            1 => f.Voices.Count == 0 ? "(no Piper voices found)" : f.Voices.Contains(f.Voice) ? Speech.VoiceName(f.Voice) : $"First found ({Speech.VoiceName(f.Voices[0])})",
-            2 => Speech.RateName(f.Rate),
-            5 => f.Time.Hour24 ? "24-hour (fourteen twenty)" : "12-hour (two twenty P M)",
-            7 => f.Time.SayZone ? "Yes" : "No",
-            8 => f.Time.ZoneName ?? string.Empty,
-            9 => f.Time.EveryMinutes == 0 ? "Off (only when played)" : $"Every {f.Time.EveryMinutes} minutes, on the clock",
-            10 => f.Time.Channel ?? "Every listening channel",
+            FLevel => $"{AnnouncementLevelName(f.Level)} (all announcements)",
+            FEngine => f.Engine == null ? "Automatic (Piper if it has a voice, else espeak-ng)" : f.Engine == Speech.PiperSetting ? "Piper" : "espeak-ng",
+            FVoice => f.Voices.Count == 0 ? "(no Piper voices found)" : f.Voices.Contains(f.Voice) ? Speech.VoiceName(f.Voice) : $"First found ({Speech.VoiceName(f.Voices[0])})",
+            FSpeed => Speech.RateName(f.Rate),
+            FClock => f.Time.Hour24 ? "24-hour (fourteen twenty)" : "12-hour (two twenty P M)",
+            FSayZone => f.Time.SayZone ? "Yes" : "No",
+            FZoneName => f.Time.ZoneName ?? string.Empty,
+            FEvery => f.Time.EveryMinutes == 0 ? "Off (only when played)" : $"Every {f.Time.EveryMinutes} minutes, on the clock",
+            FChannel => f.Time.Channel ?? "Every listening channel",
             _ => FieldText(f, field)
         };
 
         private static readonly string[] FormLabels =
         {
-            "Engine", "Piper voice", "Speed", "Before time", "After time", "Clock", "Time zone", "Say zone", "Zone said as", "By itself", "On channel"
+            "Level", "Engine", "Piper voice", "Speed", "Before time", "After time", "Clock", "Time zone", "Say zone", "Zone said as", "By itself", "On channel"
         };
 
         private void DrawTimeForm(TimeForm f, int ix, int y, int iw)
@@ -353,8 +362,8 @@ namespace Sidetone.Cli
                 Rect r = new Rect(ix + 14, y + i, iw - 14, 1);
                 screen.Fill(r, box);
                 string value = FormValue(f, i);
-                string hint = i == 6 && string.IsNullOrEmpty(value) ? $"(this computer's: {TimeZoneInfo.Local.Id})"
-                            : i == 8 && string.IsNullOrEmpty(value) ? "(its abbreviation, letter by letter)"
+                string hint = i == FZone && string.IsNullOrEmpty(value) ? $"(this computer's: {TimeZoneInfo.Local.Id})"
+                            : i == FZoneName && string.IsNullOrEmpty(value) ? "(its abbreviation, letter by letter)"
                             : null;
                 string shown = typed ? value + (active ? "▏" : string.Empty) : $"◀ {value} ▶";
                 screen.Text(r.X + 1, r.Y, hint != null && !active ? hint : shown, box, r.W - 1);
@@ -410,7 +419,7 @@ namespace Sidetone.Cli
             Style body = Style.Of(Ansi.BrightWhite, Ansi.Black);
             screen.Fill(r, body);
             screen.Box(r, Style.Of(Ansi.BrightCyan, Ansi.Black, bold: true), heavy: true);
-            screen.Text(r.X + 2, r.Y, d.Form != null ? " Speech and time announcement " : " Announcements ", Style.Of(Ansi.BrightCyan, Ansi.Black, bold: true));
+            screen.Text(r.X + 2, r.Y, d.Form != null ? " Announcement settings " : " Announcements ", Style.Of(Ansi.BrightCyan, Ansi.Black, bold: true));
             int ix = r.X + 3, iw = w - 6;
             CurrentSpeechEngine(out string noEngine);
             screen.Text(ix, r.Y + 1, SpeechStatus, Style.Of(noEngine == null ? Ansi.Grey : Ansi.BrightYellow, Ansi.Black), iw);
@@ -458,7 +467,7 @@ namespace Sidetone.Cli
             else
             {
                 screen.Text(ix, r.Y + h - 3, "Enter: play on focused card  Space: on all listening  h: hear it (not sent)", helpStyle, iw);
-                screen.Text(ix, r.Y + h - 2, "a: add WAV file  t: add text  r: remove  e: speech and time settings  Esc: close", helpStyle, iw);
+                screen.Text(ix, r.Y + h - 2, "a: add WAV file  t: add text  r: remove  e: settings  Esc: close", helpStyle, iw);
             }
         }
     } // public sealed partial class Tui

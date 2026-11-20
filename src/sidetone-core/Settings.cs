@@ -103,6 +103,8 @@ namespace Sidetone.Core
         public string RecordingsFolder { get; set; }
         /// <summary>Announcement WAV files (full paths), in the order they were added.</summary>
         public List<string> Announcements { get; set; }
+        /// <summary>Announcements' level in dB, compared with the microphone's (0, or null, is the same; -3 is quieter).</summary>
+        public int? AnnouncementLevelDb { get; set; }
         /// <summary>Spoken announcements: texts said by the text-to-speech engine, in the order they were added.</summary>
         public List<string> SpokenAnnouncements { get; set; }
         /// <summary>Text-to-speech engine: "piper", "espeak-ng", or null to choose automatically.</summary>

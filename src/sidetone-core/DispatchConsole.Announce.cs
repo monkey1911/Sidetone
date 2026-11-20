@@ -18,6 +18,42 @@ namespace Sidetone.Core
         /// <summary>Converted audio, by file and its last write time, so a file is only converted once.</summary>
         private readonly Dictionary<string, (DateTime Written, short[] Samples)> announcementCache = new Dictionary<string, (DateTime, short[])>(StringComparer.Ordinal);
 
+        /// <summary>The level choices for announcements, in dB compared with the microphone's.</summary>
+        public static readonly int[] AnnouncementLevels = { -9, -6, -3, 0, 3 };
+
+        /// <summary>A level's name, like "3 dB quieter".</summary>
+        public static string AnnouncementLevelName(int db) =>
+            db == 0 ? "Same as the microphone" : db < 0 ? $"{-db} dB quieter" : $"{db} dB louder";
+
+        /// <summary>How loud announcements go out, in dB compared with the microphone's level.</summary>
+        public int AnnouncementLevel => settings?.AnnouncementLevelDb is int db && AnnouncementLevels.Contains(db) ? db : 0;
+
+        /// <summary>Sets the announcements' level (one of <see cref="AnnouncementLevels"/>). Returns null, or why not.</summary>
+        public string SetAnnouncementLevel(int db)
+        {
+            if (!AnnouncementLevels.Contains(db))
+                return $"the level can be {string.Join(", ", AnnouncementLevels.Select(l => $"{l:+0;-0;0} dB"))}";
+            if (settings == null || AnnouncementLevel == db)
+                return null;
+            settings.AnnouncementLevelDb = db == 0 ? null : db;
+            MarkDirty();
+            AddLog($"announcements: level {AnnouncementLevelName(db).ToLowerInvariant()}");
+            return null;
+        }
+
+        /// <summary>A copy of announcement audio at the chosen level (kept within full scale).</summary>
+        internal short[] AtAnnouncementLevel(short[] samples)
+        {
+            int db = AnnouncementLevel;
+            if (db == 0)
+                return samples;
+            double gain = Math.Pow(10, db / 20.0);
+            short[] copy = new short[samples.Length];
+            for (int i = 0; i < samples.Length; i++)
+                copy[i] = (short)Math.Clamp(Math.Round(samples[i] * gain), -32767, 32767);
+            return copy;
+        }
+
         /// <summary>The remembered announcement files, in the order they were added.</summary>
         public IReadOnlyList<string> Announcements => (IReadOnlyList<string>)Settings?.Announcements ?? Array.Empty<string>();
 
@@ -110,7 +146,7 @@ namespace Sidetone.Core
             if (why != null)
                 return Refuse(why);
 
-            SendAnnouncement(TonePlan.FromAudio($"announcement {AnnouncementName(path)}", samples), targets);
+            SendAnnouncement(TonePlan.FromAudio($"announcement {AnnouncementName(path)}", AtAnnouncementLevel(samples)), targets);
             return null;
         }
     } // public partial class DispatchConsole

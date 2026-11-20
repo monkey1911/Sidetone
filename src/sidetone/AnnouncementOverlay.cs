@@ -58,7 +58,7 @@ namespace Sidetone.Gui
         private readonly Tap add, done, lookAgain, addText, h12, h24, zoneYes, zoneNo, hearTime, playTime, playTimeAll;
 
         private readonly ComboBox engine = new ComboBox { Width = 200, FontSize = 13 }, voice = new ComboBox { Width = 260, FontSize = 13 };
-        private readonly ComboBox speed = new ComboBox { Width = 200, FontSize = 13 };
+        private readonly ComboBox speed = new ComboBox { Width = 200, FontSize = 13 }, level = new ComboBox { Width = 200, FontSize = 13 };
         private readonly TextBox newText = new TextBox { FontSize = 13, Width = 560, PlaceholderText = "Type what to say, like: Shift change in ten minutes" };
         private readonly TextBox before = new TextBox { FontSize = 13, Width = 300 }, after = new TextBox { FontSize = 13, Width = 520, PlaceholderText = "(nothing)" };
         private readonly TextBox zoneName = new TextBox { FontSize = 13, Width = 200, PlaceholderText = "its abbreviation" };
@@ -85,7 +85,7 @@ namespace Sidetone.Gui
         /// <summary>True when a text box in the box has the keyboard (so keys are typing, not shortcuts).</summary>
         public bool Typing =>
             newText.IsFocused || before.IsFocused || after.IsFocused || zoneName.IsFocused ||
-            new[] { engine, voice, speed, zone, every, onChannel }.Any(c => c.IsFocused || c.IsDropDownOpen);
+            new[] { level, engine, voice, speed, zone, every, onChannel }.Any(c => c.IsFocused || c.IsDropDownOpen);
 
         public AnnouncementOverlay(Func<DispatchConsole> console, Action addFiles, Action changed, Action closed)
         {
@@ -113,6 +113,8 @@ namespace Sidetone.Gui
             voice.SelectionChanged += (s, e) => SaveEngine();
             speed.ItemsSource = Speech.Rates.Select(r => new Choice(r.ToString(System.Globalization.CultureInfo.InvariantCulture), Speech.RateName(r))).ToList();
             speed.SelectionChanged += (s, e) => SaveSpeed();
+            level.ItemsSource = DispatchConsole.AnnouncementLevels.Select(db => new Choice(db.ToString(), DispatchConsole.AnnouncementLevelName(db))).ToList();
+            level.SelectionChanged += (s, e) => SaveLevel();
             newText.KeyDown += (s, e) =>
             {
                 if (e.Key == Key.Enter)
@@ -127,6 +129,8 @@ namespace Sidetone.Gui
                 c.SelectionChanged += (s, e) => SaveTime();
 
             StackPanel content = new StackPanel { Spacing = 8, Margin = new Thickness(0, 0, 18, 0) };
+
+            content.Children.Add(FieldRow(Label("Level"), level, Label("(all announcements, compared with your microphone)", false)));
 
             content.Children.Add(Heading("Text to speech"));
             content.Children.Add(FieldRow(speech));
@@ -231,6 +235,7 @@ namespace Sidetone.Gui
                 voice.ItemsSource = voiceChoices;
                 voice.SelectedIndex = Math.Max(0, voiceChoices.FindIndex(v => v.Value != null && v.Value == c.Settings?.SpeechVoice));
                 speed.SelectedIndex = Math.Max(0, Array.IndexOf(Speech.Rates, c.SpeechRate));
+                level.SelectedIndex = Math.Max(0, Array.IndexOf(DispatchConsole.AnnouncementLevels, c.AnnouncementLevel));
 
                 // the time announcement
                 TimeAnnouncementSettings t = c.TimeAnnouncement;
@@ -392,6 +397,18 @@ namespace Sidetone.Gui
             Show(message.Text);
             changed();
         }
+
+        private void SaveLevel()
+        {
+            DispatchConsole c = console();
+            if (filling || c == null || level.SelectedIndex < 0)
+                return;
+            Say(c.SetAnnouncementLevel(DispatchConsole.AnnouncementLevels[level.SelectedIndex]));
+            changed();
+        }
+
+        /// <summary>Picks a level, as the list would (self-check hook).</summary>
+        internal void ChooseLevel(int db) => level.SelectedIndex = Array.IndexOf(DispatchConsole.AnnouncementLevels, db);
 
         /// <summary>Picks a speed, as the list would (self-check hook).</summary>
         internal void ChooseSpeed(double rate) => speed.SelectedIndex = Array.IndexOf(Speech.Rates, rate);

@@ -1964,9 +1964,9 @@ zones:
             short[] fromCd = WavFile.ReadAnnouncement(cd);
             int crossings = 0;
             for (int i = 1; i < fromCd.Length; i++) if ((fromCd[i - 1] < 0) != (fromCd[i] < 0)) crossings++;
-            double cdPeak = fromCd.Max(v => Math.Abs((int)v)) / 32768.0;
-            Check(Math.Abs(fromCd.Length - 16000) <= 2 && Math.Abs(crossings - 4000) <= 20 && Math.Abs(Db(cdPeak) - (-3)) < 0.5,
-                  $"announcement: a 44.1 kHz stereo WAV becomes 8 kHz mono at the same pitch, peaking at -3 dBFS ({fromCd.Length} samples, {Db(cdPeak):F1} dBFS)");
+            double cdLevel = WavFile.SpeechLevelDb(fromCd);
+            Check(Math.Abs(fromCd.Length - 16000) <= 2 && Math.Abs(crossings - 4000) <= 20 && Math.Abs(cdLevel - VoiceProcessor.TargetDb) < 0.5,
+                  $"announcement: a 44.1 kHz stereo WAV becomes 8 kHz mono at the same pitch, at the microphone's level ({fromCd.Length} samples, {cdLevel:F1} dBFS)");
 
             string hiRes = Path.Combine(dir, "float48k.wav");
             WriteTestWav(hiRes, 48000, 1, 32, true, 1.0, (t, ch) => 0.3 * Math.Sin(2 * Math.PI * 500 * t) + 0.3 * Math.Sin(2 * Math.PI * 5000 * t));
@@ -1979,13 +1979,34 @@ zones:
             WriteTestWav(deep, 16000, 1, 24, false, 0.5, (t, ch) => 0.5 * Math.Sin(2 * Math.PI * 800 * t));
             WriteTestWav(cheap, 8000, 1, 8, false, 0.5, (t, ch) => 0.5 * Math.Sin(2 * Math.PI * 800 * t));
             short[] fromDeep = WavFile.ReadAnnouncement(deep), fromCheap = WavFile.ReadAnnouncement(cheap);
-            Check(fromDeep.Length == 4000 && fromCheap.Length == 4000 && Db(ToneLevel(fromDeep, 800)) > -6 && Db(ToneLevel(fromCheap, 800)) > -6,
+            Check(fromDeep.Length == 4000 && fromCheap.Length == 4000 && Db(ToneLevel(fromDeep, 800)) > -25 && Db(ToneLevel(fromCheap, 800)) > -25,
                   "announcement: 24-bit and 8-bit WAVs are read too");
 
             string quiet = Path.Combine(dir, "quiet.wav");
             WriteTestWav(quiet, 8000, 1, 16, false, 0.5, (t, ch) => 0.0316 * Math.Sin(2 * Math.PI * 700 * t));    // -30 dBFS
             double quietPeak = WavFile.ReadAnnouncement(quiet).Max(v => Math.Abs((int)v)) / 32768.0;
             Check(Math.Abs(Db(quietPeak) - (-18)) < 0.6, $"announcement: a quiet file is raised at most 12 dB ({Db(quietPeak):F1} dBFS)");
+
+            // speech is levelled by its loudness (like the microphone), not its peaks; pauses don't count; a spike can't clip
+            string loudSpeech = Path.Combine(dir, "loud-speech.wav"), softSpeech = Path.Combine(dir, "soft-speech.wav"), spiky = Path.Combine(dir, "spiky.wav");
+            void SpeechFile(string path, double gain, bool spike)
+            {
+                using WavSink sink = new WavSink(path);
+                for (int f = 0; f < 200; f++)
+                {
+                    short[] frame = f % 50 < 35 ? VoicedFrame(f).Select(v => (short)Math.Clamp(v * gain, -32767, 32767)).ToArray() : new short[160];   // with pauses
+                    if (spike && f == 20) frame[80] = 32000;
+                    sink.Write(frame);
+                }
+            }
+            SpeechFile(loudSpeech, 4.0, false);
+            SpeechFile(softSpeech, 0.3, false);
+            SpeechFile(spiky, 0.3, true);
+            double loudDb = WavFile.SpeechLevelDb(WavFile.ReadAnnouncement(loudSpeech)), softDb = WavFile.SpeechLevelDb(WavFile.ReadAnnouncement(softSpeech));
+            short[] fromSpiky = WavFile.ReadAnnouncement(spiky);
+            double spikyPeak = Db(fromSpiky.Max(v => Math.Abs((int)v)) / 32768.0);
+            Check(Math.Abs(loudDb - VoiceProcessor.TargetDb) < 1 && Math.Abs(softDb - VoiceProcessor.TargetDb) < 1 && spikyPeak <= WavFile.AnnouncementCeilingDb + 0.1,
+                  $"announcement: loud and soft speech both come out at the microphone's level (-20 dBFS: {loudDb:F1}, {softDb:F1}), and a spike is kept under -1 dBFS ({spikyPeak:F1})");
 
             string notWav = Path.Combine(dir, "notes.wav"), adpcm = Path.Combine(dir, "adpcm.wav"), tooLong = Path.Combine(dir, "long.wav");
             File.WriteAllText(notWav, "not audio");
@@ -2200,9 +2221,9 @@ zones:
             {
                 System.Diagnostics.Stopwatch took = System.Diagnostics.Stopwatch.StartNew();
                 short[] realSpeech = Speech.Synthesize(real, Speech.TimeAnnouncementText(new TimeAnnouncementSettings { TimeZone = "UTC" }, winter));
-                double realPeak = realSpeech.Max(v => Math.Abs((int)v)) / 32768.0;
-                Check(realSpeech.Length > 8000 && realSpeech.Length < 8000 * 10 && realPeak > 0.5,
-                      $"text to speech: {real.Label} says a time announcement ({realSpeech.Length / 8000.0:F1} s of audio, peak {20 * Math.Log10(realPeak):F1} dBFS, in {took.ElapsedMilliseconds} ms)");
+                double realPeak = 20 * Math.Log10(realSpeech.Max(v => Math.Abs((int)v)) / 32768.0), realLevel = WavFile.SpeechLevelDb(realSpeech);
+                Check(realSpeech.Length > 8000 && realSpeech.Length < 8000 * 10 && realPeak <= WavFile.AnnouncementCeilingDb + 0.1 && realLevel > VoiceProcessor.TargetDb - 4 && realLevel < VoiceProcessor.TargetDb + 1,
+                      $"text to speech: {real.Label} says a time announcement at about the microphone's level ({realSpeech.Length / 8000.0:F1} s of audio, speech {realLevel:F1} dBFS, peak {realPeak:F1} dBFS, in {took.ElapsedMilliseconds} ms)");
             }
             else
                 Console.WriteLine("(no text-to-speech engine installed: the real-engine check is skipped)");
@@ -2274,6 +2295,20 @@ zones:
             sp.SaveSettings();
             Check(slower == null && oddSpeed != null && sp.SpeechRate == 1.0 && remade && speedKept && Speech.RateName(0.9) == "Slower (90%)",
                   "text to speech: the speed is remembered, only the offered speeds are taken, and a spoken announcement is made again at a new speed");
+
+            // the level: all announcements go out that much quieter (or louder), and Hear it follows it
+            sent.Clear();
+            sp.SpeakAnnouncement("Shift change in ten minutes", allListening: false);
+            string quieter = sp.SetAnnouncementLevel(-6), oddLevel = sp.SetAnnouncementLevel(-5);
+            sp.SpeakAnnouncement("Shift change in ten minutes", allListening: false);
+            double Rms(TonePlan plan) { double sum = 0; long n = 0; foreach (short[] fr in plan.MonitorPcm()) foreach (short v in fr) { sum += (double)v * v; n++; } return 20 * Math.Log10(Math.Sqrt(sum / Math.Max(1, n)) / 32768.0); }
+            double drop = sent.Count == 2 ? Rms(sent[0].Plan) - Rms(sent[1].Plan) : 0;
+            sp.SaveSettings();
+            bool levelKept = NewSpeaker(TimeSpan.FromSeconds(120), 2).AnnouncementLevel == -6;
+            sp.SetAnnouncementLevel(0);
+            sp.SaveSettings();
+            Check(quieter == null && oddLevel != null && Math.Abs(drop - 6) < 0.2 && levelKept && sp.AnnouncementLevel == 0 && DispatchConsole.AnnouncementLevelName(-3) == "3 dB quieter",
+                  $"announcements: the level setting sends them that much quieter ({drop:F1} dB at -6), is remembered, and takes only the offered steps");
 
             string badZone = sp.SetTimeAnnouncement(new TimeAnnouncementSettings { TimeZone = "Not/AZone" });
             string badEvery = sp.SetTimeAnnouncement(new TimeAnnouncementSettings { EveryMinutes = 7 });
@@ -2373,8 +2408,9 @@ zones:
             string formShown = tb.ScreenText;
             if (Environment.GetEnvironmentVariable("SIDETONE_SHOW_TUI") == "1") Console.WriteLine(listShown + formShown);
             bool formOpen = tb.AnnounceFormOpen && listShown.Contains("\"Radio check\"") && listShown.Contains($"Time: {tb.TimeAnnouncementPreview}") &&
-                            formShown.Contains("Speech and time announcement") && formShown.Contains($"Will say: {tb.TimeAnnouncementPreview}");
-            Key(InputKey.Down); Key(InputKey.Down);                // Speed
+                            formShown.Contains("Announcement settings") && formShown.Contains("Same as the microphone") && formShown.Contains($"Will say: {tb.TimeAnnouncementPreview}");
+            Key(InputKey.Left);                                    // Level: same as the microphone to 3 dB quieter
+            Key(InputKey.Down); Key(InputKey.Down); Key(InputKey.Down);   // Speed
             Key(InputKey.Left);                                    // Normal to a little slower
             Key(InputKey.Down);                                    // Before the time
             for (int i = 0; i < 40; i++) Key(InputKey.Backspace);
@@ -2393,7 +2429,7 @@ zones:
             TimeAnnouncementSettings fromForm = tb.TimeAnnouncement;
             Key(InputKey.Escape);
             Check(textAdded && formOpen && zoneRefused && !tb.AnnounceFormOpen && !tb.AnnounceDialogOpen && fromForm.Before == "Centrunk time is" &&
-                  !fromForm.Hour24 && fromForm.TimeZone == "America/Chicago" && tb.SpeechRate == 0.95 && formShown.Contains("Speed"),
+                  !fromForm.Hour24 && fromForm.TimeZone == "America/Chicago" && tb.SpeechRate == 0.95 && tb.AnnouncementLevel == -3 && formShown.Contains("Speed"),
                   "TUI announcements box: t adds a text to say; e opens the speech and time settings (speed too), which refuse an unknown zone and save the rest");
         }
 
