@@ -220,6 +220,9 @@ namespace Sidetone.Cli
                 // 20. call history kept between runs
                 HistoryTests(tmp, cp, sys);
 
+                // 21. listen with a local key file
+                ListenKeyTests(tmp);
+
                 // 8. WAV writer
                 string wavPath = Path.Combine(tmp, "test.wav");
                 using (WavSink wav = new WavSink(wavPath))
@@ -1872,6 +1875,23 @@ zones:
                   "zones: if every zone was hidden, the first one is shown (names match whatever the case)");
             zthird.Shutdown();
             zt.Shutdown();
+        }
+
+        private static void ListenKeyTests(string tmp)
+        {
+            string lekc = Path.Combine(tmp, "listen-keys.ekc");
+            WriteEkc(lekc, "listen pass", new[] { (true, (int)P25Defines.P25_ALGO_AES, (int)TestKeyId, Convert.ToHexString(TestKey)) });
+            Queue<string> answers = new Queue<string>(new[] { "wrong", "listen pass" });
+            KeyStore lks = new KeyStore();
+            LocalKeyFile opened = Program.OpenListenKeyFile(lekc, lks, _ => answers.Count > 0 ? answers.Dequeue() : string.Empty);
+            bool unlocked = opened != null && lks.TryGet(P25Defines.P25_ALGO_AES, TestKeyId, out byte[] got) && got.SequenceEqual(TestKey) && lks.IsLocal(P25Defines.P25_ALGO_AES, TestKeyId);
+            opened?.Dispose();
+            KeyStore skipped = new KeyStore();
+            LocalKeyFile none = Program.OpenListenKeyFile(lekc, skipped, _ => string.Empty);
+            LocalKeyFile missing = Program.OpenListenKeyFile(Path.Combine(tmp, "no-such.ekc"), new KeyStore(), _ => "x");
+            Check(unlocked && answers.Count == 0 && none == null && !skipped.TryGet(P25Defines.P25_ALGO_AES, TestKeyId, out _) && missing == null &&
+                  Program.OpenListenKeyFile(null, new KeyStore(), _ => "x") == null,
+                  "listen: a key file is unlocked (after a wrong try) and its keys are used; skipping or a missing file just means the FNE's keys");
         }
 
         private static void HistoryTests(string tmp, Codeplug cp, Codeplug.System sys)

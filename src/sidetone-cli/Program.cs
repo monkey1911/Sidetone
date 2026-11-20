@@ -4,7 +4,7 @@
 *
 *   sidetone-cli list     --codeplug FILE
 *   sidetone-cli listen   --codeplug FILE (--channel NAME | --tg TGID) [--system NAME]
-*                   [--wav FILE] [--no-play] [--player CMD] [--output DEVICE] [--verbose]
+*                   [--wav FILE] [--no-play] [--player CMD] [--output DEVICE] [--key-file FILE.ekc] [--verbose]
 *   sidetone-cli tui      --codeplug FILE [--output DEVICE] [--input DEVICE] ...
 *   sidetone-cli devices
 *   sidetone-cli ptt      down | up | toggle | hold | status [--socket PATH]
@@ -84,7 +84,7 @@ namespace Sidetone.Cli
             Console.WriteLine("usage:");
             Console.WriteLine("  sidetone-cli list     --codeplug FILE");
             Console.WriteLine("  sidetone-cli listen   --codeplug FILE (--channel NAME | --tg TGID) [--system NAME]");
-            Console.WriteLine("                  [--wav FILE] [--no-play] [--player CMD] [--output DEVICE] [--verbose]");
+            Console.WriteLine("                  [--wav FILE] [--no-play] [--player CMD] [--output DEVICE] [--key-file FILE.ekc] [--verbose]");
             Console.WriteLine("  sidetone-cli tui      --codeplug FILE [--system NAME] [--tx-limit SECONDS] [--log FILE | --no-log]");
             Console.WriteLine("                  [--marker-interval SECONDS] [--settings FILE | --no-settings]");
             Console.WriteLine("                  [--output DEVICE] [--input DEVICE] [--socket PATH | --no-socket]");
@@ -136,6 +136,76 @@ namespace Sidetone.Cli
             }
 
             return 0;
+        }
+
+        private static LocalKeyFile listenKeys;
+
+        /// <summary>
+        /// listen's local key file (--key-file, the one chosen in Settings, or the codeplug's): unlocked with
+        /// the keyring's password, or by asking (three tries; empty skips). Its keys go into
+        /// <paramref name="keys"/>, ahead of the FNE's. Returns it (to dispose), or null.
+        /// </summary>
+        internal static LocalKeyFile OpenListenKeyFile(string path, KeyStore keys, Func<string, string> ask)
+        {
+            if (path == null)
+                return null;
+            string file = Path.GetFileName(path);
+            if (!File.Exists(path))
+            {
+                Say($"warning: key file not found: {path}");
+                return null;
+            }
+            List<string> tries = new List<string>();
+            string remembered = SecretStore.Lookup(path);
+            if (remembered != null)
+                tries.Add(remembered);
+            for (int attempt = 0; attempt < 3 + tries.Count; attempt++)
+            {
+                bool fromKeyring = attempt < tries.Count;
+                string password = fromKeyring ? tries[attempt] : ask($"Password for {file} (Enter to skip): ");
+                if (string.IsNullOrEmpty(password))
+                {
+                    Say("keys: key file skipped; using the FNE's keys only");
+                    return null;
+                }
+                LocalKeyFile opened = LocalKeyFile.Open(path, password, out string error, out bool wrong);
+                if (opened != null)
+                {
+                    keys.SetLocal(opened.Lookup, opened.Count);
+                    Say($"keys: {opened.Count} from {file}{(fromKeyring ? " (password from the keyring)" : string.Empty)}");
+                    return opened;
+                }
+                if (!fromKeyring)
+                    Say($"keys: {error}");
+                if (!wrong)
+                    return null;
+            }
+            Say("keys: key file not unlocked; using the FNE's keys only");
+            return null;
+        }
+
+        /// <summary>Asks for the key file's password without showing it (a line from stdin when it isn't a terminal).</summary>
+        private static string AskKeyFilePassword(string prompt)
+        {
+            if (Console.IsInputRedirected)
+                return Console.ReadLine() ?? string.Empty;
+            Console.Write(prompt);
+            System.Text.StringBuilder typed = new System.Text.StringBuilder();
+            while (true)
+            {
+                ConsoleKeyInfo key = Console.ReadKey(intercept: true);
+                if (key.Key == ConsoleKey.Enter)
+                    break;
+                if (key.Key == ConsoleKey.Backspace)
+                {
+                    if (typed.Length > 0)
+                        typed.Length--;
+                }
+                else if (!char.IsControl(key.KeyChar))
+                    typed.Append(key.KeyChar);
+            }
+            Console.WriteLine();
+            return typed.ToString();
         }
 
         private static int Listen(Options opt)
@@ -210,6 +280,8 @@ namespace Sidetone.Cli
                     Say("audio: none (--no-play without --wav); showing call activity only");
 
                 KeyStore keys = new KeyStore();
+                AppSettings savedForKeys = opt.NoSettings ? null : AppSettings.Load(opt.SettingsFile ?? AppSettings.DefaultPath, out _);
+                listenKeys = OpenListenKeyFile(StartupChoices.KeyFile(cp, opt.KeyFile, savedForKeys), keys, AskKeyFilePassword);
                 using P25VoiceReceiver receiver = new P25VoiceReceiver(tg, keys);
                 receiver.Status += Say;
                 receiver.Audio += samples =>
@@ -259,6 +331,8 @@ namespace Sidetone.Cli
             {
                 foreach (IAudioSink sink in sinks)
                     sink.Dispose();
+                listenKeys?.Dispose();      // wipes the key file's keys from memory
+                listenKeys = null;
             }
         }
 
