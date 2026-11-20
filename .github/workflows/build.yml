@@ -44,12 +44,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: recursive
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
 
@@ -115,7 +115,7 @@ jobs:
           echo "-----END PNG welcome-----"
 
       - name: Upload GUI screenshots
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: gui-screenshots-linux-${{ matrix.arch }}
           path: out/gui-*.png
@@ -147,7 +147,7 @@ jobs:
           (cd out && sha256sum "$image" > "$image.sha256")
 
       - name: Upload build
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: sidetone-linux-${{ matrix.arch }}
           path: |
@@ -179,10 +179,10 @@ jobs:
       TAG: ${{ github.event.release.tag_name || github.ref_name }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Get the tarballs
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: sidetone-linux-*
           path: tarballs
@@ -222,7 +222,7 @@ jobs:
           '
 
       - name: Upload the PKGBUILD
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: sidetone-bin-PKGBUILD
           path: arch/sidetone-bin/PKGBUILD
