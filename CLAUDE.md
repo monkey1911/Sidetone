@@ -8,12 +8,13 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
 
 ## State at hand-off (2026-11-16)
 
-- Version **0.30.1** on `main` (set once, in `src/Directory.Build.props`): a speed setting for
-  text to speech; 0.30.0 brought spoken announcements (Piper or espeak-ng) and the time
+- Version **0.30.2** on `main` (set once, in `src/Directory.Build.props`): a fix for the time
+  announcement playing again when its schedule was turned on just after the hour; 0.30.1 added a
+  speed setting for text to speech; 0.30.0 brought spoken announcements (Piper or espeak-ng) and the time
   announcement; 0.29 brought WAV
   announcements, `listen --key-file`, the dvmcli/dvmgui wrappers removed. Check
   `gh release list` for what was last published.
-- 341 checks (280 in `sidetone-cli selftest`, one of which runs only when a speech engine is
+- 342 checks (281 in `sidetone-cli selftest`, one of which runs only when a speech engine is
   installed; 61 in the GUI's `--selfcheck`) plus screenshots.
 - **Tested on the air by the owner:** RX/TX clear and AES, key delivery from the FNE, alias sync,
   alert tones, channel marker, QCII and digital pages, radio check (the radio answers; see the FNE

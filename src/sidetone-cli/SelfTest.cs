@@ -2332,6 +2332,22 @@ zones:
             bool onlyThere = sent.Count == 3 && sent[2].Targets.SequenceEqual(new[] { notListening });
             Check(needsListening && onlyThere, "time announcement schedule: on one chosen channel, which has to be listening (so the console knows when it's quiet)");
 
+            // turned on a few seconds after the hour (just after playing it by hand): nothing until the next hour
+            sp.SetTimeAnnouncement(new TimeAnnouncementSettings { TimeZone = "UTC", EveryMinutes = 0 });
+            clock = new DateTime(2026, 3, 2, 12, 0, 1, DateTimeKind.Utc);
+            sp.PlayTimeAnnouncement(allListening: false);
+            int byHand = sent.Count;
+            clock = new DateTime(2026, 3, 2, 12, 0, 9, DateTimeKind.Utc);
+            sp.SetTimeAnnouncement(new TimeAnnouncementSettings { TimeZone = "UTC", EveryMinutes = 60, Channel = notListening.Cfg.Name });
+            sp.Tick();
+            clock = new DateTime(2026, 3, 2, 12, 20, 0, DateTimeKind.Utc);
+            sp.Tick();
+            bool noRepeat = sent.Count == byHand;
+            clock = new DateTime(2026, 3, 2, 13, 0, 2, DateTimeKind.Utc);
+            sp.Tick();
+            Check(noRepeat && sent.Count == byHand + 1,
+                  "time announcement schedule: turned on just after the hour (after playing it by hand), it waits for the next hour instead of playing again");
+
             // Hear it: the words through the vocoder on the speakers, nothing sent
             List<short[]> previewed = new List<short[]>();
             sp.replaySinkForTest = () => new ListSink(previewed);
@@ -2356,8 +2372,8 @@ zones:
             tb.Render(120, 40);
             string formShown = tb.ScreenText;
             if (Environment.GetEnvironmentVariable("SIDETONE_SHOW_TUI") == "1") Console.WriteLine(listShown + formShown);
-            bool formOpen = tb.AnnounceFormOpen && listShown.Contains("\"Radio check\"") && listShown.Contains("Time: CTRS time is 1130") &&
-                            formShown.Contains("Speech and time announcement") && formShown.Contains("Will say: CTRS time is 1130");
+            bool formOpen = tb.AnnounceFormOpen && listShown.Contains("\"Radio check\"") && listShown.Contains($"Time: {tb.TimeAnnouncementPreview}") &&
+                            formShown.Contains("Speech and time announcement") && formShown.Contains($"Will say: {tb.TimeAnnouncementPreview}");
             Key(InputKey.Down); Key(InputKey.Down);                // Speed
             Key(InputKey.Left);                                    // Normal to a little slower
             Key(InputKey.Down);                                    // Before the time

@@ -470,7 +470,8 @@ namespace Sidetone.Core
             bool scheduleChanged = was == null || was.EveryMinutes != t.EveryMinutes || was.Channel != t.Channel || was.TimeZone != t.TimeZone;
             if (scheduleChanged)
             {
-                timeSlotDone = null;
+                // a change counts from the next slot: the one in progress isn't played (it may have just been played by hand)
+                timeSlotDone = t.EveryMinutes > 0 ? SlotStart(t, UtcNow) : null;
                 timeSlotWaiting = null;
                 AddLog(t.EveryMinutes > 0 ? $"time announcement: every {t.EveryMinutes} minutes on {t.Channel ?? "every listening channel"}" : "time announcement: not played by itself");
             }
