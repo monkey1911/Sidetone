@@ -215,7 +215,8 @@ jobs:
             pacman -Ql sidetone-bin | grep -E "usr/bin|applications|icons"
             sidetone --version
             sidetone-cli --version
-            sidetone-cli selftest | tail -1
+            sidetone-cli selftest > /tmp/selftest.log || { grep -E "FAIL" /tmp/selftest.log; exit 1; }
+            tail -1 /tmp/selftest.log
           '
 
       - name: Upload the PKGBUILD
