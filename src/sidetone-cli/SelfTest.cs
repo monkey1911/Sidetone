@@ -64,6 +64,29 @@ namespace Sidetone.Cli
             Check(rms > 100, $"IMBE round trip produces audio (output RMS {rms:F0})");
             Check(codewords.Select(c => Convert.ToHexString(c)).Distinct().Count() > 1, "encoder output varies frame to frame");
 
+            // libvocoder's decoder used to leave its auto-gain flag uninitialised (patches/dvmvocoder-autogain.patch):
+            // a decoder made in reused, dirty memory came out about six times too loud. Dirty the heap, then make decoders.
+            double steadyRms = DecodedRms(new MBEDecoder(MBE_MODE.IMBE_88BIT), codewords);
+            int loudDecoders = 0;
+            for (int round = 0; round < 30; round++)
+            {
+                List<IntPtr> dirty = new List<IntPtr>();
+                for (int b = 0; b < 16; b++)
+                {
+                    int size = 256 * (b + 1);
+                    IntPtr block = Marshal.AllocHGlobal(size);
+                    for (int i = 0; i < size; i++)
+                        Marshal.WriteByte(block, i, 0x01);
+                    dirty.Add(block);
+                }
+                foreach (IntPtr block in dirty)
+                    Marshal.FreeHGlobal(block);
+                double r = DecodedRms(new MBEDecoder(MBE_MODE.IMBE_88BIT), codewords);
+                if (r > steadyRms * 1.5 || r < steadyRms / 1.5)
+                    loudDecoders++;
+            }
+            Check(loudDecoders == 0, $"libvocoder: decoders made in reused memory decode at the same level ({loudDecoders} of 30 differed from RMS {steadyRms:F0})");
+
             // 2. codeword extraction from a network LDU frame
             byte[] ldu1 = BuildLduFrame(P25VoiceReceiver.Ldu1FirstRecord, codewords.Take(9).ToList());
             byte[] ldu2 = BuildLduFrame(P25VoiceReceiver.Ldu2FirstRecord, codewords.Skip(9).Take(9).ToList());
@@ -1628,6 +1651,23 @@ B: MSC=10
         /// <summary>
         /// A voiced, speech-like test frame: 140 Hz fundamental with falling harmonics and a slow pitch glide.
         /// </summary>
+        private static double DecodedRms(MBEDecoder decoder, List<byte[]> codewords)
+        {
+            double energy = 0;
+            int n = 0;
+            for (int f = 0; f < codewords.Count; f++)
+            {
+                short[] o = new short[P25VoiceReceiver.FrameSamples];
+                decoder.decode(codewords[f], o);
+                if (f < 10)
+                    continue;
+                foreach (short v in o)
+                    energy += (double)v * v;
+                n += o.Length;
+            }
+            return Math.Sqrt(energy / Math.Max(1, n));
+        }
+
         private static short[] VoicedFrame(int frame)
         {
             short[] pcm = new short[P25VoiceReceiver.FrameSamples];

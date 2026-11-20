@@ -42,9 +42,6 @@ namespace Sidetone.Cli
                 catch (ArgumentException ex) { return Usage(ex.Message); }
             }
 
-            if (args[0] == "opus-diag")
-                return OpusDiag(args);
-
             if (args[0] == "ptt")
             {
                 try { return Ptt(args.Skip(1).ToArray()); }
@@ -209,53 +206,6 @@ namespace Sidetone.Cli
             }
             Console.WriteLine();
             return typed.ToString();
-        }
-
-        /// <summary>
-        /// Temporary, for investigating an Opus problem on AVX-512 machines (CI only, not documented):
-        /// opus-diag encode FILE writes 5 s of speech-like audio; opus-diag decode FILE prints its length and level.
-        /// </summary>
-        private static int OpusDiag(string[] args)
-        {
-            string mode = args.Length > 1 ? args[1] : null, file = args.Length > 2 ? args[2] : null;
-            if (mode == "encode" && file != null)
-            {
-                using (OpusFileSink sink = new OpusFileSink(file))
-                    for (int f = 0; f < 250; f++)
-                    {
-                        short[] frame = new short[160];
-                        for (int i = 0; i < 160; i++)
-                        {
-                            double t = (f * 160 + i) / 8000.0, pitch = 120 + 30 * Math.Sin(2 * Math.PI * 0.7 * t), env = 0.5 + 0.5 * Math.Sin(2 * Math.PI * 3 * t);
-                            double v = 0;
-                            for (int h = 1; h <= 20; h++)
-                                v += Math.Sin(2 * Math.PI * pitch * h * t) / h;
-                            frame[i] = (short)(3000 * env * v);
-                        }
-                        sink.Write(frame);
-                    }
-                Console.WriteLine($"encoded {file}: {new FileInfo(file).Length} bytes");
-                return 0;
-            }
-            if (mode == "decode" && file != null)
-            {
-                Concentus.OpusCodecFactory.AttemptToUseNativeLibrary = false;
-                Concentus.Oggfile.OpusOggReadStream ogg = new Concentus.Oggfile.OpusOggReadStream(Concentus.OpusCodecFactory.CreateDecoder(8000, 1), File.OpenRead(file));
-                List<short> all = new List<short>();
-                while (ogg.HasNextPacket)
-                {
-                    short[] packet = ogg.DecodeNextPacket();
-                    if (packet != null)
-                        all.AddRange(packet);
-                }
-                double sum = 0;
-                foreach (short v in all)
-                    sum += (double)v * v;
-                Console.WriteLine($"decoded {file}: {all.Count} samples, rms {Math.Sqrt(sum / Math.Max(1, all.Count)):F0}");
-                return 0;
-            }
-            Console.Error.WriteLine("usage: opus-diag encode|decode FILE");
-            return 2;
         }
 
         private static int Listen(Options opt)

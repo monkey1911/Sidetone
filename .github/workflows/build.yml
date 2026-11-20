@@ -55,6 +55,8 @@ jobs:
 
       - name: Build libvocoder
         run: |
+          # patches/: fixes to libvocoder that haven't reached DVMProject/dvmvocoder yet
+          for p in patches/dvmvocoder-*.patch; do git -C extern/dvmvocoder apply "$PWD/$p"; done
           cmake -S extern/dvmvocoder -B build/vocoder -DCMAKE_BUILD_TYPE=Release
           cmake --build build/vocoder -j"$(nproc)"
           mkdir -p build/native
@@ -77,9 +79,7 @@ jobs:
           done
 
       - name: Self-test
-        run: |
-          echo "cpu: $(grep -m1 -E "model name|CPU part" /proc/cpuinfo | cut -d: -f2) avx512f=$(grep -c -m1 avx512f /proc/cpuinfo || true)"
-          out/sidetone-$RID/sidetone-cli selftest
+        run: out/sidetone-$RID/sidetone-cli selftest
 
       # Renders the GUI off-screen (no display needed) in both themes. The PNGs go into the log as
       # base64 so they can be looked at without downloading an artifact.
@@ -217,22 +217,7 @@ jobs:
             pacman -Ql sidetone-bin | grep -E "usr/bin|applications|icons"
             sidetone --version
             sidetone-cli --version
-            echo "cpu: $(grep -m1 "model name" /proc/cpuinfo | cut -d: -f2) avx512f=$(grep -c -m1 avx512f /proc/cpuinfo || true)"
-            if ! sidetone-cli selftest > /tmp/selftest.log; then
-              grep -E "FAIL" /tmp/selftest.log
-              DOTNET_EnableAVX512F=0 sidetone-cli selftest > /tmp/selftest2.log && echo "without AVX-512: all pass" || { echo "without AVX-512:"; grep -E "FAIL" /tmp/selftest2.log; }
-              # which half of Opus misbehaves: encode each way, decode each file each way, and with ffmpeg (libopus) as the judge
-              sidetone-cli opus-diag encode /tmp/avx-on.opus
-              DOTNET_EnableAVX512F=0 sidetone-cli opus-diag encode /tmp/avx-off.opus
-              for f in /tmp/avx-on.opus /tmp/avx-off.opus; do
-                echo "decode with AVX-512 on:  $(sidetone-cli opus-diag decode $f)"
-                echo "decode with AVX-512 off: $(DOTNET_EnableAVX512F=0 sidetone-cli opus-diag decode $f)"
-              done
-              pacman -S --noconfirm --needed ffmpeg >/dev/null 2>&1 && for f in /tmp/avx-on.opus /tmp/avx-off.opus; do
-                echo "ffmpeg $f: $(ffmpeg -hide_banner -nostats -i $f -af volumedetect -f null - 2>&1 | grep -E "mean_volume|max_volume" | sed "s/.*\] //" | tr "\n" " ")"
-              done
-              exit 1
-            fi
+            sidetone-cli selftest > /tmp/selftest.log || { grep -E "FAIL" /tmp/selftest.log; exit 1; }
             tail -1 /tmp/selftest.log
           '
 
