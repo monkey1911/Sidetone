@@ -2,11 +2,11 @@
 # Sidetone AppImage entry point.
 #   Sidetone-*.AppImage [options]        the graphical console (sidetone)
 #   Sidetone-*.AppImage cli COMMAND ...  the terminal program (sidetone-cli): tui, listen, ptt, devices, ...
-# A link to the AppImage named sidetone-cli (or dvmcli) runs the terminal program too.
+# A link to the AppImage named sidetone-cli runs the terminal program too.
 HERE="$(dirname "$(readlink -f "$0")")"
 BIN="$HERE/usr/lib/sidetone"
 case "$(basename "${ARGV0:-$0}")" in
-    sidetone-cli*|dvmcli*) exec "$BIN/sidetone-cli" "$@" ;;
+    sidetone-cli*) exec "$BIN/sidetone-cli" "$@" ;;
 esac
 if [ "$1" = "cli" ]; then
     shift

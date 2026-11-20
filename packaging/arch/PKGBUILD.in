@@ -31,8 +31,8 @@ package() {
 
     install -d "$pkgdir/opt/sidetone" "$pkgdir/usr/bin"
     cp -a . "$pkgdir/opt/sidetone/"
-    # .NET's tracing hook (needs lttng, unused), the pre-rename wrappers, and files installed below
-    rm -rf "$pkgdir/opt/sidetone/libcoreclrtraceptprovider.so" "$pkgdir/opt/sidetone/dvmcli" "$pkgdir/opt/sidetone/dvmgui" \
+    # .NET's tracing hook (needs lttng, unused), and files installed below
+    rm -rf "$pkgdir/opt/sidetone/libcoreclrtraceptprovider.so" \
            "$pkgdir/opt/sidetone/desktop" "$pkgdir/opt/sidetone/README.md" "$pkgdir/opt/sidetone/LICENSE"
     ln -s /opt/sidetone/sidetone "$pkgdir/usr/bin/sidetone"
     ln -s /opt/sidetone/sidetone-cli "$pkgdir/usr/bin/sidetone-cli"

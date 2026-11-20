@@ -30,9 +30,6 @@ Roughly in the order that makes sense to do them.
 
 ## Partially implemented
 
-- ~~**Rename the project.**~~ Done in 0.17: the project is now **Sidetone**, "an IP dispatch console for DVMProject FNE networks". The programs are `sidetone` and `sidetone-cli`, settings carry over, and the old `dvmcli` and `dvmgui` commands keep working for now.
-  - Still to do: remove the old command wrappers after a release or two.
-
 - ~~**Selectable encryption and local key files.**~~ Done in 0.19: channels marked `selectable_encryption` can be switched between secure and clear for transmit, and keys can come from a password-protected KFDtool `.ekc` container.
   - ~~The terminal console can only unlock a key file before it starts.~~ Done in 0.25: `K` opens its key file box at any time.
   - Still to do: `sidetone-cli listen` doesn't use a key file yet.
@@ -58,6 +55,9 @@ Roughly in the order that makes sense to do them.
   - Still to do: sending audio to another machine's sound system, for when the TUI is run over SSH (today audio stays on the machine Sidetone runs on).
 
 ## Fully implemented
+
+- ~~**Rename the project.**~~ Done in 0.17: the project is now **Sidetone**, "an IP dispatch console for DVMProject FNE networks". The programs are `sidetone` and `sidetone-cli`, settings carry over, and the old `dvmcli` and `dvmgui` commands kept working for a while.
+  - ~~Remove the old command wrappers after a release or two.~~ Done in 0.29.
 
 - ~~**Settings screen in the GUI.**~~ Done in 0.18: audio output and microphone, the PTT device and its buttons, the transmit time limit and what Space does are in a Settings box and are remembered.
   - ~~The terminal console doesn't read these saved choices yet.~~ Done in 0.25: options still win, otherwise the TUI uses what Settings saved.

@@ -47,7 +47,7 @@ src/sidetone-cli/           terminal front end (TUI; `Tui` is partial: Tui.Zones
 src/sidetone/               graphical front end (Avalonia 12.1.6), namespace Sidetone.Gui
 extern/dvmconsole           submodule: monkey1911/dvmconsole-ARM64, branch dev (the Windows console)
 extern/dvmvocoder           submodule: DVMProject/dvmvocoder v0.2, built by CMake into libvocoder.so
-packaging/                  icons, sidetone.desktop (for packages), dvmcli/dvmgui wrappers (tarball only),
+packaging/                  icons, sidetone.desktop (for packages; the dvmcli/dvmgui wrappers went in 0.29),
                             appimage/ (AppRun, build-appimage.sh: pinned appimagetool 1.9.1 + runtime 20251108,
                             SHA-256 checked), arch/ (PKGBUILD.in template + make-pkgbuild.sh, sidetone.install)
 tools/                      ci-status.sh, ci-screenshots.sh (see Testing)
@@ -154,8 +154,7 @@ What CI does on every push to `main` (both architectures):
 3. `sidetone --selfcheck`: drives the GUI headlessly (Avalonia.Headless), presses keys, opens boxes;
 4. renders screenshots (`--screenshot FILE --demo --theme dark|light --show page|radio|settings|keyfile|patch|recall|tabs`)
    and prints them base64 into the log between `-----BEGIN PNG name-----` / `-----END PNG name-----`;
-5. packages `sidetone-<tag>-linux-<arch>.tar.gz` (with the `dvmcli`/`dvmgui` wrappers and a
-   `desktop/` folder) and `Sidetone-<tag>-<x86_64|aarch64>.AppImage` (tested with
+5. packages `sidetone-<tag>-linux-<arch>.tar.gz` (with a `desktop/` folder) and `Sidetone-<tag>-<x86_64|aarch64>.AppImage` (tested with
    `APPIMAGE_EXTRACT_AND_RUN=1`: versions and `--selfcheck`), and on a published **release**
    attaches them (there is deliberately no tag trigger: two runs raced and clobbered uploads);
 6. job `arch-package` (after both): makes the PKGBUILD from the two tarballs, builds it with

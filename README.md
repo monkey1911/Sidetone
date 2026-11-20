@@ -641,7 +641,7 @@ Version 0.17 renamed the project to Sidetone. What changed, and what carries ove
 | `$XDG_RUNTIME_DIR/dvmcli.sock` | `$XDG_RUNTIME_DIR/sidetone.sock` |
 | `dvmcli-*-linux-*.tar.gz` | `sidetone-*-linux-*.tar.gz` |
 
-- **The old commands still work.** Each download includes `dvmcli` and `dvmgui` as small wrappers around the new programs, so hotkeys such as `dvmcli ptt down` carry on. They will be removed in a later release, so switch to the new names when convenient.
+- **Use the new command names.** Up to 0.28 each download also had `dvmcli` and `dvmgui` as small wrappers around the new programs; since 0.29 they are gone, so hotkeys and scripts need the new names (for example `sidetone-cli ptt down` instead of `dvmcli ptt down`).
 - **Settings carry over.** The first time a new version starts, it copies `~/.config/dvmcli` (settings and the alias cache) to `~/.config/sidetone`. The old folder is left in place, so an older version still works.
 - **The socket has a new name.** Anything that talks to the socket directly, such as a `socat` line, needs `sidetone.sock`. `--socket PATH` still picks any path you like.
 - **On the network** the console now identifies its software as `SIDETONE` instead of `DVMCLI`. Peer IDs and codeplugs are unchanged.

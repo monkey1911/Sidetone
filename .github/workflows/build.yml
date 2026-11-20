@@ -121,10 +121,6 @@ jobs:
       - name: Package
         run: |
           cp README.md LICENSE "out/sidetone-$RID/"
-          # the old command names keep working for now (small wrappers around the new ones)
-          install -m 755 packaging/compat/dvmcli packaging/compat/dvmgui "out/sidetone-$RID/"
-          test "$("out/sidetone-$RID/dvmcli" --version)" = "$("out/sidetone-$RID/sidetone-cli" --version)"
-          test "$("out/sidetone-$RID/dvmgui" --version)" = "$("out/sidetone-$RID/sidetone" --version)"
           # the launcher entry and icons, for packages (the Arch PKGBUILD installs them from here)
           mkdir -p "out/sidetone-$RID/desktop"
           cp packaging/sidetone.desktop packaging/icons/sidetone-256.png packaging/icons/sidetone.svg "out/sidetone-$RID/desktop/"

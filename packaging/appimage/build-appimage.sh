@@ -45,7 +45,6 @@ mkdir -p "$appdir/usr/lib/sidetone" "$appdir/usr/share/applications" \
          "$appdir/usr/share/icons/hicolor/256x256/apps" "$appdir/usr/share/icons/hicolor/scalable/apps"
 cp -a "$published/." "$appdir/usr/lib/sidetone/"
 rm -f "$appdir/usr/lib/sidetone/libcoreclrtraceptprovider.so"     # .NET's tracing hook: needs lttng, unused
-rm -f "$appdir/usr/lib/sidetone/dvmcli" "$appdir/usr/lib/sidetone/dvmgui"   # the old names: a link named sidetone-cli does it here
 install -m 755 "$here/AppRun" "$appdir/AppRun"
 install -m 644 "$packaging/sidetone.desktop" "$appdir/sidetone.desktop"
 install -m 644 "$packaging/sidetone.desktop" "$appdir/usr/share/applications/sidetone.desktop"
