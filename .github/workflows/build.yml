@@ -221,6 +221,16 @@ jobs:
             if ! sidetone-cli selftest > /tmp/selftest.log; then
               grep -E "FAIL" /tmp/selftest.log
               DOTNET_EnableAVX512F=0 sidetone-cli selftest > /tmp/selftest2.log && echo "without AVX-512: all pass" || { echo "without AVX-512:"; grep -E "FAIL" /tmp/selftest2.log; }
+              # which half of Opus misbehaves: encode each way, decode each file each way, and with ffmpeg (libopus) as the judge
+              sidetone-cli opus-diag encode /tmp/avx-on.opus
+              DOTNET_EnableAVX512F=0 sidetone-cli opus-diag encode /tmp/avx-off.opus
+              for f in /tmp/avx-on.opus /tmp/avx-off.opus; do
+                echo "decode with AVX-512 on:  $(sidetone-cli opus-diag decode $f)"
+                echo "decode with AVX-512 off: $(DOTNET_EnableAVX512F=0 sidetone-cli opus-diag decode $f)"
+              done
+              pacman -S --noconfirm --needed ffmpeg >/dev/null 2>&1 && for f in /tmp/avx-on.opus /tmp/avx-off.opus; do
+                echo "ffmpeg $f: $(ffmpeg -hide_banner -nostats -i $f -af volumedetect -f null - 2>&1 | grep -E "mean_volume|max_volume" | sed "s/.*\] //" | tr "\n" " ")"
+              done
               exit 1
             fi
             tail -1 /tmp/selftest.log
