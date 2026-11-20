@@ -12,7 +12,7 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
   (text to speech through Piper or espeak-ng) and the time announcement; 0.29 brought WAV
   announcements, `listen --key-file`, the dvmcli/dvmgui wrappers removed. Check
   `gh release list` for what was last published.
-- 339 checks (278 in `sidetone-cli selftest`, one of which runs only when a speech engine is
+- 341 checks (280 in `sidetone-cli selftest`, one of which runs only when a speech engine is
   installed; 61 in the GUI's `--selfcheck`) plus screenshots.
 - **Tested on the air by the owner:** RX/TX clear and AES, key delivery from the FNE, alias sync,
   alert tones, channel marker, QCII and digital pages, radio check (the radio answers; see the FNE
@@ -214,7 +214,10 @@ every release on the air and on their hardware after publishing it.
   engine). The scheduler is in `Housekeeping`; tests drive it with `clockForTest`,
   `synthesizeForTest` and `sendAnnouncementForTest`, and stand-in engine scripts via
   `Speech.programFoldersForTest`. Under `InvariantGlobalization`, `TimeZoneInfo.StandardName` is
-  the tzdata abbreviation (PST, or "+04" where there are no letters). The AUR's `piper-tts` is
+  the tzdata abbreviation (PST, or "+04" where there are no letters). Speed (`SpeechRate`, one of
+  `Speech.Rates`) is passed only when not 1: Piper `--length_scale` = the voice's own (from its
+  `.onnx.json`) / speed, espeak-ng `-s` = 175 × speed. Piper's output length varies a few percent
+  from run to run (its noise), so compare speeds over several runs. The AUR's `piper-tts` is
   x86-64 only and its onnxruntime pulls in CUDA/TensorRT: don't suggest it.
 - Announcements: `WavFile.ReadAnnouncement` reads any PCM/float WAV, resamples through a
   windowed-sinc low-pass (`WavFile.Resample`) and levels to -3 dBFS peak (+12 dB at most);

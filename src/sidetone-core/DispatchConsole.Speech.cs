@@ -58,6 +58,8 @@ namespace Sidetone.Core
             if (!speechChecked)
             {
                 speechEngine = Speech.Choose(settings?.SpeechEngine, settings?.SpeechVoice, out speechWhy);
+                if (speechEngine != null)
+                    speechEngine.Rate = SpeechRate;
                 speechChecked = true;
             }
             why = speechWhy;
@@ -92,6 +94,23 @@ namespace Sidetone.Core
             MarkDirty();
             CurrentSpeechEngine(out _);
             AddLog(SpeechStatus.Replace("Text to speech: ", "text to speech: "));
+        }
+
+        /// <summary>The speaking speed (1 is the voice's own pace).</summary>
+        public double SpeechRate => settings?.SpeechRate is double r && Speech.Rates.Contains(r) ? r : 1.0;
+
+        /// <summary>Sets the speaking speed (one of <see cref="Speech.Rates"/>). Returns null, or why not.</summary>
+        public string SetSpeechRate(double rate)
+        {
+            if (!Speech.Rates.Contains(rate))
+                return $"the speed can be {string.Join(", ", Speech.Rates.Select(r => $"{r * 100:F0}%"))}";
+            if (settings == null || SpeechRate == rate)
+                return null;
+            settings.SpeechRate = rate == 1.0 ? null : rate;
+            RefreshSpeechEngine();
+            MarkDirty();
+            AddLog($"text to speech: speed {Speech.RateName(rate).ToLowerInvariant()}");
+            return null;
         }
 
         /*
@@ -143,7 +162,7 @@ namespace Sidetone.Core
         /// <summary>The key cached speech is kept under: the engine and voice (or the self-test's stand-in), then the text.</summary>
         private string SpeechKey(SpeechEngine engine, string text)
         {
-            string who = synthesizeForTest != null ? "test" : engine?.CacheKey;
+            string who = synthesizeForTest != null ? $"test|{SpeechRate}" : engine?.CacheKey;
             return who == null ? null : who + "\n" + text;
         }
 

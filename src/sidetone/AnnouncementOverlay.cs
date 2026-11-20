@@ -58,6 +58,7 @@ namespace Sidetone.Gui
         private readonly Tap add, done, lookAgain, addText, h12, h24, zoneYes, zoneNo, hearTime, playTime, playTimeAll;
 
         private readonly ComboBox engine = new ComboBox { Width = 200, FontSize = 13 }, voice = new ComboBox { Width = 260, FontSize = 13 };
+        private readonly ComboBox speed = new ComboBox { Width = 200, FontSize = 13 };
         private readonly TextBox newText = new TextBox { FontSize = 13, Width = 560, PlaceholderText = "Type what to say, like: Shift change in ten minutes" };
         private readonly TextBox before = new TextBox { FontSize = 13, Width = 300 }, after = new TextBox { FontSize = 13, Width = 520, PlaceholderText = "(nothing)" };
         private readonly TextBox zoneName = new TextBox { FontSize = 13, Width = 200, PlaceholderText = "its abbreviation" };
@@ -84,7 +85,7 @@ namespace Sidetone.Gui
         /// <summary>True when a text box in the box has the keyboard (so keys are typing, not shortcuts).</summary>
         public bool Typing =>
             newText.IsFocused || before.IsFocused || after.IsFocused || zoneName.IsFocused ||
-            new[] { engine, voice, zone, every, onChannel }.Any(c => c.IsFocused || c.IsDropDownOpen);
+            new[] { engine, voice, speed, zone, every, onChannel }.Any(c => c.IsFocused || c.IsDropDownOpen);
 
         public AnnouncementOverlay(Func<DispatchConsole> console, Action addFiles, Action changed, Action closed)
         {
@@ -110,6 +111,8 @@ namespace Sidetone.Gui
             engine.ItemsSource = new List<Choice> { new Choice(null, "Automatic"), new Choice(Speech.PiperSetting, "Piper"), new Choice(Speech.EspeakSetting, "espeak-ng") };
             engine.SelectionChanged += (s, e) => SaveEngine();
             voice.SelectionChanged += (s, e) => SaveEngine();
+            speed.ItemsSource = Speech.Rates.Select(r => new Choice(r.ToString(System.Globalization.CultureInfo.InvariantCulture), Speech.RateName(r))).ToList();
+            speed.SelectionChanged += (s, e) => SaveSpeed();
             newText.KeyDown += (s, e) =>
             {
                 if (e.Key == Key.Enter)
@@ -128,6 +131,7 @@ namespace Sidetone.Gui
             content.Children.Add(Heading("Text to speech"));
             content.Children.Add(FieldRow(speech));
             content.Children.Add(FieldRow(Label("Engine"), engine, Label("Voice", false), voice, lookAgain.Root));
+            content.Children.Add(FieldRow(Label("Speed"), speed, Label("(Hear it on a spoken announcement or the time to try it)", false)));
 
             content.Children.Add(Heading("WAV files"));
             content.Children.Add(files);
@@ -226,6 +230,7 @@ namespace Sidetone.Gui
                 voiceChoices.AddRange(voices.Select(v => new Choice(v, Speech.VoiceName(v))));
                 voice.ItemsSource = voiceChoices;
                 voice.SelectedIndex = Math.Max(0, voiceChoices.FindIndex(v => v.Value != null && v.Value == c.Settings?.SpeechVoice));
+                speed.SelectedIndex = Math.Max(0, Array.IndexOf(Speech.Rates, c.SpeechRate));
 
                 // the time announcement
                 TimeAnnouncementSettings t = c.TimeAnnouncement;
@@ -377,6 +382,19 @@ namespace Sidetone.Gui
             speech.Text = c.SpeechStatus.Replace("Text to speech: ", string.Empty);
             changed();
         }
+
+        private void SaveSpeed()
+        {
+            DispatchConsole c = console();
+            if (filling || c == null || speed.SelectedIndex < 0)
+                return;
+            Say(c.SetSpeechRate(Speech.Rates[speed.SelectedIndex]));
+            Show(message.Text);
+            changed();
+        }
+
+        /// <summary>Picks a speed, as the list would (self-check hook).</summary>
+        internal void ChooseSpeed(double rate) => speed.SelectedIndex = Array.IndexOf(Speech.Rates, rate);
 
         private bool clock24, sayZone = true;
 

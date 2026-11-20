@@ -109,6 +109,8 @@ namespace Sidetone.Core
         public string SpeechEngine { get; set; }
         /// <summary>Its voice: a Piper model (.onnx path) or an espeak-ng voice name; null for the first found or en-us.</summary>
         public string SpeechVoice { get; set; }
+        /// <summary>Speaking speed (0.9 is 10% slower than the voice's own pace); null is the voice's own.</summary>
+        public double? SpeechRate { get; set; }
         /// <summary>Keep the call history (Recent calls and instant recall) between runs; null means yes.</summary>
         public bool? KeepHistory { get; set; }
         /// <summary>Keep secure calls' (decrypted) voice in that history too.</summary>

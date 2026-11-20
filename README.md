@@ -558,6 +558,8 @@ Spoken announcements and the time announcement need a **text-to-speech engine, i
   The list of voices, with samples, is at [rhasspy.github.io/piper-samples](https://rhasspy.github.io/piper-samples/). (The AUR's `piper-tts` package builds only on x86-64, and its ONNX Runtime package pulls in CUDA; the `uv` route avoids both.)
 - **espeak-ng** sounds robotic but clear, is small, and is in every distribution's packages (Arch and Omarchy: `sudo pacman -S espeak-ng`; Debian and Ubuntu: `sudo apt install espeak-ng`). Sidetone uses its `en-us` voice; another (like `en-gb`) can be set as `SpeechVoice` in `~/.config/sidetone/settings.json`.
 
+**Speed** (in the box, or the TUI's `e` settings) slows the voice down or speeds it up: normal is the voice's own pace, and *a little slower* (95%), *slower* (90%) or *much slower* (80%) can make it easier to follow over the air, where the vocoder and a small speaker make fast speech harder to catch. **Hear it** is the quickest way to try one.
+
 Speech goes through the same conversion as a WAV file, and IMBE is made for speech, so it comes through cleanly. **Hear it** (`h` in the TUI) plays the words through the vocoder on your speakers, the way a radio would hear them, without sending anything.
 
 ### Spoken announcements

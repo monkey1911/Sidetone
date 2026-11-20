@@ -2149,6 +2149,22 @@ zones:
                       piperArgs.StartsWith($"-m {deepVoice} -f ") && espeakArgs.StartsWith("--stdin -v en-gb -w "),
                       $"text to speech: the engine gets the text on its input (not through a shell) and its WAV becomes 8 kHz announcement audio ({made.Length} samples; {piperArgs.Split(' ')[0]} …)");
 
+                // the speed: Piper's length scale (the voice's own, divided by the speed), espeak-ng's words per minute
+                piper.Rate = 0.9;
+                espeakChosen.Rate = 0.9;
+                Speech.Synthesize(piper, "slower");
+                string slowArgs = File.ReadAllText(heard + ".args").Trim();
+                File.WriteAllText(deepVoice + ".json", "{\"audio\": {\"sample_rate\": 22050}, \"inference\": {\"noise_scale\": 0.667, \"length_scale\": 1.2}}");
+                Speech.Synthesize(piper, "slower still");
+                string slowOwnArgs = File.ReadAllText(heard + ".args").Trim();
+                Speech.Synthesize(espeakChosen, "slower");
+                string slowEspeak = File.ReadAllText(heard + ".args").Trim();
+                piper.Rate = 1;
+                espeakChosen.Rate = 1;
+                Check(slowArgs.StartsWith($"-m {deepVoice} --length_scale 1.111 -f ") && slowOwnArgs.Contains("--length_scale 1.333 ") &&
+                      slowEspeak.StartsWith("--stdin -v en-gb -s 158 -w ") && !piperArgs.Contains("length_scale") && !espeakArgs.Contains(" -s "),
+                      $"text to speech: a slower speed lengthens Piper's own pace (1.2 becomes 1.333 at 90%) and slows espeak-ng's words per minute; normal passes nothing ({slowOwnArgs.Split(" -f ")[0].Split(' ').Last()})");
+
                 // through the console: the engine runs on a worker thread, and the audio is sent from the UI thread
                 Tui worker = new Tui(cp, sys, TimeSpan.FromSeconds(120), null) { NoAudio = true };
                 List<(TonePlan Plan, List<ConsoleChannel> Targets)> workerSent = new List<(TonePlan, List<ConsoleChannel>)>();
@@ -2247,6 +2263,18 @@ zones:
                   statusLine.StartsWith("Text to speech: no text-to-speech engine"),
                   "spoken announcements: refused (saying why) when too long for the time limit, not connected, or with no engine installed");
 
+            // the speed: remembered, checked, and speech made again at the new speed
+            int madeAtNormal = synthesized.Count;
+            string slower = sp.SetSpeechRate(0.9), oddSpeed = sp.SetSpeechRate(0.5);
+            sp.SpeakAnnouncement("Shift change in ten minutes", allListening: false);
+            bool remade = synthesized.Count == madeAtNormal + 1;
+            sp.SaveSettings();
+            bool speedKept = NewSpeaker(TimeSpan.FromSeconds(120), 2).SpeechRate == 0.9;
+            sp.SetSpeechRate(1.0);
+            sp.SaveSettings();
+            Check(slower == null && oddSpeed != null && sp.SpeechRate == 1.0 && remade && speedKept && Speech.RateName(0.9) == "Slower (90%)",
+                  "text to speech: the speed is remembered, only the offered speeds are taken, and a spoken announcement is made again at a new speed");
+
             string badZone = sp.SetTimeAnnouncement(new TimeAnnouncementSettings { TimeZone = "Not/AZone" });
             string badEvery = sp.SetTimeAnnouncement(new TimeAnnouncementSettings { EveryMinutes = 7 });
             string goodTime = sp.SetTimeAnnouncement(new TimeAnnouncementSettings { Before = "CTRS time is", TimeZone = "UTC", Hour24 = true, SayZone = false, EveryMinutes = 15 });
@@ -2330,7 +2358,9 @@ zones:
             if (Environment.GetEnvironmentVariable("SIDETONE_SHOW_TUI") == "1") Console.WriteLine(listShown + formShown);
             bool formOpen = tb.AnnounceFormOpen && listShown.Contains("\"Radio check\"") && listShown.Contains("Time: CTRS time is 1130") &&
                             formShown.Contains("Speech and time announcement") && formShown.Contains("Will say: CTRS time is 1130");
-            Key(InputKey.Down); Key(InputKey.Down);                // Before the time
+            Key(InputKey.Down); Key(InputKey.Down);                // Speed
+            Key(InputKey.Left);                                    // Normal to a little slower
+            Key(InputKey.Down);                                    // Before the time
             for (int i = 0; i < 40; i++) Key(InputKey.Backspace);
             Type("Centrunk time is");
             Key(InputKey.Down); Key(InputKey.Down);                // Clock
@@ -2347,8 +2377,8 @@ zones:
             TimeAnnouncementSettings fromForm = tb.TimeAnnouncement;
             Key(InputKey.Escape);
             Check(textAdded && formOpen && zoneRefused && !tb.AnnounceFormOpen && !tb.AnnounceDialogOpen && fromForm.Before == "Centrunk time is" &&
-                  !fromForm.Hour24 && fromForm.TimeZone == "America/Chicago",
-                  "TUI announcements box: t adds a text to say; e opens the speech and time settings, which refuse an unknown zone and save the rest");
+                  !fromForm.Hour24 && fromForm.TimeZone == "America/Chicago" && tb.SpeechRate == 0.95 && formShown.Contains("Speed"),
+                  "TUI announcements box: t adds a text to say; e opens the speech and time settings (speed too), which refuse an unknown zone and save the rest");
         }
 
         private static void ListenKeyTests(string tmp)

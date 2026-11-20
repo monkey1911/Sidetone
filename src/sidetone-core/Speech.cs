@@ -27,6 +27,8 @@ namespace Sidetone.Core
         public string Program;
         /// <summary>Piper: the voice model (.onnx, full path). espeak-ng: the voice name (like en-us).</summary>
         public string Voice;
+        /// <summary>Speaking speed: 1 is the voice's own pace, 0.9 is 10% slower.</summary>
+        public double Rate = 1;
 
         public string Name => Kind == SpeechEngineKind.Piper ? "Piper" : "espeak-ng";
 
@@ -34,7 +36,7 @@ namespace Sidetone.Core
         public string Label => $"{Name}, voice {Speech.VoiceName(Voice)}";
 
         /// <summary>Tells cached audio apart: the same text in another voice is different audio.</summary>
-        internal string CacheKey => $"{Kind}|{Program}|{Voice}";
+        internal string CacheKey => $"{Kind}|{Program}|{Voice}|{Rate.ToString(CultureInfo.InvariantCulture)}";
     }
 
     public static class Speech
@@ -43,6 +45,37 @@ namespace Sidetone.Core
         public const string PiperSetting = "piper", EspeakSetting = "espeak-ng";
 
         public const string DefaultEspeakVoice = "en-us";
+
+        /// <summary>espeak-ng's own speed, in words per minute.</summary>
+        public const int EspeakWordsPerMinute = 175;
+
+        /// <summary>The speed choices (1 is the voice's own pace), slowest first, and their names.</summary>
+        public static readonly double[] Rates = { 0.8, 0.9, 0.95, 1.0, 1.1 };
+
+        public static string RateName(double rate) => rate switch
+        {
+            0.8 => "Much slower (80%)",
+            0.9 => "Slower (90%)",
+            0.95 => "A little slower (95%)",
+            1.0 => "Normal",
+            1.1 => "Faster (110%)",
+            _ => $"{rate * 100:F0}%"
+        };
+
+        /// <summary>A Piper voice's own pace (its length_scale, from the .onnx.json beside it), or 1.</summary>
+        internal static double VoiceLengthScale(string model)
+        {
+            try
+            {
+                using System.Text.Json.JsonDocument doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(model + ".json"));
+                if (doc.RootElement.TryGetProperty("inference", out System.Text.Json.JsonElement inference) &&
+                    inference.TryGetProperty("length_scale", out System.Text.Json.JsonElement scale) &&
+                    scale.TryGetDouble(out double value) && value > 0)
+                    return value;
+            }
+            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException || ex is System.Text.Json.JsonException) { }
+            return 1;
+        }
 
         /// <summary>How long an engine may take before it's stopped.</summary>
         public static readonly TimeSpan Timeout = TimeSpan.FromSeconds(60);
@@ -181,6 +214,12 @@ namespace Sidetone.Core
                 {
                     psi.ArgumentList.Add("-m");
                     psi.ArgumentList.Add(engine.Voice);
+                    if (engine.Rate != 1)
+                    {
+                        // longer phonemes are slower speech; scale the voice's own pace (old and new Piper both take --length_scale)
+                        psi.ArgumentList.Add("--length_scale");
+                        psi.ArgumentList.Add((VoiceLengthScale(engine.Voice) / engine.Rate).ToString("0.###", CultureInfo.InvariantCulture));
+                    }
                     psi.ArgumentList.Add("-f");
                     psi.ArgumentList.Add(wav);
                 }
@@ -189,6 +228,11 @@ namespace Sidetone.Core
                     psi.ArgumentList.Add("--stdin");
                     psi.ArgumentList.Add("-v");
                     psi.ArgumentList.Add(engine.Voice);
+                    if (engine.Rate != 1)
+                    {
+                        psi.ArgumentList.Add("-s");
+                        psi.ArgumentList.Add(((int)Math.Round(EspeakWordsPerMinute * engine.Rate)).ToString(CultureInfo.InvariantCulture));
+                    }
                     psi.ArgumentList.Add("-w");
                     psi.ArgumentList.Add(wav);
                 }
