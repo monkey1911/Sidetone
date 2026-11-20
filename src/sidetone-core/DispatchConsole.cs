@@ -1161,6 +1161,7 @@ namespace Sidetone.Core
             RecallHousekeeping();
             RecordingHousekeeping();
             HistoryHousekeeping();
+            TimeAnnouncementHousekeeping();
             string micFail = pendingMicFail;
             if (micFail != null)
             {
@@ -1537,6 +1538,7 @@ namespace Sidetone.Core
 
         public void CancelTones(bool wait = false)
         {
+            StopPreview();
             ToneJob job = toneJob;
             if (job == null)
                 return;

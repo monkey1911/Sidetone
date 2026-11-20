@@ -74,6 +74,19 @@ namespace Sidetone.Cli
             regions.Clear();
         }
 
+        /// <summary>The frame as plain text, one line per row (self-test).</summary>
+        internal string PlainText()
+        {
+            System.Text.StringBuilder sb = new System.Text.StringBuilder();
+            for (int y = 0; y < Height; y++)
+            {
+                for (int x = 0; x < Width; x++)
+                    sb.Append(cells[y * Width + x].Text ?? string.Empty);
+                sb.Append('\n');
+            }
+            return sb.ToString();
+        }
+
         /// <summary>
         /// Display width of a code point: 2 for emoji and East Asian wide characters, otherwise 1.
         /// </summary>

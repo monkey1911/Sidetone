@@ -1261,6 +1261,17 @@ namespace Sidetone.Gui
             // the Announcements box is open: arrows pick a file, Enter plays it here, Shift+Enter on all listening, Esc closes
             if (announceBox.IsOpen)
             {
+                if (announceBox.Typing)
+                {
+                    // a text box or list has the keyboard: keys are for it, except Esc, which closes the box
+                    if (e.Key == Key.Escape)
+                    {
+                        e.Handled = true;
+                        announceBox.Close();
+                        RefreshNow();
+                    }
+                    return;
+                }
                 e.Handled = true;
                 switch (e.Key)
                 {
@@ -1751,6 +1762,8 @@ zones:
                         sink.Write(Enumerable.Range(0, 160).Select(i => (short)(3000 * Math.Sin(2 * Math.PI * 600 * (f * 160 + i) / 8000.0))).ToArray());
                 c.AddAnnouncement(wav);
             }
+            c.AddSpokenAnnouncement("Shift change in ten minutes. All units, check in with dispatch.");
+            c.SetTimeAnnouncement(new TimeAnnouncementSettings { Before = "Demo system time is", After = "This is the demo dispatch console.", EveryMinutes = 60 });
         }
 
         /// <summary>Made-up audio devices for the demo's Settings box.</summary>

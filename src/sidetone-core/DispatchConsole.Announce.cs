@@ -92,10 +92,9 @@ namespace Sidetone.Core
                 return why;
             }
 
-            if (toneJob != null)
-                return Refuse($"a tone or announcement is already being sent ({toneJob.Plan.Name}); Esc stops it");
-            if (Transmitting)
-                return Refuse("stop transmitting before sending an announcement");
+            string blocked = AnnouncementBlocked();
+            if (blocked != null)
+                return Refuse(blocked);
 
             short[] samples;
             try { samples = AnnouncementAudio(path); }
@@ -107,26 +106,11 @@ namespace Sidetone.Core
             if (length > txLimit)
                 return Refuse($"announcement {AnnouncementName(path)} is {length.TotalSeconds:F0} s, longer than the {txLimit.TotalSeconds:F0} s transmit time limit");
 
-            List<Chan> targets;
-            if (allListening)
-            {
-                targets = TxCapableListening();
-                if (targets.Count == 0)
-                    return Refuse("no listening channels to send the announcement on (click a card to listen)");
-            }
-            else
-            {
-                Chan c = chans[cursor];
-                if (!c.IsP25)
-                    return Refuse($"{c.Cfg.Name}: can't transmit on a {c.Cfg.Mode} channel");
-                if (c.Cfg.RxOnly)
-                    return Refuse($"{c.Cfg.Name}: receive-only channel");
-                targets = new List<Chan> { c };
-            }
-            if (peer == null || !peer.Connected)
-                return Refuse("not connected to the FNE yet");
+            string why = AnnouncementTargets(allListening, out List<Chan> targets);
+            if (why != null)
+                return Refuse(why);
 
-            SendTone(TonePlan.FromAudio($"announcement {AnnouncementName(path)}", samples), targets, quiet: false);
+            SendAnnouncement(TonePlan.FromAudio($"announcement {AnnouncementName(path)}", samples), targets);
             return null;
         }
     } // public partial class DispatchConsole

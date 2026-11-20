@@ -9,7 +9,7 @@ There are two front ends over the same console:
 - **`sidetone-cli`**: a terminal console (TUI) that works anywhere, including over SSH, plus the `listen`, `ptt` and `devices` commands.
 - **`sidetone`**: a graphical console (Avalonia), with light and dark themes. See [Graphical console (sidetone)](#graphical-console-sidetone).
 
-**What works:** FNE login, P25 receive and transmit (clear, AES-256, DES, ADP/ARC4 with keys from the FNE or a KFDtool key file), PipeWire audio, channel cards in tabs for the codeplug's zones, push-to-talk from the keyboard, a hotkey or a PTT device, alert tones, pages, radio commands, the channel marker, radio aliases, patching (two-way and one-way), instant recall with a call history kept between runs, audio outputs per tab and channel, recording to Opus or WAV, announcements (WAV files played onto talkgroups), and log files.
+**What works:** FNE login, P25 receive and transmit (clear, AES-256, DES, ADP/ARC4 with keys from the FNE or a KFDtool key file), PipeWire audio, channel cards in tabs for the codeplug's zones, push-to-talk from the keyboard, a hotkey or a PTT device, alert tones, pages, radio commands, the channel marker, radio aliases, patching (two-way and one-way), instant recall with a call history kept between runs, audio outputs per tab and channel, recording to Opus or WAV, announcements (WAV files, or text spoken by Piper or espeak-ng, played onto talkgroups), a time announcement that can play by itself on the clock, and log files.
 
 **Not yet:** DMR/NXDN/analog. What we'd like to add next is in [WISHLIST.md](WISHLIST.md).
 
@@ -35,6 +35,9 @@ There are two front ends over the same console:
 - [Instant recall and recording](#instant-recall-and-recording)
   - [Call history](#call-history)
 - [Announcements](#announcements)
+  - [Text to speech](#text-to-speech)
+  - [Spoken announcements](#spoken-announcements)
+  - [Time announcement](#time-announcement)
 - [Desktop notifications](#desktop-notifications)
 - [Tabs (zones)](#tabs-zones)
 - [Log files](#log-files)
@@ -197,7 +200,7 @@ Channels are shown as cards, up to four across. The mouse works in any terminal 
 | t | Talk permit tone on or off |
 | p / d | Open the page box in tone or digital mode (←/→ switch modes, Tab switches tone A / B, Enter sends, Esc cancels) |
 | c | Turn the channel marker on or off |
-| n | Announcements box: ↑/↓ pick a file, Enter plays it on the focused card, Space on every listening channel, a adds a file by its path, r removes one |
+| n | Announcements box: ↑/↓ pick a file, a spoken text or the time; Enter plays it on the focused card, Space on every listening channel, h hears a spoken one (not sent); a adds a WAV file by its path, t a text to say, r removes one; e opens the speech and time settings |
 | v | Microphone level meter on or off (without transmitting) |
 | u | Mute or unmute the microphone |
 | a | Reload the alias file and download aliases from the FNE again |
@@ -337,7 +340,7 @@ Keyboard shortcuts (the same keys as the TUI where both have the feature):
 | P / D | Open the page box: two-tone / digital |
 | R | Open the radio command box |
 | C | Channel marker on or off |
-| N | Open Announcements (play a WAV file onto a talkgroup) |
+| N | Open Announcements (WAV files, spoken texts and the time announcement) |
 | Ctrl+, | Open Settings |
 | Ctrl+Q | Quit |
 
@@ -528,13 +531,51 @@ The Recent calls list and each channel's last ten calls (with their audio) are s
 
 ## Announcements
 
-An announcement is a WAV file played onto a talkgroup, like a pre-recorded message or a weather alert: the Windows console calls them custom alert tones. It goes out the way the alert tones do: after a short lead-in (time for the system to grant the talkgroup), as ordinary voice, at a steady pace, and Esc stops it. It shows in the log and Recent calls.
+An announcement is a WAV file, or a text spoken by a text-to-speech engine, played onto a talkgroup. A WAV announcement is like a pre-recorded message or a weather alert: the Windows console calls them custom alert tones. It goes out the way the alert tones do: after a short lead-in (time for the system to grant the talkgroup), as ordinary voice, at a steady pace, and Esc stops it. It shows in the log and Recent calls.
 
-- **Graphical console:** **Announce…** in the tool bar (or N) lists the files, each with **Play on** *the focused channel* and **Play on all listening**. **Add…** picks WAV files; **Remove** takes one off the list (the file stays where it is).
-- **TUI:** `n` opens the same list: Enter plays the highlighted file on the focused card, Space on every listening channel, `a` adds a file by typing its path, `r` removes one.
+- **Graphical console:** **Announce…** in the tool bar (or N) lists the files, each with **Play on** *the focused channel* and **Play on all listening**. **Add WAV files…** picks some; **Remove** takes one off the list (the file stays where it is). The same box holds the spoken announcements and the time announcement (below).
+- **TUI:** `n` opens the same list: Enter plays the highlighted one on the focused card, Space on every listening channel, `a` adds a file by typing its path, `r` removes one.
 - **Any common WAV works:** 8, 16, 24 or 32-bit, or floating point, at any sample rate, mono or stereo. Sidetone converts it to the 8 kHz mono the radio system carries (filtering out what's above the voice band first, so nothing folds back as a whistle) and evens out its level (peak at -3 dBFS, never raised more than 12 dB). The Windows console only takes files already at 8 kHz mono.
 - **Limits:** an announcement can't be longer than the transmit time limit (and at most 10 minutes), and nothing else can be transmitting or sending a tone at the time. Secure channels send it encrypted, like your own voice.
 - The list is remembered, and both consoles share it.
+
+### Text to speech
+
+Spoken announcements and the time announcement need a **text-to-speech engine, installed separately: either Piper or espeak-ng.** Sidetone doesn't include one. Without one, WAV announcements still work, and the Announcements box says what to install. With both installed, Sidetone uses Piper (if it has a voice), else espeak-ng; **Engine** and **Voice** in the box (or `e` in the TUI's box) choose. Sidetone looks for both programs on your PATH and in `~/.local/bin`, and finds a newly installed one when the box is opened again (or with **Look again**).
+
+- **Piper** sounds natural (a neural voice) and runs offline. Install it with `uv` or `pipx` (both work on x86-64 and ARM64):
+
+  ```
+  uv tool install piper-tts
+  ```
+
+  It also needs at least one voice (about 60 MB each), downloaded into `~/.local/share/piper-voices`, where Sidetone looks for them (also `/usr/share/piper-voices`). For example, a clear US English voice:
+
+  ```
+  uvx --from piper-tts python -m piper.download_voices --data-dir ~/.local/share/piper-voices en_US-lessac-medium
+  ```
+
+  The list of voices, with samples, is at [rhasspy.github.io/piper-samples](https://rhasspy.github.io/piper-samples/). (The AUR's `piper-tts` package builds only on x86-64, and its ONNX Runtime package pulls in CUDA; the `uv` route avoids both.)
+- **espeak-ng** sounds robotic but clear, is small, and is in every distribution's packages (Arch and Omarchy: `sudo pacman -S espeak-ng`; Debian and Ubuntu: `sudo apt install espeak-ng`). Sidetone uses its `en-us` voice; another (like `en-gb`) can be set as `SpeechVoice` in `~/.config/sidetone/settings.json`.
+
+Speech goes through the same conversion as a WAV file, and IMBE is made for speech, so it comes through cleanly. **Hear it** (`h` in the TUI) plays the words through the vocoder on your speakers, the way a radio would hear them, without sending anything.
+
+### Spoken announcements
+
+Type what to say, and it's kept in the list with the WAV files: in the graphical console, in the box under **Spoken**, then **Add** (or Enter); in the TUI, `t`. Each one plays on the focused channel or on every listening channel, like a file. The engine makes the audio the first time it's played (Piper takes well under a second) and keeps it until Sidetone closes.
+
+### Time announcement
+
+The time announcement says the time, with your own words around it, for example *"CTRS time is two twenty P M, P S T. This is the CTRS system."*
+
+- **Before the time** and **After the time:** your words (either can be empty). The words after are said as a sentence of their own.
+- **Clock:** 12-hour (*two twenty P M*, *two oh five P M*, *twelve A M* at midnight) or 24-hour, as it's said on the radio (*fourteen twenty*, *fourteen hundred*, *zero nine thirty*).
+- **Time zone:** this computer's, or any other (like `America/Chicago` or `UTC`).
+- **Say the zone:** its abbreviation, letter by letter (*P S T* in winter, *P D T* in summer; zones with no letters are said as an offset, *U T C plus four*), or your own words in **Zone said as** (like *Pacific time*).
+- **By itself:** off, or every 15, 30 or 60 minutes on the clock (on the hour, the quarter hours, and so on), on every listening channel or on one channel (which has to be listening, so Sidetone knows when it's quiet). It waits for its channels to be quiet and for the console to be free (not transmitting or sending a tone); if they aren't within 3 minutes, it's skipped and the log says why. It only plays while Sidetone is running and connected.
+- **Hear it**, **Play on** *the focused channel* and **Play on all listening** play it now; the box shows what it will say. In the TUI it's the last row of the `n` box, and `e` opens its settings.
+
+The time announcement is kept for each system; the engine, voice and spoken texts are shared by all.
 
 ## Desktop notifications
 

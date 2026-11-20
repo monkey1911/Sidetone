@@ -8,10 +8,12 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
 
 ## State at hand-off (2026-11-16)
 
-- Version **0.29.0** on `main` (set once, in `src/Directory.Build.props`): announcements (WAV
-  files onto talkgroups), `listen --key-file`, the dvmcli/dvmgui wrappers removed. Check
+- Version **0.30.0** on `main` (set once, in `src/Directory.Build.props`): spoken announcements
+  (text to speech through Piper or espeak-ng) and the time announcement; 0.29 brought WAV
+  announcements, `listen --key-file`, the dvmcli/dvmgui wrappers removed. Check
   `gh release list` for what was last published.
-- 320 checks (260 in `sidetone-cli selftest`, 60 in the GUI's `--selfcheck`) plus screenshots.
+- 339 checks (278 in `sidetone-cli selftest`, one of which runs only when a speech engine is
+  installed; 61 in the GUI's `--selfcheck`) plus screenshots.
 - **Tested on the air by the owner:** RX/TX clear and AES, key delivery from the FNE, alias sync,
   alert tones, channel marker, QCII and digital pages, radio check (the radio answers; see the FNE
   limitation below), GUI on x86-64 under Hyprland, GUI on ARM64 (Surface Pro 11), display
@@ -35,7 +37,9 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
   Settings screen with real devices, the Motorola desk mic in the GUI, `--wayland`, and from 0.25:
   log files and Copy log, the TUI using the GUI's saved settings, the TUI's card buttons and key
   file box; from 0.26: Opus recordings and Delete after; from 0.28: one-way patches, outputs per
-  tab and channel, the call history between runs; from 0.29: announcements, `listen --key-file`.
+  tab and channel, the call history between runs; from 0.29: announcements, `listen --key-file`; from 0.30: spoken and time announcements
+  (Piper is installed on the owner's Surface, through `uv tool install piper-tts`, with the
+  en_US-lessac-medium voice).
 - Next on the wishlist ("To be implemented"): a CI test against a real dvmfne, then NXDN/DMR
   (needs live traffic); the TUI's only remaining gap is audio over SSH.
 
@@ -58,7 +62,7 @@ tools/                      ci-status.sh, ci-screenshots.sh (see Testing)
 
 ### Core (`src/sidetone-core`)
 
-- `DispatchConsole` (partial: `.cs`, `.Patch.cs`, `.Recall.cs`, `.Zones.cs`, `.Outputs.cs`, `.History.cs`, `.Announce.cs`) is the console: channels,
+- `DispatchConsole` (partial: `.cs`, `.Patch.cs`, `.Recall.cs`, `.Zones.cs`, `.Outputs.cs`, `.History.cs`, `.Announce.cs`, `.Speech.cs`) is the console: channels,
   receive, transmit, tones, pages, radio commands, patching, recall/recording, zones (tabs),
   notifications, settings. Both front ends drive the same instance; `Tui` *derives* from it, the GUI *owns* one.
 - `ConsoleChannel` is one codeplug channel (talkgroup, encryption, listening, mute, gain, patch,
@@ -202,6 +206,16 @@ every release on the air and on their hardware after publishing it.
 - **The FNE version CTRS runs does not pass extended-function replies (radio check acks) back to
   the peer that sent them.** The radio does answer over the air. Don't ask the owner about it again;
   Sidetone already decodes and logs replies if a newer FNE sends them.
+- Text to speech (`Speech.cs`, `DispatchConsole.Speech.cs`): Piper (`piper`/`piper-tts`, voices
+  are `.onnx` + `.onnx.json` in `~/.local/share/piper-voices` or `/usr/share/piper-voices`) or
+  espeak-ng, run with the text on stdin (`-m MODEL -f OUT` / `--stdin -v VOICE -w OUT`), never a
+  shell; programs are also looked for in `~/.local/bin` (app launchers' PATH lacks it). The engine
+  runs on a worker thread, then `PostToUi`. The time is put into words by Sidetone (not the
+  engine). The scheduler is in `Housekeeping`; tests drive it with `clockForTest`,
+  `synthesizeForTest` and `sendAnnouncementForTest`, and stand-in engine scripts via
+  `Speech.programFoldersForTest`. Under `InvariantGlobalization`, `TimeZoneInfo.StandardName` is
+  the tzdata abbreviation (PST, or "+04" where there are no letters). The AUR's `piper-tts` is
+  x86-64 only and its onnxruntime pulls in CUDA/TensorRT: don't suggest it.
 - Announcements: `WavFile.ReadAnnouncement` reads any PCM/float WAV, resamples through a
   windowed-sinc low-pass (`WavFile.Resample`) and levels to -3 dBFS peak (+12 dB at most);
   `TonePlan.FromAudio` sends it through the voice encoder like a tone job. IMBE mangles pure sines,

@@ -439,16 +439,36 @@ namespace Sidetone.Gui
             Check(routingOpen && routed && focus.Output == null && c.CurrentZone.Output == null && !routing.IsOpen,
                   "O opens Audio outputs: a tab's and a channel's output are chosen there at once; Esc closes it");
 
-            // Announcements: the demo has two files
+            // Announcements: the demo has two files, a spoken text and the time announcement
             Press(PhysicalKey.N);
             AnnouncementOverlay announce = w.AnnounceBox;
-            bool annOpen = announce.IsOpen && announce.Count == 2;
+            bool annOpen = announce.IsOpen && announce.FileCount == 2 && announce.SpokenCount == 1 && announce.Count == 4;
             Press(PhysicalKey.ArrowDown);
             Press(PhysicalKey.Enter);
             bool refused = announce.IsOpen && announce.Message.Contains("ot connected") && announce.Row == 1;
             Press(PhysicalKey.Escape);
             Check(annOpen && refused && !announce.IsOpen,
                   "N opens Announcements with the remembered files; Enter plays one (refused here, not connected, saying why); Esc closes it");
+
+            // typing a text to say: keys go to the text box (N doesn't close the box), Enter adds it; the time's clock switches
+            Press(PhysicalKey.N);
+            announce.NewText.Text = "Radio check";
+            announce.NewText.Focus();
+            Dispatcher.UIThread.RunJobs();
+            Press(PhysicalKey.N);
+            bool stillOpen = announce.IsOpen;
+            Press(PhysicalKey.Enter);
+            bool textAdded = announce.SpokenCount == 2 && c.SpokenAnnouncements.Contains("Radio check") && announce.NewText.Text == string.Empty;
+            announce.Use24Hour(true);
+            string said24 = announce.WillSay;
+            bool clock24 = c.TimeAnnouncement.Hour24 && !said24.Contains(" AM") && !said24.Contains(" PM") && said24.StartsWith("Demo system time is ");
+            announce.Use24Hour(false);
+            bool clock12 = !c.TimeAnnouncement.Hour24 && (announce.WillSay.Contains(" AM") || announce.WillSay.Contains(" PM"));
+            announce.NewText.Focus();
+            Dispatcher.UIThread.RunJobs();
+            Press(PhysicalKey.Escape);
+            Check(stillOpen && textAdded && clock24 && clock12 && !announce.IsOpen,
+                  $"Announcements: a text to say is typed and added with Enter (N types, it doesn't close the box); the time announcement's clock switches ({said24})");
 
             // instant recall: the demo has calls on Tac 1, the focused channel
             Press(PhysicalKey.L, RawInputModifiers.Shift);

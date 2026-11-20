@@ -44,7 +44,10 @@ Roughly in the order that makes sense to do them.
   - Tabled: emergency alarms. Upstream added emergency support in late 2024 and removed it on purpose in March 2025 ("what do you think we are mission critical?"); to be decided later whether Sidetone shows the emergency bit at all.
 
 - ~~**Announcements: playing a WAV file onto a talkgroup.**~~ Done in 0.29: a remembered list of WAV files (any common format, converted and levelled), played on the focused channel or every listening channel (the Windows console's custom alert tones).
-  - Still to do: scheduled announcements (once, or repeating), like the Windows console's timed announcements.
+  - ~~Spoken announcements: text said by a text-to-speech engine.~~ Done in 0.30: Piper or espeak-ng, installed separately; "Hear it" plays them through the vocoder without sending.
+  - ~~A time announcement, played when asked or by itself on the clock.~~ Done in 0.30: words before and after, 12- or 24-hour, a time zone (said as its abbreviation or your own words), every 15, 30 or 60 minutes, waiting for quiet channels.
+  - Still to do: scheduling WAV files and spoken texts too (once, or repeating), like the Windows console's timed announcements.
+  - Still to do: text to speech on macOS (its own `say` would do), with the macOS port.
 
 - ~~**Packaging.**~~ Done in 0.27: an AppImage and an Arch package (`sidetone-bin` PKGBUILD) with each release, next to the tarballs; the PKGBUILD is built, installed and run on Arch in CI.
   - Still to do: publish it on the AUR, once AUR sign-ups open again (or someone with an account publishes it with us as co-maintainers).

@@ -48,6 +48,10 @@ jobs:
         with:
           submodules: recursive
 
+      # a real text-to-speech engine, so the self-test speaks with one (Sidetone itself doesn't need it to build)
+      - name: Install espeak-ng
+        run: sudo apt-get install -y --no-install-recommends espeak-ng >/dev/null
+
       - name: Setup .NET
         uses: actions/setup-dotnet@v6
         with:

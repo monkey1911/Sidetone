@@ -249,6 +249,9 @@ namespace Sidetone.Cli
                 // 22. announcements: WAV files played onto talkgroups
                 AnnouncementTests(tmp, cp, sys);
 
+                // 23. text to speech and the time announcement
+                SpeechTests(tmp, cp, sys);
+
                 // 8. WAV writer
                 string wavPath = Path.Combine(tmp, "test.wav");
                 using (WavSink wav = new WavSink(wavPath))
@@ -2064,6 +2067,288 @@ zones:
             at2.HandleInput(new InputEvent(InputKind.Key, InputKey.Escape));
             Check(annOpen && addedByPath && refusedShown && at2.Announcements.Count == 1 && !at2.AnnounceDialogOpen,
                   "TUI announcements box: n opens it, a adds a file by path, Enter tries to play it (and says why not), r removes it");
+        }
+
+        private static void SpeechTests(string tmp, Codeplug cp, Codeplug.System sys)
+        {
+            // the time in words, as every engine will say it
+            Check(Speech.TimeWords(14, 20, false) == "two twenty P M" && Speech.TimeWords(14, 5, false) == "two oh five P M" &&
+                  Speech.TimeWords(0, 0, false) == "twelve A M" && Speech.TimeWords(12, 0, false) == "twelve P M" && Speech.TimeWords(9, 45, false) == "nine forty five A M",
+                  "time announcement: 12-hour time in words (two twenty P M, two oh five P M, twelve A M at midnight)");
+            Check(Speech.TimeWords(14, 0, true) == "fourteen hundred" && Speech.TimeWords(9, 30, true) == "zero nine thirty" && Speech.TimeWords(0, 15, true) == "zero zero fifteen" &&
+                  Speech.TimeWords(0, 0, true) == "zero zero hundred" && Speech.TimeWords(23, 59, true) == "twenty three fifty nine" && Speech.TimeWords(14, 5, true) == "fourteen oh five",
+                  "time announcement: 24-hour time as it's said on the radio (fourteen hundred, zero nine thirty, fourteen oh five)");
+
+            // zones: abbreviations that follow daylight saving, offsets where tzdata has no letters
+            DateTime winter = new DateTime(2026, 1, 15, 20, 20, 0, DateTimeKind.Utc), summer = new DateTime(2026, 7, 15, 20, 20, 0, DateTimeKind.Utc);
+            TimeZoneInfo la = Speech.Zone("America/Los_Angeles"), dubai = Speech.Zone("Asia/Dubai"), nepal = Speech.Zone("Asia/Kathmandu");
+            string laWinter = Speech.ZoneAbbreviation(la, winter), laSummer = Speech.ZoneAbbreviation(la, summer);
+            string dubaiAbbr = Speech.ZoneAbbreviation(dubai, winter), nepalAbbr = Speech.ZoneAbbreviation(nepal, winter);
+            Check(laWinter == "PST" && laSummer == "PDT" && Speech.SayAbbreviation("PST") == "P S T" && Speech.ZoneAbbreviation(Speech.Zone("UTC"), winter) == "UTC" &&
+                  dubaiAbbr == "UTC+4" && Speech.SayAbbreviation(dubaiAbbr) == "U T C plus four" && nepalAbbr == "UTC+5:45" && Speech.SayAbbreviation(nepalAbbr) == "U T C plus five forty five" &&
+                  Speech.SayAbbreviation("UTC-3:30") == "U T C minus three thirty",
+                  $"time announcement: the zone is said as its abbreviation, PST in winter and PDT in summer, or as an offset (U T C plus four) ({laWinter}, {laSummer}, {dubaiAbbr}, {nepalAbbr})");
+            Check(Speech.Zone("Not/AZone") == TimeZoneInfo.Local && !Speech.KnownZone("Not/AZone") && Speech.KnownZone(null) && Speech.KnownZone("America/Chicago") &&
+                  Speech.ZoneIds().First() == "UTC" && Speech.ZoneIds().Contains("America/Chicago"),
+                  "time announcement: zones are checked, and the list starts with UTC");
+
+            // the words before and after, the clock and the zone
+            TimeAnnouncementSettings ctrs = new TimeAnnouncementSettings { Before = "CTRS time is", After = "This is CTRS.", TimeZone = "America/Chicago" };
+            string said12 = Speech.TimeAnnouncementText(ctrs, winter), shown12 = Speech.TimeAnnouncementPreview(ctrs, winter);
+            TimeAnnouncementSettings named = ctrs.Copy(); named.ZoneName = "Central time";
+            TimeAnnouncementSettings h24 = ctrs.Copy(); h24.Hour24 = true; h24.SayZone = false; h24.After = null;
+            TimeAnnouncementSettings bare = new TimeAnnouncementSettings { Before = "", TimeZone = "UTC", SayZone = false };
+            Check(said12 == "CTRS time is two twenty P M C S T. This is CTRS." && shown12 == "CTRS time is 2:20 PM CST. This is CTRS." &&
+                  Speech.TimeAnnouncementText(named, winter) == "CTRS time is two twenty P M Central time. This is CTRS." &&
+                  Speech.TimeAnnouncementText(h24, winter) == "CTRS time is fourteen twenty" && Speech.TimeAnnouncementPreview(h24, winter) == "CTRS time is 1420" &&
+                  Speech.TimeAnnouncementText(bare, winter) == "eight twenty P M",
+                  $"time announcement: words before, the time in the chosen zone, the zone, then words after ({said12})");
+
+            // engines: stand-in programs in a folder of their own, so the test doesn't depend on what's installed
+            string bin = Path.Combine(tmp, "speech-bin"), voices = Path.Combine(tmp, "speech-voices"), heard = Path.Combine(tmp, "speech-heard.txt");
+            Directory.CreateDirectory(bin);
+            Directory.CreateDirectory(voices);
+            string spokenWav = Path.Combine(tmp, "speech-out.wav");
+            WriteTestWav(spokenWav, 22050, 1, 16, false, 1.5, (t, ch) => 0.3 * Math.Sin(2 * Math.PI * 220 * t) * Math.Sin(2 * Math.PI * 3 * t));
+            void FakeEngine(string name, string outFlag, bool fail = false)
+            {
+                string script = Path.Combine(bin, name);
+                File.WriteAllText(script, "#!/bin/sh\n" +
+                    $"echo \"$@\" > '{heard}.args'\ncat > '{heard}'\n" +
+                    (fail ? "echo 'voice model is broken' >&2\nexit 3\n"
+                          : $"while [ $# -gt 0 ]; do if [ \"$1\" = \"{outFlag}\" ]; then cp '{spokenWav}' \"$2\"; fi; shift; done\n"));
+                File.SetUnixFileMode(script, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            }
+            Speech.programFoldersForTest = new[] { bin };
+            Speech.voiceFoldersForTest = new[] { voices };
+            try
+            {
+                SpeechEngine none = Speech.Choose(null, null, out string noneWhy);
+                FakeEngine("espeak-ng", "-w");
+                SpeechEngine espeakOnly = Speech.Choose(null, null, out _);
+                FakeEngine("piper", "-f");
+                SpeechEngine piperNoVoice = Speech.Choose(null, null, out _), piperForced = Speech.Choose(Speech.PiperSetting, null, out string forcedWhy);
+                string deepVoice = Path.Combine(voices, "en", "en_US", "lessac", "medium", "en_US-lessac-medium.onnx");
+                Directory.CreateDirectory(Path.GetDirectoryName(deepVoice));
+                File.WriteAllText(deepVoice, "model");
+                File.WriteAllText(deepVoice + ".json", "{}");
+                File.WriteAllText(Path.Combine(voices, "half-downloaded.onnx"), "no json beside it");
+                SpeechEngine piper = Speech.Choose(null, null, out _), espeakChosen = Speech.Choose(Speech.EspeakSetting, "en-gb", out _);
+                Check(none == null && noneWhy.Contains("install Piper") && noneWhy.Contains("espeak-ng") &&
+                      espeakOnly?.Kind == SpeechEngineKind.EspeakNg && espeakOnly.Voice == "en-us" &&
+                      piperNoVoice?.Kind == SpeechEngineKind.EspeakNg && piperForced == null && forcedWhy.Contains("no voice") &&
+                      piper?.Kind == SpeechEngineKind.Piper && piper.Voice == deepVoice && Speech.PiperVoices().Count == 1 && piper.Label == "Piper, voice en_US-lessac-medium" &&
+                      espeakChosen?.Kind == SpeechEngineKind.EspeakNg && espeakChosen.Voice == "en-gb",
+                      "text to speech: Piper with a voice (found in sub-folders) is chosen first, else espeak-ng; with neither, it says what to install");
+
+                short[] made = Speech.Synthesize(piper, "Shift change in ten minutes.\nAll units.");
+                string piperArgs = File.ReadAllText(heard + ".args").Trim(), piperText = File.ReadAllText(heard).Trim();
+                short[] madeEspeak = Speech.Synthesize(espeakChosen, "Radio check");
+                string espeakArgs = File.ReadAllText(heard + ".args").Trim();
+                Check(Math.Abs(made.Length - 12000) <= 2 && madeEspeak.Length == made.Length && piperText == "Shift change in ten minutes. All units." &&
+                      piperArgs.StartsWith($"-m {deepVoice} -f ") && espeakArgs.StartsWith("--stdin -v en-gb -w "),
+                      $"text to speech: the engine gets the text on its input (not through a shell) and its WAV becomes 8 kHz announcement audio ({made.Length} samples; {piperArgs.Split(' ')[0]} …)");
+
+                // through the console: the engine runs on a worker thread, and the audio is sent from the UI thread
+                Tui worker = new Tui(cp, sys, TimeSpan.FromSeconds(120), null) { NoAudio = true };
+                List<(TonePlan Plan, List<ConsoleChannel> Targets)> workerSent = new List<(TonePlan, List<ConsoleChannel>)>();
+                worker.sendAnnouncementForTest = (plan, targets) => workerSent.Add((plan, targets));
+                string workerWhy = worker.SpeakAnnouncement("Radio check", allListening: false);
+                bool preparing = worker.SpeechPreparing, busyRefused = worker.SpeakAnnouncement("Again", false)?.Contains("still being made") == true;
+                for (int i = 0; i < 500 && workerSent.Count == 0; i++)
+                {
+                    Thread.Sleep(10);
+                    worker.Tick();
+                }
+                Check(workerWhy == null && preparing && busyRefused && workerSent.Count == 1 && !worker.SpeechPreparing && workerSent[0].Plan.Frames.Length > 75 &&
+                      worker.SpokenLength("Radio check") == TimeSpan.FromSeconds(1.5),
+                      "spoken announcements: the engine runs off the UI thread (another is refused until it has finished), then the audio is sent");
+
+                FakeEngine("piper", "-f", fail: true);
+                string failed = null;
+                try { Speech.Synthesize(piper, "hello"); } catch (ArgumentException ex) { failed = ex.Message; }
+                string empty = null;
+                try { Speech.Synthesize(piper, "  "); } catch (ArgumentException ex) { empty = ex.Message; }
+                Check(failed != null && failed.Contains("Piper failed") && failed.Contains("exit code 3") && failed.Contains("voice model is broken") && empty != null,
+                      $"text to speech: an engine that fails says why ({failed})");
+            }
+            finally
+            {
+                Speech.programFoldersForTest = null;
+                Speech.voiceFoldersForTest = null;
+            }
+
+            // a real engine, when one is installed (CI installs espeak-ng; Piper here when it has a voice)
+            SpeechEngine real = Speech.Choose(null, null, out _);
+            if (real != null)
+            {
+                System.Diagnostics.Stopwatch took = System.Diagnostics.Stopwatch.StartNew();
+                short[] realSpeech = Speech.Synthesize(real, Speech.TimeAnnouncementText(new TimeAnnouncementSettings { TimeZone = "UTC" }, winter));
+                double realPeak = realSpeech.Max(v => Math.Abs((int)v)) / 32768.0;
+                Check(realSpeech.Length > 8000 && realSpeech.Length < 8000 * 10 && realPeak > 0.5,
+                      $"text to speech: {real.Label} says a time announcement ({realSpeech.Length / 8000.0:F1} s of audio, peak {20 * Math.Log10(realPeak):F1} dBFS, in {took.ElapsedMilliseconds} ms)");
+            }
+            else
+                Console.WriteLine("(no text-to-speech engine installed: the real-engine check is skipped)");
+
+            // the console: spoken announcements and the time, sent like WAV announcements
+            string sset = Path.Combine(tmp, "speech-settings.json");
+            List<(TonePlan Plan, List<ConsoleChannel> Targets)> sent = new List<(TonePlan, List<ConsoleChannel>)>();
+            List<string> synthesized = new List<string>();
+            DateTime clock = new DateTime(2026, 3, 2, 10, 7, 0, DateTimeKind.Utc);
+            Tui NewSpeaker(TimeSpan limit, double seconds)
+            {
+                Tui t = new Tui(cp, sys, limit, null, settingsPath: sset) { NoAudio = true };
+                t.sendAnnouncementForTest = (plan, targets) => sent.Add((plan, targets));
+                t.synthesizeForTest = text => { synthesized.Add(text); return Enumerable.Range(0, (int)(seconds * 50)).SelectMany(VoicedFrame).ToArray(); };
+                t.clockForTest = () => clock;
+                return t;
+            }
+            Tui sp = NewSpeaker(TimeSpan.FromSeconds(120), 2);
+            string blank = sp.AddSpokenAnnouncement("   "), added = sp.AddSpokenAnnouncement("Shift change in ten minutes"), tooLongText = sp.AddSpokenAnnouncement(new string('x', DispatchConsole.MaxSpokenLength + 1));
+            sp.SaveSettings();
+            string spokeWhy = sp.SpeakAnnouncement("Shift change in ten minutes", allListening: false);
+            ConsoleChannel focusedChan = sp.Channels[sp.FocusIndex];
+            bool spokeOnFocused = spokeWhy == null && sent.Count == 1 && sent[0].Plan.Name.Contains("spoken announcement") && sent[0].Targets.SequenceEqual(new[] { focusedChan }) &&
+                                  sent[0].Plan.Frames.Length >= 100 && synthesized.Last() == "Shift change in ten minutes";
+            int madeBefore = synthesized.Count;
+            sp.SpeakAnnouncement("Shift change in ten minutes", allListening: false);
+            TimeSpan? spokenFor = sp.SpokenLength("Shift change in ten minutes");
+            bool cached = synthesized.Count == madeBefore && sent.Count == 2 && spokenFor == TimeSpan.FromSeconds(2);
+            Tui sp2 = NewSpeaker(TimeSpan.FromSeconds(120), 2);
+            Check(blank != null && added == null && tooLongText != null && sp2.SpokenAnnouncements.SequenceEqual(new[] { "Shift change in ten minutes" }) && spokeOnFocused && cached,
+                  "spoken announcements: remembered, spoken by the engine once, and sent on the focused channel like a WAV announcement");
+
+            ConsoleChannel listenA = sp.Channels.First(c => c.IsP25 && !c.Cfg.RxOnly);
+            ConsoleChannel listenB = sp.Channels.Where(c => c.IsP25 && !c.Cfg.RxOnly).Skip(1).First();
+            sp.Select(listenA);
+            sp.Select(listenB);
+            sent.Clear();
+            string timeWhy = sp.PlayTimeAnnouncement(allListening: true);
+            Check(timeWhy == null && sent.Count == 1 && sent[0].Targets.Contains(listenA) && sent[0].Targets.Contains(listenB) && sent[0].Plan.Name == "time announcement" &&
+                  synthesized.Last().StartsWith("The time is ") && synthesized.Last().Contains(Speech.TimeWords(TimeZoneInfo.ConvertTimeFromUtc(clock, TimeZoneInfo.Local).Hour, 7, false)),
+                  $"time announcement: played on every listening channel, saying the time now ({synthesized.Last()})");
+
+            Tui shortLimit = NewSpeaker(TimeSpan.FromSeconds(1), 3);
+            sent.Clear();
+            string acceptedThenRefused = shortLimit.SpeakAnnouncement("a long speech", allListening: false);
+            bool refusedLong = acceptedThenRefused == null && sent.Count == 0 && shortLimit.SnapshotLog(5).Any(l => l.Contains("longer than the 1 s transmit time limit"));
+            Tui noHook = new Tui(cp, sys, TimeSpan.FromSeconds(120), null) { NoAudio = true };
+            noHook.synthesizeForTest = _ => new short[8000];
+            string offline = noHook.SpeakAnnouncement("hello", false);
+            Speech.programFoldersForTest = new[] { Path.Combine(tmp, "speech-nothing-here") };
+            Speech.voiceFoldersForTest = new[] { Path.Combine(tmp, "speech-nothing-here") };
+            Tui noEngine = new Tui(cp, sys, TimeSpan.FromSeconds(120), null) { NoAudio = true };
+            string noEngineWhy = noEngine.SpeakAnnouncement("hello", false);
+            string statusLine = noEngine.SpeechStatus;
+            Speech.programFoldersForTest = null;
+            Speech.voiceFoldersForTest = null;
+            Check(refusedLong && offline != null && offline.Contains("not connected") && noEngineWhy != null && noEngineWhy.Contains("no text-to-speech engine") &&
+                  statusLine.StartsWith("Text to speech: no text-to-speech engine"),
+                  "spoken announcements: refused (saying why) when too long for the time limit, not connected, or with no engine installed");
+
+            string badZone = sp.SetTimeAnnouncement(new TimeAnnouncementSettings { TimeZone = "Not/AZone" });
+            string badEvery = sp.SetTimeAnnouncement(new TimeAnnouncementSettings { EveryMinutes = 7 });
+            string goodTime = sp.SetTimeAnnouncement(new TimeAnnouncementSettings { Before = "CTRS time is", TimeZone = "UTC", Hour24 = true, SayZone = false, EveryMinutes = 15 });
+            sp.SaveSettings();
+            Tui reread = NewSpeaker(TimeSpan.FromSeconds(120), 2);
+            Check(badZone != null && badZone.Contains("unknown time zone") && badEvery != null && goodTime == null &&
+                  reread.TimeAnnouncement.Before == "CTRS time is" && reread.TimeAnnouncement.EveryMinutes == 15 && reread.TimeAnnouncement.Hour24 &&
+                  File.ReadAllText(sset).Contains("CTRS time is"),
+                  "time announcement: its settings are checked, then remembered for the system");
+
+            // the schedule: on the clock, waiting for quiet channels, never twice for one slot
+            sent.Clear();
+            synthesized.Clear();
+            clock = new DateTime(2026, 3, 2, 10, 7, 0, DateTimeKind.Utc);
+            sp.Tick();
+            bool notMidSlot = sent.Count == 0 && sp.NextTimeAnnouncement == new DateTime(2026, 3, 2, 10, 15, 0, DateTimeKind.Utc);
+            clock = new DateTime(2026, 3, 2, 10, 15, 4, DateTimeKind.Utc);
+            sp.Tick();
+            sp.Tick();
+            bool onTheQuarter = sent.Count == 1 && synthesized.SequenceEqual(new[] { "CTRS time is ten fifteen" }) && sent[0].Targets.Contains(listenA) && sent[0].Targets.Contains(listenB);
+            clock = new DateTime(2026, 3, 2, 10, 30, 2, DateTimeKind.Utc);
+            listenB.Active = true;
+            sp.Tick();
+            bool waitsForQuiet = sent.Count == 1;
+            clock = new DateTime(2026, 3, 2, 10, 31, 30, DateTimeKind.Utc);
+            listenB.Active = false;
+            sp.Tick();
+            bool thenSays = sent.Count == 2 && synthesized.Last() == "CTRS time is ten thirty one";
+            clock = new DateTime(2026, 3, 2, 10, 45, 1, DateTimeKind.Utc);
+            listenA.Active = true;
+            sp.Tick();
+            clock = new DateTime(2026, 3, 2, 10, 48, 30, DateTimeKind.Utc);
+            sp.Tick();
+            listenA.Active = false;
+            clock = new DateTime(2026, 3, 2, 10, 49, 0, DateTimeKind.Utc);
+            sp.Tick();
+            bool skippedAfterWait = sent.Count == 2 && sp.SnapshotLog(10).Any(l => l.Contains("time announcement skipped after waiting 3 minutes") && l.Contains($"{listenA.Cfg.Name} stayed busy"));
+            Check(notMidSlot && onTheQuarter && waitsForQuiet && thenSays && skippedAfterWait,
+                  "time announcement schedule: plays on the quarter hour (not mid-slot at start), waits while a channel is busy, and gives up after 3 minutes");
+
+            ConsoleChannel notListening = listenB;
+            sp.Deselect(listenB, quiet: true);
+            sp.SetTimeAnnouncement(new TimeAnnouncementSettings { TimeZone = "UTC", EveryMinutes = 60, Channel = notListening.Cfg.Name });
+            clock = new DateTime(2026, 3, 2, 10, 50, 0, DateTimeKind.Utc);
+            sp.Tick();
+            clock = new DateTime(2026, 3, 2, 11, 0, 3, DateTimeKind.Utc);
+            sp.Tick();
+            bool needsListening = sent.Count == 2 && sp.SnapshotLog(10).Any(l => l.Contains($"not listening to {notListening.Cfg.Name}"));
+            sp.Select(notListening);
+            sp.SetTimeAnnouncement(new TimeAnnouncementSettings { TimeZone = "UTC", EveryMinutes = 30, Channel = notListening.Cfg.Name });
+            clock = new DateTime(2026, 3, 2, 11, 10, 0, DateTimeKind.Utc);
+            sp.Tick();
+            clock = new DateTime(2026, 3, 2, 11, 30, 1, DateTimeKind.Utc);
+            sp.Tick();
+            bool onlyThere = sent.Count == 3 && sent[2].Targets.SequenceEqual(new[] { notListening });
+            Check(needsListening && onlyThere, "time announcement schedule: on one chosen channel, which has to be listening (so the console knows when it's quiet)");
+
+            // Hear it: the words through the vocoder on the speakers, nothing sent
+            List<short[]> previewed = new List<short[]>();
+            sp.replaySinkForTest = () => new ListSink(previewed);
+            sent.Clear();
+            string heardWhy = sp.PreviewSpeech("Radio check");
+            Check(heardWhy == null && sent.Count == 0 && previewed.Count == 100 && previewed.Any(f => f.Any(v => v != 0)),
+                  $"hear it: a spoken announcement plays through the vocoder on the speakers, and nothing is sent ({previewed.Count} frames)");
+
+            // the TUI's box: add a text, then the speech and time settings
+            Tui tb = NewSpeaker(TimeSpan.FromSeconds(120), 2);
+            tb.Render(120, 40);
+            void Key(InputKey k, char c = '\0') => tb.HandleInput(new InputEvent(InputKind.Key, k, c));
+            void Type(string text) { foreach (char c in text) Key(c == ' ' ? InputKey.Space : InputKey.Char, c); }
+            Key(InputKey.Char, 'n');
+            Key(InputKey.Char, 't');
+            Type("Radio check");
+            Key(InputKey.Enter);
+            bool textAdded = tb.SpokenAnnouncements.Contains("Radio check");
+            tb.Render(120, 40);
+            string listShown = tb.ScreenText;
+            Key(InputKey.Char, 'e');
+            tb.Render(120, 40);
+            string formShown = tb.ScreenText;
+            if (Environment.GetEnvironmentVariable("SIDETONE_SHOW_TUI") == "1") Console.WriteLine(listShown + formShown);
+            bool formOpen = tb.AnnounceFormOpen && listShown.Contains("\"Radio check\"") && listShown.Contains("Time: CTRS time is 1130") &&
+                            formShown.Contains("Speech and time announcement") && formShown.Contains("Will say: CTRS time is 1130");
+            Key(InputKey.Down); Key(InputKey.Down);                // Before the time
+            for (int i = 0; i < 40; i++) Key(InputKey.Backspace);
+            Type("Centrunk time is");
+            Key(InputKey.Down); Key(InputKey.Down);                // Clock
+            Key(InputKey.Right);                                   // 12-hour
+            Key(InputKey.Down);                                    // Time zone
+            for (int i = 0; i < 40; i++) Key(InputKey.Backspace);
+            Type("Not/AZone");
+            tb.Render(120, 40);
+            Key(InputKey.Enter);
+            bool zoneRefused = tb.AnnounceFormOpen && (tb.AnnounceFormError ?? string.Empty).Contains("Unknown time zone");
+            for (int i = 0; i < 9; i++) Key(InputKey.Backspace);
+            Type("America/Chicago");
+            Key(InputKey.Enter);
+            TimeAnnouncementSettings fromForm = tb.TimeAnnouncement;
+            Key(InputKey.Escape);
+            Check(textAdded && formOpen && zoneRefused && !tb.AnnounceFormOpen && !tb.AnnounceDialogOpen && fromForm.Before == "Centrunk time is" &&
+                  !fromForm.Hour24 && fromForm.TimeZone == "America/Chicago",
+                  "TUI announcements box: t adds a text to say; e opens the speech and time settings, which refuse an unknown zone and save the rest");
         }
 
         private static void ListenKeyTests(string tmp)

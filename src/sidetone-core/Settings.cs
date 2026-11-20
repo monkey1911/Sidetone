@@ -45,6 +45,33 @@ namespace Sidetone.Core
         public string PageA { get; set; } = string.Empty;
         public string PageB { get; set; } = string.Empty;
         public string PageRid { get; set; } = string.Empty;
+        /// <summary>The time announcement for this system (its words, clock, zone and schedule). Null until it's set up.</summary>
+        public TimeAnnouncementSettings TimeAnnouncement { get; set; }
+    }
+
+    /// <summary>
+    /// A spoken time announcement: the words before and after the time, its clock and zone, and when it plays by itself.
+    /// </summary>
+    public sealed class TimeAnnouncementSettings
+    {
+        /// <summary>Said before the time.</summary>
+        public string Before { get; set; } = "The time is";
+        /// <summary>Said after the time (and zone), as a sentence of its own.</summary>
+        public string After { get; set; }
+        /// <summary>An IANA time zone id like America/Chicago, or null for the computer's own.</summary>
+        public string TimeZone { get; set; }
+        /// <summary>24-hour time ("fourteen twenty") instead of 12-hour ("two twenty P M").</summary>
+        public bool Hour24 { get; set; }
+        /// <summary>Say the time zone after the time.</summary>
+        public bool SayZone { get; set; } = true;
+        /// <summary>What to say for the zone (like "Pacific time"), or null to spell out its abbreviation ("P S T").</summary>
+        public string ZoneName { get; set; }
+        /// <summary>Plays by itself every this many minutes, on the clock (0 is off).</summary>
+        public int EveryMinutes { get; set; }
+        /// <summary>The channel it plays on by itself (its name), or null for every listening channel.</summary>
+        public string Channel { get; set; }
+
+        public TimeAnnouncementSettings Copy() => (TimeAnnouncementSettings)MemberwiseClone();
     }
 
     /// <summary>
@@ -76,6 +103,12 @@ namespace Sidetone.Core
         public string RecordingsFolder { get; set; }
         /// <summary>Announcement WAV files (full paths), in the order they were added.</summary>
         public List<string> Announcements { get; set; }
+        /// <summary>Spoken announcements: texts said by the text-to-speech engine, in the order they were added.</summary>
+        public List<string> SpokenAnnouncements { get; set; }
+        /// <summary>Text-to-speech engine: "piper", "espeak-ng", or null to choose automatically.</summary>
+        public string SpeechEngine { get; set; }
+        /// <summary>Its voice: a Piper model (.onnx path) or an espeak-ng voice name; null for the first found or en-us.</summary>
+        public string SpeechVoice { get; set; }
         /// <summary>Keep the call history (Recent calls and instant recall) between runs; null means yes.</summary>
         public bool? KeepHistory { get; set; }
         /// <summary>Keep secure calls' (decrypted) voice in that history too.</summary>
