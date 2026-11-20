@@ -34,6 +34,34 @@ namespace Sidetone.Core
         /// <summary>Tone per 20 ms frame; null = silence. Length is a whole number of LDUs (multiple of 9).</summary>
         public ushort?[] Frames { get; }
 
+        /// <summary>For a recording (an announcement): its audio, one 160-sample frame per entry in Frames; null for tones.</summary>
+        private readonly List<short[]> audio;
+
+        /// <summary>
+        /// An announcement: recorded 8 kHz audio, sent through the voice encoder after the same lead-in
+        /// silence as the tones (time for the system to grant the talkgroup), with a short tail, in whole LDUs.
+        /// </summary>
+        public static TonePlan FromAudio(string name, short[] samples) => new TonePlan(name, samples);
+
+        private TonePlan(string name, short[] samples)
+        {
+            Name = name;
+            const int samplesPerFrame = 160;
+            int lead = LeadInMs / FrameMs, tail = 250 / FrameMs;
+            int body = (samples.Length + samplesPerFrame - 1) / samplesPerFrame;
+            int total = (lead + body + tail + 8) / 9 * 9;
+            audio = new List<short[]>(total);
+            for (int f = 0; f < total; f++)
+            {
+                short[] frame = new short[samplesPerFrame];
+                int from = (f - lead) * samplesPerFrame;
+                if (f >= lead && from < samples.Length)
+                    Array.Copy(samples, from, frame, 0, Math.Min(samplesPerFrame, samples.Length - from));
+                audio.Add(frame);
+            }
+            Frames = new ushort?[total];       // all voice frames: the encoder takes each one's audio
+        }
+
         private TonePlan(string name, List<(double Hz, double Ms)> content)
         {
             Name = name;
@@ -122,6 +150,12 @@ namespace Sidetone.Core
         /// </summary>
         public IEnumerable<short[]> MonitorPcm()
         {
+            if (audio != null)
+            {
+                foreach (short[] frame in audio)
+                    yield return frame;
+                yield break;
+            }
             double phase = 0;
             foreach (ushort? hz in Frames)
             {

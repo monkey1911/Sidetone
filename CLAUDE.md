@@ -8,9 +8,10 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
 
 ## State at hand-off (2026-11-16)
 
-- Version **0.28.0** on `main` (set once, in `src/Directory.Build.props`): one-way patches, audio
-  outputs per tab and channel, call history kept between runs. 0.27.0 was released; check `gh release list`.
-- 308 checks (249 in `sidetone-cli selftest`, 59 in the GUI's `--selfcheck`) plus screenshots.
+- Version **0.29.0** on `main` (set once, in `src/Directory.Build.props`): announcements (WAV
+  files onto talkgroups), `listen --key-file`, the dvmcli/dvmgui wrappers removed. Check
+  `gh release list` for what was last published.
+- 319 checks (259 in `sidetone-cli selftest`, 60 in the GUI's `--selfcheck`) plus screenshots.
 - **Tested on the air by the owner:** RX/TX clear and AES, key delivery from the FNE, alias sync,
   alert tones, channel marker, QCII and digital pages, radio check (the radio answers; see the FNE
   limitation below), GUI on x86-64 under Hyprland, GUI on ARM64 (Surface Pro 11), display
@@ -34,7 +35,7 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
   Settings screen with real devices, the Motorola desk mic in the GUI, `--wayland`, and from 0.25:
   log files and Copy log, the TUI using the GUI's saved settings, the TUI's card buttons and key
   file box; from 0.26: Opus recordings and Delete after; from 0.28: one-way patches, outputs per
-  tab and channel, the call history between runs.
+  tab and channel, the call history between runs; from 0.29: announcements, `listen --key-file`.
 - Next on the wishlist ("To be implemented"): a CI test against a real dvmfne, then NXDN/DMR
   (needs live traffic); the TUI's only remaining gap is audio over SSH.
 
@@ -56,7 +57,7 @@ tools/                      ci-status.sh, ci-screenshots.sh (see Testing)
 
 ### Core (`src/sidetone-core`)
 
-- `DispatchConsole` (partial: `.cs`, `.Patch.cs`, `.Recall.cs`, `.Zones.cs`, `.Outputs.cs`, `.History.cs`) is the console: channels,
+- `DispatchConsole` (partial: `.cs`, `.Patch.cs`, `.Recall.cs`, `.Zones.cs`, `.Outputs.cs`, `.History.cs`, `.Announce.cs`) is the console: channels,
   receive, transmit, tones, pages, radio commands, patching, recall/recording, zones (tabs),
   notifications, settings. Both front ends drive the same instance; `Tui` *derives* from it, the GUI *owns* one.
 - `ConsoleChannel` is one codeplug channel (talkgroup, encryption, listening, mute, gain, patch,
@@ -199,6 +200,10 @@ every release on the air and on their hardware after publishing it.
 - **The FNE version CTRS runs does not pass extended-function replies (radio check acks) back to
   the peer that sent them.** The radio does answer over the air. Don't ask the owner about it again;
   Sidetone already decodes and logs replies if a newer FNE sends them.
+- Announcements: `WavFile.ReadAnnouncement` reads any PCM/float WAV, resamples through a
+  windowed-sinc low-pass (`WavFile.Resample`) and levels to -3 dBFS peak (+12 dB at most);
+  `TonePlan.FromAudio` sends it through the voice encoder like a tone job. IMBE mangles pure sines,
+  so test announcements with speech-like audio (`VoicedFrame`), compared with the vocoder alone.
 - Tones go out as IMBE tone frames (as the Windows console does), so QCII tones are quantised to
   about 31 Hz steps.
 - Patch members have a `PatchRole` (Both, SourceOnly, TargetOnly); the Windows console's one-way

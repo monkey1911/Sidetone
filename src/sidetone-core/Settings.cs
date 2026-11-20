@@ -74,6 +74,8 @@ namespace Sidetone.Core
         public bool RxAutoLevel { get; set; }
         /// <summary>Folder for talkgroup recordings, or null for the default (~/.local/share/sidetone/recordings).</summary>
         public string RecordingsFolder { get; set; }
+        /// <summary>Announcement WAV files (full paths), in the order they were added.</summary>
+        public List<string> Announcements { get; set; }
         /// <summary>Keep the call history (Recent calls and instant recall) between runs; null means yes.</summary>
         public bool? KeepHistory { get; set; }
         /// <summary>Keep secure calls' (decrypted) voice in that history too.</summary>

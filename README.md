@@ -9,7 +9,7 @@ There are two front ends over the same console:
 - **`sidetone-cli`**: a terminal console (TUI) that works anywhere, including over SSH, plus the `listen`, `ptt` and `devices` commands.
 - **`sidetone`**: a graphical console (Avalonia), with light and dark themes. See [Graphical console (sidetone)](#graphical-console-sidetone).
 
-**What works:** FNE login, P25 receive and transmit (clear, AES-256, DES, ADP/ARC4 with keys from the FNE or a KFDtool key file), PipeWire audio, channel cards in tabs for the codeplug's zones, push-to-talk from the keyboard, a hotkey or a PTT device, alert tones, pages, radio commands, the channel marker, radio aliases, patching (two-way and one-way), instant recall with a call history kept between runs, audio outputs per tab and channel, recording to Opus or WAV, and log files.
+**What works:** FNE login, P25 receive and transmit (clear, AES-256, DES, ADP/ARC4 with keys from the FNE or a KFDtool key file), PipeWire audio, channel cards in tabs for the codeplug's zones, push-to-talk from the keyboard, a hotkey or a PTT device, alert tones, pages, radio commands, the channel marker, radio aliases, patching (two-way and one-way), instant recall with a call history kept between runs, audio outputs per tab and channel, recording to Opus or WAV, announcements (WAV files played onto talkgroups), and log files.
 
 **Not yet:** DMR/NXDN/analog. What we'd like to add next is in [WISHLIST.md](WISHLIST.md).
 
@@ -34,6 +34,7 @@ There are two front ends over the same console:
 - [Audio processing](#audio-processing)
 - [Instant recall and recording](#instant-recall-and-recording)
   - [Call history](#call-history)
+- [Announcements](#announcements)
 - [Desktop notifications](#desktop-notifications)
 - [Tabs (zones)](#tabs-zones)
 - [Log files](#log-files)
@@ -144,6 +145,7 @@ Other `listen` options:
 | `--gain N` | Multiply output volume, for example `2` |
 | `--output DEVICE` | Play to this audio output instead of the system default (see [Audio devices](#audio-devices)) |
 | `--player CMD` | Use a different player command than `pw-play` |
+| `--key-file FILE.ekc` | Use a local key file (see [Local key file](#local-key-file)); without it, the one chosen in the graphical console's Settings or the codeplug's |
 | `--verbose` | Log every network frame and fnecore debug messages |
 
 Press Ctrl+C to stop.
@@ -195,6 +197,7 @@ Channels are shown as cards, up to four across. The mouse works in any terminal 
 | t | Talk permit tone on or off |
 | p / d | Open the page box in tone or digital mode (←/→ switch modes, Tab switches tone A / B, Enter sends, Esc cancels) |
 | c | Turn the channel marker on or off |
+| n | Announcements box: ↑/↓ pick a file, Enter plays it on the focused card, Space on every listening channel, a adds a file by its path, r removes one |
 | v | Microphone level meter on or off (without transmitting) |
 | u | Mute or unmute the microphone |
 | a | Reload the alias file and download aliases from the FNE again |
@@ -334,6 +337,7 @@ Keyboard shortcuts (the same keys as the TUI where both have the feature):
 | P / D | Open the page box: two-tone / digital |
 | R | Open the radio command box |
 | C | Channel marker on or off |
+| N | Open Announcements (play a WAV file onto a talkgroup) |
 | Ctrl+, | Open Settings |
 | Ctrl+Q | Quit |
 
@@ -522,6 +526,16 @@ The Recent calls list and each channel's last ten calls (with their audio) are s
 
 **Audio quality.** Calls are kept as the voice frames that came over the network (about 0.5 kB a second) and only turned into audio when played or saved, so both sound the same as the live call.
 
+## Announcements
+
+An announcement is a WAV file played onto a talkgroup, like a pre-recorded message or a weather alert: the Windows console calls them custom alert tones. It goes out the way the alert tones do: after a short lead-in (time for the system to grant the talkgroup), as ordinary voice, at a steady pace, and Esc stops it. It shows in the log and Recent calls.
+
+- **Graphical console:** **Announce…** in the tool bar (or N) lists the files, each with **Play on** *the focused channel* and **Play on all listening**. **Add…** picks WAV files; **Remove** takes one off the list (the file stays where it is).
+- **TUI:** `n` opens the same list: Enter plays the highlighted file on the focused card, Space on every listening channel, `a` adds a file by typing its path, `r` removes one.
+- **Any common WAV works:** 8, 16, 24 or 32-bit, or floating point, at any sample rate, mono or stereo. Sidetone converts it to the 8 kHz mono the radio system carries (filtering out what's above the voice band first, so nothing folds back as a whistle) and evens out its level (peak at -3 dBFS, never raised more than 12 dB). The Windows console only takes files already at 8 kHz mono.
+- **Limits:** an announcement can't be longer than the transmit time limit (and at most 10 minutes), and nothing else can be transmitting or sending a tone at the time. Secure channels send it encrypted, like your own voice.
+- The list is remembered, and both consoles share it.
+
 ## Desktop notifications
 
 When a radio pages the console (a call alert to the console's radio ID), Sidetone shows a desktop notification as well as logging it. It uses `notify-send`, or `gdbus` when that isn't installed, and needs a notification service such as mako, dunst, swaync, GNOME or KDE. Repeats from the same radio within ten seconds show one notification.
@@ -586,7 +600,7 @@ If the FNE doesn't deliver keys to your console, Sidetone can read them from a p
 
 Sidetone uses the first of these that is set:
 
-1. `--key-file FILE.ekc` on the command line (both programs)
+1. `--key-file FILE.ekc` on the command line (`sidetone`, `sidetone-cli tui` and `sidetone-cli listen`)
 2. the file chosen under **Key file** in the graphical console's Settings
 3. the codeplug's `keyFile:` entry (a path relative to the codeplug works)
 

@@ -105,6 +105,7 @@ jobs:
           shot recall --theme light --show recall
           shot tabs --theme dark --show tabs
           shot outputs --theme light --show outputs
+          shot announce --theme dark --show announce
           # the first-run view, with no codeplug
           out/sidetone-$RID/sidetone --screenshot out/gui-welcome.png --no-settings --theme dark --size 1180x760
           echo "-----BEGIN PNG welcome-----"

@@ -244,6 +244,120 @@ namespace Sidetone.Core
             throw new ArgumentException($"{Path.GetFileName(path)} has no audio data");
         }
 
+        /// <summary>The longest announcement accepted, in seconds (the transmit limit also applies).</summary>
+        public const int MaxAnnouncementSeconds = 600;
+
+        /// <summary>
+        /// An announcement's audio, as 8 kHz mono: from any PCM WAV file (8, 16, 24 or 32-bit integer, or
+        /// 32-bit float; any sample rate; mono or more channels, mixed down), resampled through a low-pass
+        /// filter when it isn't 8 kHz already, and levelled (peak at -3 dBFS, never more than 12 dB up, so
+        /// quiet hiss isn't pumped up). Anything else is refused with a plain message.
+        /// </summary>
+        public static short[] ReadAnnouncement(string path)
+        {
+            if (!File.Exists(path))
+                throw new ArgumentException($"not found: {path}");
+            string name = Path.GetFileName(path);
+            byte[] d = File.ReadAllBytes(path);
+            if (d.Length < 12 || System.Text.Encoding.ASCII.GetString(d, 0, 4) != "RIFF" || System.Text.Encoding.ASCII.GetString(d, 8, 4) != "WAVE")
+                throw new ArgumentException($"{name} isn't a WAV file");
+
+            int pos = 12, rate = 0, channels = 0, bits = 0, format = 0, dataAt = -1, dataLength = 0;
+            while (pos + 8 <= d.Length)
+            {
+                string id = System.Text.Encoding.ASCII.GetString(d, pos, 4);
+                int size = BitConverter.ToInt32(d, pos + 4);
+                int body = pos + 8;
+                if (id == "fmt " && size >= 16 && body + 16 <= d.Length)
+                {
+                    format = BitConverter.ToUInt16(d, body);
+                    channels = BitConverter.ToUInt16(d, body + 2);
+                    rate = BitConverter.ToInt32(d, body + 4);
+                    bits = BitConverter.ToUInt16(d, body + 14);
+                    if (format == 0xFFFE && size >= 40 && body + 26 <= d.Length)
+                        format = BitConverter.ToUInt16(d, body + 24);      // WAVE_FORMAT_EXTENSIBLE: the real format is in the sub-format
+                }
+                else if (id == "data")
+                {
+                    dataAt = body;
+                    dataLength = Math.Min(size < 0 ? int.MaxValue : size, d.Length - body);
+                    break;
+                }
+                pos = body + size + (size & 1);
+            }
+            if (dataAt < 0)
+                throw new ArgumentException($"{name} has no audio data");
+            bool pcm = format == 1 && (bits == 8 || bits == 16 || bits == 24 || bits == 32), flt = format == 3 && bits == 32;
+            if ((!pcm && !flt) || channels < 1 || rate < 4000 || rate > 384000)
+                throw new ArgumentException($"{name} is a kind of WAV that can't be read ({(format == 1 ? "PCM" : format == 3 ? "float" : $"format {format}")}, {bits}-bit, {channels} channel(s), {rate} Hz); " +
+                                            "save it as 16-bit PCM (for example: ffmpeg -i IN -ac 1 -sample_fmt s16 OUT.wav)");
+
+            // to mono floats
+            int bytesPer = bits / 8, frameBytes = bytesPer * channels, frames = dataLength / frameBytes;
+            if ((double)frames / rate > MaxAnnouncementSeconds)
+                throw new ArgumentException($"{name} is {frames / rate / 60} minutes long; announcements can be up to {MaxAnnouncementSeconds / 60} minutes");
+            float[] mono = new float[frames];
+            for (int f = 0; f < frames; f++)
+            {
+                double sum = 0;
+                for (int ch = 0; ch < channels; ch++)
+                {
+                    int at = dataAt + f * frameBytes + ch * bytesPer;
+                    sum += flt ? BitConverter.ToSingle(d, at)
+                         : bits == 8 ? (d[at] - 128) / 128.0
+                         : bits == 16 ? BitConverter.ToInt16(d, at) / 32768.0
+                         : bits == 24 ? ((d[at] | (d[at + 1] << 8) | ((sbyte)d[at + 2] << 16)) / 8388608.0)
+                         : BitConverter.ToInt32(d, at) / 2147483648.0;
+                }
+                mono[f] = (float)(sum / channels);
+            }
+
+            float[] at8k = rate == VoiceProcessor.SampleRate ? mono : Resample(mono, rate, VoiceProcessor.SampleRate);
+
+            // level: peak at -3 dBFS, at most 12 dB up
+            float peak = 0;
+            foreach (float v in at8k)
+                peak = Math.Max(peak, Math.Abs(v));
+            double gain = peak <= 1e-6 ? 1.0 : Math.Min(0.708 / peak, 4.0);
+            short[] samples = new short[at8k.Length];
+            for (int i = 0; i < at8k.Length; i++)
+                samples[i] = (short)Math.Clamp(Math.Round(at8k[i] * gain * 32767.0), -32768, 32767);
+            return samples;
+        }
+
+        /// <summary>
+        /// Changes the sample rate, through a windowed-sinc low-pass at the lower rate's band edge
+        /// (3.4 kHz for 8 kHz voice), so nothing above it folds back into the voice band.
+        /// </summary>
+        internal static float[] Resample(float[] input, int fromRate, int toRate)
+        {
+            if (input.Length == 0)
+                return input;
+            double ratio = (double)fromRate / toRate;
+            double cutoff = Math.Min(3400.0, 0.45 * Math.Min(fromRate, toRate)) / fromRate;     // cycles per input sample
+            const int half = 32;                                                                 // taps either side, in input samples at 8 kHz
+            int span = (int)Math.Ceiling(half * Math.Max(1.0, ratio));
+            int outLength = (int)((long)input.Length * toRate / fromRate);
+            float[] output = new float[outLength];
+            for (int o = 0; o < outLength; o++)
+            {
+                double centre = o * ratio;
+                int first = (int)Math.Floor(centre) - span, last = (int)Math.Floor(centre) + span;
+                double sum = 0, weights = 0;
+                for (int i = Math.Max(0, first); i <= Math.Min(input.Length - 1, last); i++)
+                {
+                    double x = i - centre;
+                    double sinc = Math.Abs(x) < 1e-9 ? 2 * cutoff : Math.Sin(2 * Math.PI * cutoff * x) / (Math.PI * x);
+                    double window = 0.42 + 0.5 * Math.Cos(Math.PI * x / (span + 1)) + 0.08 * Math.Cos(2 * Math.PI * x / (span + 1));   // Blackman
+                    double w = sinc * window;
+                    sum += input[i] * w;
+                    weights += w;
+                }
+                output[o] = (float)(weights > 1e-9 ? sum / weights : 0);
+            }
+            return output;
+        }
+
         /// <summary>Peak, and the RMS level of the louder 20 ms blocks (roughly, the speech), in dBFS.</summary>
         public static string Describe(short[] samples)
         {

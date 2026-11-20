@@ -63,6 +63,11 @@ namespace Sidetone.Gui
         private readonly ZoneTabs zoneTabs = new ZoneTabs();
         private ZoneOverlay zoneBox;
         private RoutingOverlay routingBox;
+        private AnnouncementOverlay announceBox;
+        private Tap announceTap;
+
+        /// <summary>The Announcements box (self-check hook).</summary>
+        internal AnnouncementOverlay AnnounceBox => announceBox;
 
         /// <summary>The Audio outputs box (self-check hook).</summary>
         internal RoutingOverlay RoutingBox => routingBox;
@@ -205,6 +210,7 @@ namespace Sidetone.Gui
                 case "keyfile": keyBox.Show("/home/operator/keys/demo.ekc", true); keyBox.Refresh(palette); break;
                 case "tabs": ShowZones(); break;
                 case "outputs": ShowRouting(); break;
+                case "announce": ShowAnnouncements(); break;
             }
         }
 
@@ -288,6 +294,9 @@ namespace Sidetone.Gui
             recallTap = new Tap("Recall…", () => { overlay.Close(); recallBox.Show(FocusedChannel()); RefreshNow(); }, fontSize: 12, padY: 5);
             recallTap.Root.Margin = new Thickness(6, 0, 0, 0);
             tools.Children.Add(recallTap.Root);
+            announceTap = new Tap("Announce…", () => ShowAnnouncements(), fontSize: 12, padY: 5);
+            announceTap.Root.Margin = new Thickness(6, 0, 0, 0);
+            tools.Children.Add(announceTap.Root);
             toolBar.Child = tools;
 
             overlay = new CommandOverlay(() => console, RefreshNow, () => root.Focus());
@@ -303,6 +312,7 @@ namespace Sidetone.Gui
             patchBox = new PatchOverlay(() => console, RefreshNow, () => root.Focus());
             recallBox = new RecallOverlay(() => console, RefreshNow, () => root.Focus(), OpenRecordingsFolder);
             zoneBox = new ZoneOverlay(() => console, RefreshNow, () => root.Focus());
+            announceBox = new AnnouncementOverlay(() => console, () => _ = PickAnnouncements(), RefreshNow, () => root.Focus());
             routingBox = new RoutingOverlay(() => console, () => offline ? DemoCodeplug.AudioDevices() : AudioDeviceList.Query(), RefreshNow, () => root.Focus());
 
             // console view: cards, transmit bar, recent calls and log
@@ -363,6 +373,7 @@ namespace Sidetone.Gui
             Grid.SetRow(recallBox.Root, 1);
             Grid.SetRow(zoneBox.Root, 1);
             Grid.SetRow(routingBox.Root, 1);
+            Grid.SetRow(announceBox.Root, 1);
             root.Children.Add(header);
             root.Children.Add(consoleView);
             root.Children.Add(welcome);
@@ -372,6 +383,7 @@ namespace Sidetone.Gui
             root.Children.Add(recallBox.Root);
             root.Children.Add(zoneBox.Root);
             root.Children.Add(routingBox.Root);
+            root.Children.Add(announceBox.Root);
             root.Children.Add(keyBox.Root);
             Content = root;
         }
@@ -949,6 +961,7 @@ namespace Sidetone.Gui
             recallBox?.Close();
             zoneBox?.Close();
             routingBox?.Close();
+            announceBox?.Close();
             DispatchConsole c = console;
             console = null;
             if (c == null || offline)
@@ -1120,6 +1133,11 @@ namespace Sidetone.Gui
             zoneTabs.Refresh(c, p);
             zoneBox.Refresh(p);
             routingBox.Refresh(p);
+            announceBox.Refresh(p);
+            if (tone != null && tone.Plan.Name.StartsWith("announcement ", StringComparison.Ordinal))
+                announceTap.Paint(p.Tx, p.OnStrong);
+            else
+                announceTap.Paint(Brushes.Transparent, p.Text, p.Edge);
             overlay.Refresh(p);
             patchBox.Refresh(p);
             recallBox.Refresh(p);
@@ -1237,6 +1255,22 @@ namespace Sidetone.Gui
                         recallBox.PlayRow(0);
                     RefreshNow();
                 }
+                return;
+            }
+
+            // the Announcements box is open: arrows pick a file, Enter plays it here, Shift+Enter on all listening, Esc closes
+            if (announceBox.IsOpen)
+            {
+                e.Handled = true;
+                switch (e.Key)
+                {
+                    case Key.Escape: case Key.N: announceBox.Close(); break;
+                    case Key.Up: announceBox.MoveRow(-1); break;
+                    case Key.Down: announceBox.MoveRow(1); break;
+                    case Key.Enter: announceBox.PlayRow(e.KeyModifiers.HasFlag(KeyModifiers.Shift)); break;
+                    default: e.Handled = false; break;
+                }
+                RefreshNow();
                 return;
             }
 
@@ -1396,6 +1430,7 @@ namespace Sidetone.Gui
                     case Key.OemCloseBrackets: c.NextZone(1); ScrollToFocus(c); break;
                     case Key.Z: ShowZones(); break;
                     case Key.O: ShowRouting(); break;
+                    case Key.N: ShowAnnouncements(); break;
                     default: return;
                 }
             }
@@ -1480,6 +1515,47 @@ namespace Sidetone.Gui
             if (console != null)
                 ScrollToFocus(console);
             RefreshNow();
+        }
+
+        /// <summary>Opens the Announcements box.</summary>
+        private void ShowAnnouncements(string say = null)
+        {
+            if (console == null)
+                return;
+            overlay.Close();
+            patchBox.Close();
+            recallBox.Close();
+            zoneBox.Close();
+            routingBox.Close();
+            announceBox.Show(say);
+            RefreshNow();
+        }
+
+        /// <summary>Picks WAV files for the Announcements list.</summary>
+        private async Task PickAnnouncements()
+        {
+            try
+            {
+                IReadOnlyList<IStorageFile> files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+                {
+                    Title = "Add announcements",
+                    AllowMultiple = true,
+                    FileTypeFilter = new[] { new FilePickerFileType("WAV audio") { Patterns = new[] { "*.wav", "*.WAV" } } }
+                });
+                List<string> problems = new List<string>();
+                foreach (IStorageFile f in files ?? new List<IStorageFile>())
+                {
+                    string path = f.TryGetLocalPath();
+                    string why = path == null ? $"{f.Name} isn't on this computer's file system" : console?.AddAnnouncement(path);
+                    if (why != null)
+                        problems.Add(why);
+                }
+                ShowAnnouncements(problems.Count > 0 ? string.Join(" ", problems) : null);
+            }
+            catch (Exception ex)
+            {
+                ShowAnnouncements($"Couldn't open a file dialog ({ex.Message}).");
+            }
         }
 
         /// <summary>Opens the Audio outputs box.</summary>
@@ -1664,6 +1740,17 @@ zones:
             c.Channels[4].Active = true;        // traffic on another tab: its tab shows a mark
             c.Channels[4].ActiveSrc = 4410;
             c.SetZoneHidden(c.Zones[3], true);  // and one zone hidden, as in the Tabs box
+            foreach ((string name, double seconds) in new[] { ("Shift change", 6.0), ("Weather alert", 11.0) })
+            {
+                // made-up announcements: a few seconds of quiet tone each, in the temporary folder
+                string folder = Path.Combine(Path.GetTempPath(), $"sidetone-demo-{Environment.ProcessId}");
+                Directory.CreateDirectory(folder);
+                string wav = Path.Combine(folder, $"{name}.wav");
+                using (WavSink sink = new WavSink(wav))
+                    for (int f = 0; f < seconds * 50; f++)
+                        sink.Write(Enumerable.Range(0, 160).Select(i => (short)(3000 * Math.Sin(2 * Math.PI * 600 * (f * 160 + i) / 8000.0))).ToArray());
+                c.AddAnnouncement(wav);
+            }
         }
 
         /// <summary>Made-up audio devices for the demo's Settings box.</summary>

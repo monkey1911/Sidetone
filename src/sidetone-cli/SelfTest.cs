@@ -223,6 +223,9 @@ namespace Sidetone.Cli
                 // 21. listen with a local key file
                 ListenKeyTests(tmp);
 
+                // 22. announcements: WAV files played onto talkgroups
+                AnnouncementTests(tmp, cp, sys);
+
                 // 8. WAV writer
                 string wavPath = Path.Combine(tmp, "test.wav");
                 using (WavSink wav = new WavSink(wavPath))
@@ -1875,6 +1878,152 @@ zones:
                   "zones: if every zone was hidden, the first one is shown (names match whatever the case)");
             zthird.Shutdown();
             zt.Shutdown();
+        }
+
+        /// <summary>Writes a WAV file in any PCM layout: 8/16/24/32-bit integer, or 32-bit float.</summary>
+        private static void WriteTestWav(string path, int rate, int channels, int bits, bool isFloat, double seconds, Func<double, int, double> sample, int format = 0)
+        {
+            int frames = (int)(rate * seconds), bytesPer = bits / 8;
+            using BinaryWriter w = new BinaryWriter(File.Create(path));
+            w.Write("RIFF"u8.ToArray()); w.Write(36 + frames * channels * bytesPer); w.Write("WAVE"u8.ToArray());
+            w.Write("fmt "u8.ToArray()); w.Write(16); w.Write((ushort)(format != 0 ? format : isFloat ? 3 : 1)); w.Write((ushort)channels);
+            w.Write(rate); w.Write(rate * channels * bytesPer); w.Write((ushort)(channels * bytesPer)); w.Write((ushort)bits);
+            w.Write("data"u8.ToArray()); w.Write(frames * channels * bytesPer);
+            for (int f = 0; f < frames; f++)
+                for (int ch = 0; ch < channels; ch++)
+                {
+                    double v = Math.Clamp(sample((double)f / rate, ch), -1, 1);
+                    if (isFloat) w.Write((float)v);
+                    else if (bits == 8) w.Write((byte)Math.Round(v * 127 + 128));
+                    else if (bits == 16) w.Write((short)Math.Round(v * 32767));
+                    else if (bits == 24) { int x = (int)Math.Round(v * 8388607); w.Write((byte)x); w.Write((byte)(x >> 8)); w.Write((byte)(x >> 16)); }
+                    else w.Write((int)Math.Round(v * 2147483647.0));
+                }
+        }
+
+        /// <summary>The level of one frequency in some 8 kHz audio (Goertzel), relative to full scale.</summary>
+        private static double ToneLevel(short[] x, double hz)
+        {
+            double k = 2 * Math.Cos(2 * Math.PI * hz / 8000), s1 = 0, s2 = 0;
+            foreach (short v in x) { double s0 = v / 32768.0 + k * s1 - s2; s2 = s1; s1 = s0; }
+            return Math.Sqrt(Math.Max(0, s1 * s1 + s2 * s2 - k * s1 * s2)) / (x.Length / 2.0);
+        }
+
+        private static void AnnouncementTests(string tmp, Codeplug cp, Codeplug.System sys)
+        {
+            string dir = Path.Combine(tmp, "announce");
+            Directory.CreateDirectory(dir);
+            double Db(double v) => 20 * Math.Log10(Math.Max(v, 1e-9));
+
+            // any common WAV becomes 8 kHz mono, levelled to -3 dBFS
+            string cd = Path.Combine(dir, "cd-stereo.wav");
+            WriteTestWav(cd, 44100, 2, 16, false, 2.0, (t, ch) => 0.25 * Math.Sin(2 * Math.PI * 1000 * t));
+            short[] fromCd = WavFile.ReadAnnouncement(cd);
+            int crossings = 0;
+            for (int i = 1; i < fromCd.Length; i++) if ((fromCd[i - 1] < 0) != (fromCd[i] < 0)) crossings++;
+            double cdPeak = fromCd.Max(v => Math.Abs((int)v)) / 32768.0;
+            Check(Math.Abs(fromCd.Length - 16000) <= 2 && Math.Abs(crossings - 4000) <= 20 && Math.Abs(Db(cdPeak) - (-3)) < 0.5,
+                  $"announcement: a 44.1 kHz stereo WAV becomes 8 kHz mono at the same pitch, peaking at -3 dBFS ({fromCd.Length} samples, {Db(cdPeak):F1} dBFS)");
+
+            string hiRes = Path.Combine(dir, "float48k.wav");
+            WriteTestWav(hiRes, 48000, 1, 32, true, 1.0, (t, ch) => 0.3 * Math.Sin(2 * Math.PI * 500 * t) + 0.3 * Math.Sin(2 * Math.PI * 5000 * t));
+            short[] fromFloat = WavFile.ReadAnnouncement(hiRes);
+            double at500 = ToneLevel(fromFloat, 500), alias3k = ToneLevel(fromFloat, 3000);
+            Check(fromFloat.Length == 8000 && Db(at500) - Db(alias3k) > 40,
+                  $"announcement: a 48 kHz float WAV is filtered before resampling, so a 5 kHz tone doesn't fold down to 3 kHz ({Db(at500) - Db(alias3k):F0} dB below)");
+
+            string deep = Path.Combine(dir, "24bit.wav"), cheap = Path.Combine(dir, "8bit.wav");
+            WriteTestWav(deep, 16000, 1, 24, false, 0.5, (t, ch) => 0.5 * Math.Sin(2 * Math.PI * 800 * t));
+            WriteTestWav(cheap, 8000, 1, 8, false, 0.5, (t, ch) => 0.5 * Math.Sin(2 * Math.PI * 800 * t));
+            short[] fromDeep = WavFile.ReadAnnouncement(deep), fromCheap = WavFile.ReadAnnouncement(cheap);
+            Check(fromDeep.Length == 4000 && fromCheap.Length == 4000 && Db(ToneLevel(fromDeep, 800)) > -6 && Db(ToneLevel(fromCheap, 800)) > -6,
+                  "announcement: 24-bit and 8-bit WAVs are read too");
+
+            string quiet = Path.Combine(dir, "quiet.wav");
+            WriteTestWav(quiet, 8000, 1, 16, false, 0.5, (t, ch) => 0.0316 * Math.Sin(2 * Math.PI * 700 * t));    // -30 dBFS
+            double quietPeak = WavFile.ReadAnnouncement(quiet).Max(v => Math.Abs((int)v)) / 32768.0;
+            Check(Math.Abs(Db(quietPeak) - (-18)) < 0.6, $"announcement: a quiet file is raised at most 12 dB ({Db(quietPeak):F1} dBFS)");
+
+            string notWav = Path.Combine(dir, "notes.wav"), adpcm = Path.Combine(dir, "adpcm.wav"), tooLong = Path.Combine(dir, "long.wav");
+            File.WriteAllText(notWav, "not audio");
+            WriteTestWav(adpcm, 8000, 1, 16, false, 0.1, (t, ch) => 0, format: 2);
+            WriteTestWav(tooLong, 4000, 1, 8, false, WavFile.MaxAnnouncementSeconds + 1, (t, ch) => 0);
+            string Why(string path) { try { WavFile.ReadAnnouncement(path); return null; } catch (ArgumentException ex) { return ex.Message; } }
+            string w1 = Why(notWav), w2 = Why(adpcm), w3 = Why(tooLong);
+            Check(w1 != null && w1.Contains("isn't a WAV") && w2 != null && w2.Contains("can't be read") && w3 != null && w3.Contains("minutes"),
+                  "announcement: a file that isn't a WAV, a compressed WAV and one that's too long are refused, saying why");
+
+            // sent like a tone: lead-in, then the audio through the voice encoder, in whole LDUs
+            TonePlan plan = TonePlan.FromAudio("announcement test", fromCd);
+            int lead = TonePlan.LeadInMs / 20;
+            List<short[]> planned = plan.MonitorPcm().ToList();
+            Check(plan.Frames.Length % 9 == 0 && plan.Frames.All(f => f == null) && planned.Count == plan.Frames.Length &&
+                  planned.Take(lead).All(f => f.All(v => v == 0)) && planned[lead].SequenceEqual(fromCd.Take(160)) && plan.Frames.Length >= lead + 100,
+                  "announcement: the plan is the lead-in, then the audio, in whole LDUs");
+
+            // speech-like audio (IMBE is a speech codec: a pure sine doesn't survive it, which is why alert tones use tone codewords)
+            string speech = Path.Combine(dir, "speech.wav");
+            using (WavSink sw = new WavSink(speech))
+                for (int i = 0; i < 150; i++) sw.Write(VoicedFrame(i));
+            short[] spoken = WavFile.ReadAnnouncement(speech);
+            TonePlan speechPlan = TonePlan.FromAudio("announcement speech", spoken);
+            Codeplug.System aOffline = new Codeplug.System { Name = "Test", Identity = "TEST", Address = "127.0.0.1", Port = 62031, PeerId = 9000001, Rid = "9000001", Password = "x" };
+            CaptureSink annSink = new CaptureSink(new CliPeer(aOffline, new KeyStore(), verbose: false));
+            P25Transmitter annTx = new P25Transmitter(annSink, new KeyStore(), 9000001, 504, P25Defines.P25_ALGO_UNENCRYPT, 0);
+            annTx.Start(out _);
+            new ToneJob(speechPlan, new List<(string, P25Transmitter)> { ("Calling", annTx) }, null).Start(realTime: false);
+            List<byte[]> annHeard = RoundTrip(annSink, 504, 9000001, new KeyStore(), out _);
+            MBEDecoder annDec = new MBEDecoder(MBE_MODE.IMBE_88BIT);
+            List<short> annPcm = new List<short>();
+            foreach (byte[] cw in annHeard.Skip(lead + 10).Take(120)) { short[] o = new short[160]; annDec.decode(cw, o); annPcm.AddRange(o); }
+            double RmsDb(IEnumerable<short> xs) { double sum = 0; int n = 0; foreach (short x in xs) { sum += (double)x * x; n++; } return Db(Math.Sqrt(sum / Math.Max(1, n)) / 32768.0); }
+            // the vocoder alone on the same audio: what the codec itself does to the level, for comparison
+            MBEEncoder soloEnc = new MBEEncoder(MBE_MODE.IMBE_88BIT);
+            MBEDecoder soloDec = new MBEDecoder(MBE_MODE.IMBE_88BIT);
+            List<short> soloPcm = new List<short>();
+            for (int f = 0; f < 10 + 120; f++)
+            {
+                short[] frame = new short[160];
+                Array.Copy(spoken, f * 160, frame, 0, Math.Min(160, spoken.Length - f * 160));
+                byte[] cw = new byte[P25VoiceReceiver.ImbeLength];
+                soloEnc.encode(frame, cw);
+                short[] o = new short[160];
+                soloDec.decode(cw, o);
+                if (f >= 10) soloPcm.AddRange(o);
+            }
+            double codecLevel = RmsDb(soloPcm), heardLevel = RmsDb(annPcm), sentLevel = RmsDb(spoken.Skip(10 * 160).Take(120 * 160));
+            Check(annHeard.Count == speechPlan.Frames.Length && Math.Abs(codecLevel - heardLevel) < 1.5,
+                  $"announcement: speech sent through the transmitter arrives as the vocoder alone would make it ({heardLevel:F1} vs {codecLevel:F1} dBFS; {sentLevel:F1} going in)");
+
+            // the console: the remembered list, and why it won't send
+            string annSettings = Path.Combine(tmp, "announce-settings.json");
+            Tui at = new Tui(cp, sys, TimeSpan.FromSeconds(1), null, settingsPath: annSettings) { NoAudio = true };
+            string addedBad = at.AddAnnouncement(notWav), addedGood = at.AddAnnouncement(cd);
+            at.SaveSettings();
+            bool listed = at.Announcements.SequenceEqual(new[] { Path.GetFullPath(cd) }) && File.ReadAllText(annSettings).Contains("cd-stereo.wav");
+            string tooLongForLimit = at.PlayAnnouncement(cd, allListening: false);
+            Tui at2 = new Tui(cp, sys, TimeSpan.FromSeconds(120), null, settingsPath: annSettings) { NoAudio = true };
+            string offlineWhy = at2.PlayAnnouncement(at2.Announcements[0], allListening: false);
+            string noneListening = at2.PlayAnnouncement(at2.Announcements[0], allListening: true);
+            Check(addedBad != null && addedGood == null && listed && tooLongForLimit.Contains("longer than the 1 s transmit time limit") &&
+                  offlineWhy.Contains("not connected") && noneListening.Contains("no listening channels") && DispatchConsole.AnnouncementName(cd) == "cd-stereo",
+                  "announcements: remembered; refused (saying why) when too long for the time limit, not connected, or with nothing listening");
+
+            // the TUI's box: add by path, play (refused here: not connected), remove
+            at2.Render(120, 40);
+            at2.HandleInput(new InputEvent(InputKind.Key, InputKey.Char, 'n'));
+            bool annOpen = at2.AnnounceDialogOpen;
+            at2.HandleInput(new InputEvent(InputKind.Key, InputKey.Char, 'a'));
+            foreach (char ch in deep)
+                at2.HandleInput(new InputEvent(InputKind.Key, InputKey.Char, ch));
+            at2.HandleInput(new InputEvent(InputKind.Key, InputKey.Enter));
+            bool addedByPath = at2.Announcements.Count == 2;
+            at2.HandleInput(new InputEvent(InputKind.Key, InputKey.Enter));
+            bool refusedShown = (at2.AnnounceDialogMessage ?? string.Empty).Contains("not connected") && at2.AnnounceDialogOpen;
+            at2.HandleInput(new InputEvent(InputKind.Key, InputKey.Char, 'r'));
+            at2.HandleInput(new InputEvent(InputKind.Key, InputKey.Escape));
+            Check(annOpen && addedByPath && refusedShown && at2.Announcements.Count == 1 && !at2.AnnounceDialogOpen,
+                  "TUI announcements box: n opens it, a adds a file by path, Enter tries to play it (and says why not), r removes it");
         }
 
         private static void ListenKeyTests(string tmp)

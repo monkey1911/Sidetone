@@ -37,6 +37,7 @@ namespace Sidetone.Cli
             radioDialog = null;
             zoneDialog = null;
             keyDialog = null;
+            announceDialog = null;
             OutputsDialog d = new OutputsDialog();
             try { d.Devices = (deviceQueryForTest ?? (() => AudioDeviceList.Query()))().Outputs; }
             catch (Exception ex) { d.Note = $"can't list the outputs ({ex.Message}); only saved ones are shown"; }

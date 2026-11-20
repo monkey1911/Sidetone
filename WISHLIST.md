@@ -23,7 +23,6 @@ Roughly in the order that makes sense to do them.
 
 4. **Smaller gaps compared with the Windows console:**
    - more than one FNE system at a time
-   - playing a WAV file onto a talkgroup
    - web streams
 
 5. **TMS (text messaging).** Waiting on others: it depends on data support on the FNE side. The question for the FNE's maintainers is what a console peer will be sent and allowed to send, so the GUI can get a messages panel that fits.
@@ -32,7 +31,7 @@ Roughly in the order that makes sense to do them.
 
 - ~~**Selectable encryption and local key files.**~~ Done in 0.19: channels marked `selectable_encryption` can be switched between secure and clear for transmit, and keys can come from a password-protected KFDtool `.ekc` container.
   - ~~The terminal console can only unlock a key file before it starts.~~ Done in 0.25: `K` opens its key file box at any time.
-  - Still to do: `sidetone-cli listen` doesn't use a key file yet.
+  - ~~`sidetone-cli listen` doesn't use a key file yet.~~ Done in 0.29: `--key-file`, Settings' choice or the codeplug's.
   - Still to do: try a key file made by KFDtool itself (so far only one written by the self-test).
 
 - ~~**Patching.**~~ Done in 0.20, passing voice frames between talkgroups without decoding and re-encoding them.
@@ -43,6 +42,9 @@ Roughly in the order that makes sense to do them.
 
 - ~~**Desktop notifications.**~~ Done in 0.21, for pages (call alerts) to the console.
   - Tabled: emergency alarms. Upstream added emergency support in late 2024 and removed it on purpose in March 2025 ("what do you think we are mission critical?"); to be decided later whether Sidetone shows the emergency bit at all.
+
+- ~~**Announcements: playing a WAV file onto a talkgroup.**~~ Done in 0.29: a remembered list of WAV files (any common format, converted and levelled), played on the focused channel or every listening channel (the Windows console's custom alert tones).
+  - Still to do: scheduled announcements (once, or repeating), like the Windows console's timed announcements.
 
 - ~~**Packaging.**~~ Done in 0.27: an AppImage and an Arch package (`sidetone-bin` PKGBUILD) with each release, next to the tarballs; the PKGBUILD is built, installed and run on Arch in CI.
   - Still to do: publish it on the AUR, once AUR sign-ups open again (or someone with an account publishes it with us as co-maintainers).

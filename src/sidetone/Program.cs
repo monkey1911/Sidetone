@@ -81,8 +81,8 @@ namespace Sidetone.Gui
                     case "--selfcheck": o.SelfCheck = true; break;
                     case "--show":
                         o.Show = Next().ToLowerInvariant();
-                        if (o.Show is not ("page" or "digital" or "radio" or "settings" or "keyfile" or "patch" or "recall" or "tabs" or "outputs"))
-                            throw new ArgumentException("--show must be page, digital, radio, settings, keyfile, patch, recall, tabs or outputs");
+                        if (o.Show is not ("page" or "digital" or "radio" or "settings" or "keyfile" or "patch" or "recall" or "tabs" or "outputs" or "announce"))
+                            throw new ArgumentException("--show must be page, digital, radio, settings, keyfile, patch, recall, tabs, outputs or announce");
                         break;
                     case "--space":
                     {
@@ -438,6 +438,17 @@ namespace Sidetone.Gui
             Press(PhysicalKey.Escape);
             Check(routingOpen && routed && focus.Output == null && c.CurrentZone.Output == null && !routing.IsOpen,
                   "O opens Audio outputs: a tab's and a channel's output are chosen there at once; Esc closes it");
+
+            // Announcements: the demo has two files
+            Press(PhysicalKey.N);
+            AnnouncementOverlay announce = w.AnnounceBox;
+            bool annOpen = announce.IsOpen && announce.Count == 2;
+            Press(PhysicalKey.ArrowDown);
+            Press(PhysicalKey.Enter);
+            bool refused = announce.IsOpen && announce.Message.Contains("ot connected") && announce.Row == 1;
+            Press(PhysicalKey.Escape);
+            Check(annOpen && refused && !announce.IsOpen,
+                  "N opens Announcements with the remembered files; Enter plays one (refused here, not connected, saying why); Esc closes it");
 
             // instant recall: the demo has calls on Tac 1, the focused channel
             Press(PhysicalKey.L, RawInputModifiers.Shift);
