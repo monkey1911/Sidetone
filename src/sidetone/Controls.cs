@@ -8,11 +8,57 @@
 
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 
 namespace Sidetone.Gui
 {
+    /// <summary>
+    /// Tells a tap from the start of a swipe, for touch screens. A finger that goes down on a card or button may be
+    /// starting to scroll, so a touch only counts when it lifts again having moved less than <see cref="Slop"/>
+    /// and without the scroll view taking it over. The mouse and pen act on press, as always.
+    /// </summary>
+    public sealed class TouchTap
+    {
+        /// <summary>How far (in device-independent pixels) a finger may move and still be a tap.</summary>
+        public const double Slop = 10;
+
+        private IPointer pointer;
+        private Point down;
+
+        /// <summary>A press: true when it should act now (not a finger); a finger is remembered until it lifts.</summary>
+        public bool Pressed(IPointer p, Point at)
+        {
+            if (p.Type != PointerType.Touch)
+            {
+                pointer = null;
+                return true;
+            }
+            pointer = p;
+            down = at;
+            return false;
+        }
+
+        /// <summary>The pointer moved: a finger that has gone further than Slop is scrolling, not tapping.</summary>
+        public void Moved(IPointer p, Point at)
+        {
+            if (pointer != null && p == pointer && Math.Max(Math.Abs(at.X - down.X), Math.Abs(at.Y - down.Y)) > Slop)
+                pointer = null;
+        }
+
+        /// <summary>The pointer lifted: true when that finger's touch was a tap.</summary>
+        public bool Released(IPointer p, Point at)
+        {
+            bool tap = pointer != null && p == pointer && Math.Max(Math.Abs(at.X - down.X), Math.Abs(at.Y - down.Y)) <= Slop;
+            pointer = null;
+            return tap;
+        }
+
+        /// <summary>Something else took the pointer (the scroll view, scrolling): not a tap.</summary>
+        public void Cancel() => pointer = null;
+    } // public sealed class TouchTap
+
     /// <summary>
     /// A flat button: a rounded label that runs an action when clicked. It never takes keyboard
     /// focus, so a held key can't press it.
@@ -28,6 +74,7 @@ namespace Sidetone.Gui
         /// </summary>
         public Action Released;
         private bool pressed;
+        private readonly TouchTap touch = new TouchTap();
 
         public Tap(string text, Action click, double fontSize = 13, double minWidth = 0, double padX = 12, double padY = 6)
         {
@@ -53,6 +100,10 @@ namespace Sidetone.Gui
             {
                 if (!e.GetCurrentPoint(Root).Properties.IsLeftButtonPressed)
                     return;
+                // a finger on an ordinary button may be starting to scroll: it clicks when it lifts, if it didn't move.
+                // Hold-to-talk buttons (Released set) act on the press, finger or not.
+                if (Released == null && !touch.Pressed(e.Pointer, e.GetPosition(Root)))
+                    return;             // not handled: the scroll view may still take it
                 e.Handled = true;       // not also a click on whatever the button sits on
                 if (Released != null)
                 {
@@ -61,8 +112,17 @@ namespace Sidetone.Gui
                 }
                 click();
             };
-            Root.PointerReleased += (s, e) => LetGo();
-            Root.PointerCaptureLost += (s, e) => LetGo();
+            Root.PointerMoved += (s, e) => touch.Moved(e.Pointer, e.GetPosition(Root));
+            Root.PointerReleased += (s, e) =>
+            {
+                if (touch.Released(e.Pointer, e.GetPosition(Root)))
+                {
+                    e.Handled = true;   // the card under the button doesn't also take it
+                    click();
+                }
+                LetGo();
+            };
+            Root.PointerCaptureLost += (s, e) => { touch.Cancel(); LetGo(); };
             Root.PointerEntered += (s, e) => Root.Opacity = 0.82;
             Root.PointerExited += (s, e) => Root.Opacity = 1.0;
         }
@@ -188,15 +248,29 @@ namespace Sidetone.Gui
                 BorderThickness = new Thickness(2),
                 Child = stack
             };
-            Root.PointerPressed += (s, e) =>
+            void Chosen()
             {
-                if (!e.GetCurrentPoint(Root).Properties.IsLeftButtonPressed)
-                    return;
                 console.SetFocus(index);
                 if (!chan.Selected)
                     console.Select(chan);
                 changed();
+            }
+            // a mouse click chooses the card at once; a finger only when it lifts without having scrolled
+            TouchTap touch = new TouchTap();
+            Root.PointerPressed += (s, e) =>
+            {
+                if (!e.GetCurrentPoint(Root).Properties.IsLeftButtonPressed)
+                    return;
+                if (touch.Pressed(e.Pointer, e.GetPosition(Root)))
+                    Chosen();
             };
+            Root.PointerMoved += (s, e) => touch.Moved(e.Pointer, e.GetPosition(Root));
+            Root.PointerReleased += (s, e) =>
+            {
+                if (!e.Handled && touch.Released(e.Pointer, e.GetPosition(Root)))
+                    Chosen();
+            };
+            Root.PointerCaptureLost += (s, e) => touch.Cancel();
         }
 
         private static Grid Row(Control left, Control right)

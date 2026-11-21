@@ -684,6 +684,22 @@ namespace Sidetone.Gui
             }
             finally { GuiPlatform.Current = null; }
 
+            // touch: a finger acts when it lifts without having moved (so scrolling over cards doesn't choose them)
+            TouchTap tt = new TouchTap();
+            Avalonia.Input.Pointer finger = new Avalonia.Input.Pointer(Avalonia.Input.Pointer.GetNextFreeId(), PointerType.Touch, true), mouse = new Avalonia.Input.Pointer(Avalonia.Input.Pointer.GetNextFreeId(), PointerType.Mouse, true);
+            bool mouseNow = tt.Pressed(mouse, new Point(5, 5));
+            bool fingerWaits = !tt.Pressed(finger, new Point(5, 5));
+            tt.Moved(finger, new Point(9, 12));
+            bool tapped = tt.Released(finger, new Point(9, 12));
+            tt.Pressed(finger, new Point(5, 5));
+            tt.Moved(finger, new Point(5, 40));
+            bool swiped = !tt.Released(finger, new Point(5, 6));
+            tt.Pressed(finger, new Point(5, 5));
+            tt.Cancel();
+            bool taken = !tt.Released(finger, new Point(5, 5));
+            Check(mouseNow && fingerWaits && tapped && swiped && taken,
+                  "touch: a mouse acts on press; a finger only when it lifts having moved less than 10 px, not when it scrolled or the scroll view took it");
+
             // Go offline logs out and keeps the codeplug; Go online logs in again with it
             int channelsBefore = w.View.ActiveConsole?.Channels.Count ?? -1;
             void TapOn(Tap t)

@@ -81,7 +81,18 @@ namespace Sidetone.Droid
         {
             if (ContextCompat.CheckSelfPermission(context, Manifest.Permission.RecordAudio) != Permission.Granted)
                 throw new InvalidOperationException("Sidetone isn't allowed to use the microphone (Android settings, Apps, Sidetone, Permissions)");
-            return new AndroidInput(Find(device, GetDevicesTargets.Inputs));
+            // a Bluetooth headset's microphone only works over its call link (SCO), which has to be opened: when
+            // it's the chosen microphone, or when none is chosen and a headset is connected (as a phone call would)
+            AudioDeviceInfo chosen = Find(device, GetDevicesTargets.Inputs);
+            AudioDeviceInfo headset = chosen?.Type == AudioDeviceType.BluetoothSco ? chosen
+                : chosen == null ? manager.GetDevices(GetDevicesTargets.Inputs).FirstOrDefault(d => d.Type == AudioDeviceType.BluetoothSco) : null;
+            BluetoothCallLink link = headset != null ? BluetoothCallLink.Open(manager, headset) : null;
+            try { return new AndroidInput(chosen ?? headset, link); }
+            catch
+            {
+                link?.Dispose();
+                throw;
+            }
         }
 
         public IReadOnlyList<string> Problems()
@@ -183,8 +194,11 @@ namespace Sidetone.Droid
         public event Action<short[]> Block;
         public event Action<string> Failed;
 
-        public AndroidInput(AudioDeviceInfo device)
+        private readonly BluetoothCallLink link;
+
+        public AndroidInput(AudioDeviceInfo device, BluetoothCallLink link = null)
         {
+            this.link = link;
             int min = AudioRecord.GetMinBufferSize(AndroidAudioBackend.Rate, ChannelIn.Mono, Encoding.Pcm16bit);
             record = new AudioRecord(AudioSource.VoiceCommunication, AndroidAudioBackend.Rate, ChannelIn.Mono, Encoding.Pcm16bit,
                                      Math.Max(min, AndroidAudioBackend.Rate * 2 / 5));
@@ -237,6 +251,75 @@ namespace Sidetone.Droid
             try { record.Stop(); } catch (Java.Lang.IllegalStateException) { }
             thread.Join(500);
             record.Release();
+            link?.Dispose();
         }
     } // internal sealed class AndroidInput
+
+    /// <summary>
+    /// The call link (SCO) to a Bluetooth headset, open while its microphone is used. Android 12 and newer: the
+    /// headset is made the communication device; Android 11: Bluetooth SCO is started. The phone is put in its
+    /// voice-call mode meanwhile, and back to normal after. The link takes a moment to come up, so the first
+    /// fraction of a second of a transmission may be silent.
+    /// </summary>
+    internal sealed class BluetoothCallLink : IDisposable
+    {
+        private readonly AudioManager manager;
+        private readonly Mode modeBefore;
+        private bool closed;
+
+        private BluetoothCallLink(AudioManager manager)
+        {
+            this.manager = manager;
+            modeBefore = manager.Mode;
+        }
+
+        public static BluetoothCallLink Open(AudioManager manager, AudioDeviceInfo headsetMic)
+        {
+            BluetoothCallLink link = new BluetoothCallLink(manager);
+            try
+            {
+                manager.Mode = Mode.InCommunication;
+                if (OperatingSystem.IsAndroidVersionAtLeast(31))
+                {
+                    AudioDeviceInfo target = manager.AvailableCommunicationDevices.FirstOrDefault(d => d.Type == AudioDeviceType.BluetoothSco);
+                    bool ok = target != null && manager.SetCommunicationDevice(target);
+                    DebugLog.Write("audio", $"Bluetooth microphone ({headsetMic.ProductName}): {(ok ? "headset made the communication device" : "the headset couldn't be made the communication device")}");
+                }
+                else
+                {
+#pragma warning disable CA1422, CS0618 // Android 11's way to open the headset's call link
+                    manager.StartBluetoothSco();
+                    manager.BluetoothScoOn = true;
+#pragma warning restore CA1422, CS0618
+                    DebugLog.Write("audio", $"Bluetooth microphone ({headsetMic.ProductName}): SCO started");
+                }
+            }
+            catch (Java.Lang.Exception ex)
+            {
+                DebugLog.Write("audio", $"Bluetooth microphone: the call link didn't open ({ex.Message})");
+            }
+            return link;
+        }
+
+        public void Dispose()
+        {
+            if (closed)
+                return;
+            closed = true;
+            try
+            {
+                if (OperatingSystem.IsAndroidVersionAtLeast(31))
+                    manager.ClearCommunicationDevice();
+                else
+                {
+#pragma warning disable CA1422, CS0618
+                    manager.BluetoothScoOn = false;
+                    manager.StopBluetoothSco();
+#pragma warning restore CA1422, CS0618
+                }
+                manager.Mode = modeBefore;
+            }
+            catch (Java.Lang.Exception) { /* closing anyway */ }
+        }
+    } // internal sealed class BluetoothCallLink
 }

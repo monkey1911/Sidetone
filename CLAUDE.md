@@ -8,7 +8,10 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
 
 ## State at hand-off (2026-11-16)
 
-- Version **0.31.3** on `main` (set once, in `src/Directory.Build.props`): an FNE address that can't be
+- Version **0.31.4** on `main` (set once, in `src/Directory.Build.props`): touch taps act on lift
+  (`TouchTap` in Controls.cs: cards and buttons ignore a finger that scrolled; hold-to-talk still
+  acts on press), and Android opens a Bluetooth headset's call link (SCO, `BluetoothCallLink`)
+  while its microphone is used (tester: "no microphone audio on Bluetooth"). 0.31.3: an FNE address that can't be
   looked up (`CliPeer.ResolveAddress`, `FneAddressException`) gets a plain reason instead of a crash
   (0.31.0) or a raw SocketException (0.31.1); found from an Android tester's debug logs. 0.31.2: Go offline / Go online
   (`ConsoleView.GoOffline`: closes the console, keeps the codeplug, remembered as
@@ -26,8 +29,8 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
   announcement; 0.29 brought WAV
   announcements, `listen --key-file`, the dvmcli/dvmgui wrappers removed. Check
   `gh release list` for what was last published.
-- 365 checks (295 in `sidetone-cli selftest`, one of which runs only when a speech engine is
-  installed; 70 in the GUI's `--selfcheck`) plus screenshots, and the Android job's on-device
+- 366 checks (295 in `sidetone-cli selftest`, one of which runs only when a speech engine is
+  installed; 71 in the GUI's `--selfcheck`) plus screenshots, and the Android job's on-device
   self-test (`DeviceSelfTest.cs`, on an API 30 emulator).
 - **Tested on the air by the owner:** RX/TX clear and AES, key delivery from the FNE, alias sync,
   alert tones, channel marker, QCII and digital pages, radio check (the radio answers; see the FNE

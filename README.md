@@ -125,7 +125,9 @@ Sidetone asks for three permissions the first time a console starts:
 - **Notifications** (Android 13 and newer): the "Connected" notification, and a notification when a radio pages the console.
 - **Nearby devices** (Android 12 and newer): only needed for Bluetooth headsets and PTT buttons.
 
-Audio plays through Android's own audio: the speaker, a wired or USB headset, or Bluetooth. Choose the device in Settings, or per tab and channel. Spoken announcements and the time announcement use the phone's own text-to-speech engine (Settings, Accessibility, Text-to-speech output), so there is nothing to install. Everything else works as on Linux, except the control socket, PTT devices read from `/dev/input` (see [Hardware PTT key](#hardware-ptt-key) instead), and the app launcher entry.
+Audio plays through Android's own audio: the speaker, a wired or USB headset, or Bluetooth. Choose the device in Settings, or per tab and channel. A Bluetooth headset's microphone is used when it's the chosen microphone, or when none is chosen and a headset is connected. While you transmit, Sidetone opens the headset's call link, the same one a phone call uses, so the first fraction of a second may be silent while it comes up.
+
+On a touch screen, a card or button only acts when your finger lifts without having moved, so scrolling through the cards doesn't choose or press anything. PTT still keys as soon as it's touched. Spoken announcements and the time announcement use the phone's own text-to-speech engine (Settings, Accessibility, Text-to-speech output), so there is nothing to install. Everything else works as on Linux, except the control socket, PTT devices read from `/dev/input` (see [Hardware PTT key](#hardware-ptt-key) instead), and the app launcher entry.
 
 ### Staying connected with the screen off
 
