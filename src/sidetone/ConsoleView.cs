@@ -494,14 +494,14 @@ namespace Sidetone.Gui
                 {
                     Title = "Open codeplug",
                     AllowMultiple = false,
-                    FileTypeFilter = new[] { new FilePickerFileType("Codeplug (YAML)") { Patterns = new[] { "*.yml", "*.yaml" } } }
+                    FileTypeFilter = OperatingSystem.IsAndroid() ? null : new[] { new FilePickerFileType("Codeplug (YAML)") { Patterns = new[] { "*.yml", "*.yaml" } } }
                 });
                 if (files == null || files.Count == 0)
                     return;
-                string path = files[0].TryGetLocalPath();
+                string path = await GuiPlatform.LocalPath(files[0], "codeplugs");
                 if (path == null)
                 {
-                    ShowWelcome("That file isn't on this computer's file system.");
+                    ShowWelcome("That file couldn't be read.");
                     return;
                 }
                 OpenCodeplug(path, null);
@@ -550,7 +550,7 @@ namespace Sidetone.Gui
                     RecordingsFolder = opt.RecordDir != null ? Path.GetFullPath(opt.RecordDir) : null,
                     Notifications = !opt.NoNotify && appSettings.Notifications != false,
                     ProcessingOff = opt.NoProcessing,
-                    ControlSocketPath = offline || opt.NoSocket ? null : opt.Socket != null ? Path.GetFullPath(opt.Socket) : ControlServer.DefaultPath,
+                    ControlSocketPath = offline || opt.NoSocket || OperatingSystem.IsAndroid() ? null : opt.Socket != null ? Path.GetFullPath(opt.Socket) : ControlServer.DefaultPath,
                     PttDevice = !offline && pttDevice != null ? (pttDevice.Value.Device, pttDevice.Value.Button, pttDevice.Value.Mute) : null,
                     LogFolder = offline || opt.NoLog || !string.IsNullOrWhiteSpace(opt.LogFile) ? null : LogFiles.DefaultFolder,
                     HistoryFolder = offline || settingsPath == null ? null : DispatchConsole.DefaultHistoryFolder
@@ -587,8 +587,10 @@ namespace Sidetone.Gui
                         RefreshNow();
                     });
                     c.Start();
+                    GuiPlatform.Current?.ConsoleStarted(c);
                 }
                 console = c;
+                GuiPlatform.Current?.Apply(appSettings, offline ? null : c);
                 currentPath = Path.GetFullPath(path);
                 currentSystem = system.Name;
 
@@ -735,9 +737,9 @@ namespace Sidetone.Gui
                 {
                     Title = "Choose a key file",
                     AllowMultiple = false,
-                    FileTypeFilter = new[] { new FilePickerFileType("KFDtool key container") { Patterns = new[] { "*.ekc" } } }
+                    FileTypeFilter = OperatingSystem.IsAndroid() ? null : new[] { new FilePickerFileType("KFDtool key container") { Patterns = new[] { "*.ekc" } } }
                 });
-                string path = files != null && files.Count > 0 ? files[0].TryGetLocalPath() : null;
+                string path = files != null && files.Count > 0 ? await GuiPlatform.LocalPath(files[0], "keys") : null;
                 if (path == null)
                     return;
                 ChangeSettings(s => s.KeyFile = path);
@@ -808,7 +810,7 @@ namespace Sidetone.Gui
             {
                 try { audio = AudioDeviceList.Query(); }
                 catch (Exception) { /* the lists just show what's saved */ }
-                inputs = InputDevices.List();
+                inputs = OperatingSystem.IsAndroid() ? new List<InputDeviceInfo>() : InputDevices.List();
             }
 
             settingsBox.Show(new SettingsOverlay.Values
@@ -830,7 +832,10 @@ namespace Sidetone.Gui
                 RecordingFormat = appSettings.RecordingFormat == DispatchConsole.FormatWav ? DispatchConsole.FormatWav : DispatchConsole.FormatOpus,
                 KeepDays = appSettings.RecordingKeepDays,
                 KeepHistory = appSettings.KeepHistory != false,
-                HistorySecure = appSettings.HistoryKeepSecure
+                HistorySecure = appSettings.HistoryKeepSecure,
+                HardwarePttKey = appSettings.HardwarePttKey,
+                HardwarePttKeyName = appSettings.HardwarePttKeyName,
+                KeepScreenOn = appSettings.KeepScreenOn == true
             }, audio, inputs, opt.Demo ? "The demo system (no codeplug file)." : currentPath, CommandLineOverrides(),
                !offline && AppLauncher.IsInstalled(AppLauncher.DataHome), KeyFileSummary(out bool locked), locked,
                appSettings.KeyFile != null && opt.KeyFile == null,
@@ -882,7 +887,11 @@ namespace Sidetone.Gui
                 s.RecordingKeepDays = v.KeepDays;
                 s.KeepHistory = v.KeepHistory ? null : false;
                 s.HistoryKeepSecure = v.HistorySecure;
+                s.HardwarePttKey = v.HardwarePttKey;
+                s.HardwarePttKeyName = v.HardwarePttKey == null ? null : v.HardwarePttKeyName;
+                s.KeepScreenOn = v.KeepScreenOn ? true : null;
             });
+            GuiPlatform.Current?.Apply(appSettings, offline ? null : console);
             if (historyChanged && !offline)
                 console?.HistorySettingsChanged();
             if (pruneNow && !offline)
@@ -984,6 +993,8 @@ namespace Sidetone.Gui
         /// <summary>Stops the console (when the window closes or another codeplug is opened).</summary>
         public void CloseConsole()
         {
+            if (console != null && !offline)
+                GuiPlatform.Current?.ConsoleStopped();
             overlay?.Close();
             patchBox?.Close();
             recallBox?.Close();
@@ -1580,13 +1591,13 @@ namespace Sidetone.Gui
                 {
                     Title = "Add announcements",
                     AllowMultiple = true,
-                    FileTypeFilter = new[] { new FilePickerFileType("WAV audio") { Patterns = new[] { "*.wav", "*.WAV" } } }
+                    FileTypeFilter = new[] { new FilePickerFileType("WAV audio") { Patterns = new[] { "*.wav", "*.WAV" }, MimeTypes = new[] { "audio/wav", "audio/x-wav", "audio/vnd.wave" } } }
                 });
                 List<string> problems = new List<string>();
                 foreach (IStorageFile f in files ?? new List<IStorageFile>())
                 {
-                    string path = f.TryGetLocalPath();
-                    string why = path == null ? $"{f.Name} isn't on this computer's file system" : console?.AddAnnouncement(path);
+                    string path = await GuiPlatform.LocalPath(f, "announcements");
+                    string why = path == null ? $"{f.Name} couldn't be read" : console?.AddAnnouncement(path);
                     if (why != null)
                         problems.Add(why);
                 }

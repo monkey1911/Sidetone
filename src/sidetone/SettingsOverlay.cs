@@ -15,7 +15,7 @@ using Avalonia.Media;
 
 namespace Sidetone.Gui
 {
-    public sealed class SettingsOverlay
+    public sealed partial class SettingsOverlay
     {
         /// <summary>What the box edits. Null strings mean "default" / "none" / "automatic".</summary>
         public sealed class Values
@@ -34,6 +34,10 @@ namespace Sidetone.Gui
             public int? KeepDays;
             /// <summary>Keep the call history between runs, and secure calls' audio in it.</summary>
             public bool KeepHistory = true, HistorySecure;
+            /// <summary>Android: the hardware PTT key (its code and name), or null; keep the screen on while connected.</summary>
+            public int? HardwarePttKey;
+            public string HardwarePttKeyName;
+            public bool KeepScreenOn;
         }
 
         /// <summary>One line in a drop-down list.</summary>
@@ -283,8 +287,9 @@ namespace Sidetone.Gui
             Grid.SetColumn(scaleNote, 1);
             scaleRow.Children.Add(Scale);
             scaleRow.Children.Add(scaleNote);
-            stack.Children.Add(Heading("Display"));
-            stack.Children.Add(Field("Scale", scaleRow));
+            Control displayHeading = Heading("Display"), scaleField = Field("Scale", scaleRow);
+            stack.Children.Add(displayHeading);
+            stack.Children.Add(scaleField);
             stack.Children.Add(Heading("Audio"));
             stack.Children.Add(Field("Output", Output));
             Tap routingTap = new Tap("Per tab and channel…", () => { Close(); OpenRouting?.Invoke(); }, fontSize: 12, padX: 10, padY: 5);
@@ -295,9 +300,12 @@ namespace Sidetone.Gui
             stack.Children.Add(Field("Mic processing", micRow));
             stack.Children.Add(Field("Receive", rxLevelTap.Root));
             stack.Children.Add(Heading("Push to talk"));
-            stack.Children.Add(Field("PTT device", PttDevice));
-            stack.Children.Add(Field("PTT button", PttButton));
-            stack.Children.Add(Field("Mute button", MuteButton));
+            Control[] pttDeviceFields = { Field("PTT device", PttDevice), Field("PTT button", PttButton), Field("Mute button", MuteButton) };
+            foreach (Control field in pttDeviceFields)
+                stack.Children.Add(field);
+            Control[] deviceRows = BuildDeviceRows();
+            foreach (Control row in deviceRows)
+                stack.Children.Add(row);
             stack.Children.Add(Field("Space and PTT", spaceRow));
             stack.Children.Add(Field("Time limit", limitRow));
             stack.Children.Add(Heading("Codeplug"));
@@ -318,8 +326,16 @@ namespace Sidetone.Gui
             stack.Children.Add(Heading("Key file"));
             stack.Children.Add(keyFileText);
             stack.Children.Add(keyRow);
-            stack.Children.Add(Heading("App launcher"));
+            Control launcherHeading = Heading("App launcher");
+            stack.Children.Add(launcherHeading);
             stack.Children.Add(launcherRow);
+
+            // a device (Android) has no display scale, input devices, app launcher or folders to open, and has its own PTT key
+            bool device = GuiPlatform.Current != null;
+            foreach (Control desktopOnly in new[] { displayHeading, scaleField, launcherHeading, launcherRow, recChoose.Root, recOpen.Root, logOpen.Root }.Concat(pttDeviceFields))
+                desktopOnly.IsVisible = !device;
+            foreach (Control row in deviceRows)
+                row.IsVisible = device;
             stack.Children.Add(overrides);
             stack.Children.Add(note);
 
@@ -391,6 +407,7 @@ namespace Sidetone.Gui
             Notify = current.Notifications;
             (lowCut, autoLevel, gate, limiter, rxLevel) = (current.LowCut, current.AutoLevel, current.NoiseGate, current.Limiter, current.RxLevel);
             keyFileText.Text = keyFile;
+            ShowDeviceValues(current);
             filling = true;
             Fill(Scale, current.Scale?.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture), "Automatic",
                  Scales.Select(v => new Choice(v.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture), DisplayScale.Percent(v))), "custom");
@@ -435,6 +452,7 @@ namespace Sidetone.Gui
         {
             if (!Root.IsVisible)
                 return;
+            StopLearning();
             Root.IsVisible = false;
             closed();
         }
@@ -547,6 +565,7 @@ namespace Sidetone.Gui
                 HistorySecure = HistorySecure,
                 KeepDays = int.TryParse(Selected(KeepDays), out int days) && days > 0 ? days : null
             };
+            CollectDeviceValues(v);
             string error = save(v);
             if (error != null)
             {
@@ -623,6 +642,7 @@ namespace Sidetone.Gui
             launcherTap.Paint(Brushes.Transparent, p.Text, p.Edge);
             cancel.Paint(Brushes.Transparent, p.Text, p.Edge);
             saveTap.Paint(p.Accent, p.OnStrong);
+            RefreshDevice(p);
         }
 
         private static void Paint(Tap tap, bool selected, Palette p)

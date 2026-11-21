@@ -26,6 +26,11 @@ namespace Sidetone.Gui
         /// <summary>Raised with the console view when it is the single view (Android).</summary>
         public static event Action<ConsoleView> ViewCreated;
 
+        private static ConsoleView singleView;
+
+        /// <summary>The console view when it is the single view (Android), once made.</summary>
+        public static ConsoleView SingleView => singleView;
+
         public override void Initialize()
         {
             Styles.Add(new FluentTheme());
@@ -35,17 +40,29 @@ namespace Sidetone.Gui
         {
             if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
                 desktop.MainWindow = CreateWindow?.Invoke(Options);
-            else if (ApplicationLifetime is ISingleViewApplicationLifetime single)
+            else if (ApplicationLifetime is IActivityApplicationLifetime activity)
             {
-                // Android: the console view is the whole app
-                ConsoleView view = new ConsoleView(Options);
-                single.MainView = view;
-                view.AttachedToVisualTree += (s, e) =>
+                // Android: the console view is the whole app. It's made when the activity first asks for it
+                // (so the activity can set Options first) and kept: an activity made again later (after Back,
+                // or when Android recreates it) shows the same console, which may still be connected.
+                activity.MainViewFactory = () =>
                 {
-                    if (TopLevel.GetTopLevel(view) is TopLevel top)
-                        view.ListenToKeys(top);
+                    if (singleView != null)
+                        return singleView;
+                    ConsoleView view = new ConsoleView(Options);
+                    TopLevel listening = null;
+                    view.AttachedToVisualTree += (s, e) =>
+                    {
+                        if (TopLevel.GetTopLevel(view) is TopLevel top && top != listening)
+                        {
+                            listening = top;
+                            view.ListenToKeys(top);
+                        }
+                    };
+                    singleView = view;
+                    ViewCreated?.Invoke(view);
+                    return view;
                 };
-                ViewCreated?.Invoke(view);
             }
             base.OnFrameworkInitializationCompleted();
         }

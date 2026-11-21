@@ -24,6 +24,21 @@ using Avalonia.Threading;
 
 namespace Sidetone.Gui
 {
+    /// <summary>A stand-in for Android's platform, for the self-check.</summary>
+    internal sealed class FakeDevice : IGuiPlatform
+    {
+        public Action<int, string> Learning;
+        public int? AppliedKey;
+        public string AppliedName;
+
+        public void LearnPttKey(Action<int, string> learned) => Learning = learned;
+        public void CancelLearn() => Learning = null;
+        public void Apply(AppSettings settings, DispatchConsole console) { AppliedKey = settings.HardwarePttKey; AppliedName = settings.HardwarePttKeyName; }
+        public void ConsoleStarted(DispatchConsole console) { }
+        public void ConsoleStopped() { }
+        public void OpenBatterySettings() { }
+    }
+
     public static class Program
     {
         [STAThread]
@@ -632,6 +647,31 @@ namespace Sidetone.Gui
             Resize(1280, 800);
             Check(!v.Narrow && v.PttTap.Root.IsEffectivelyVisible && !v.BigPtt.Root.IsEffectivelyVisible && v.BoxScale(v.SettingsBox.Root) == 1,
                   "phone layout: widening the window brings the usual layout back");
+
+            // a device platform (Android's, stood in for): Settings shows the PTT key, screen and battery rows
+            FakeDevice fakeDevice = new FakeDevice();
+            GuiPlatform.Current = fakeDevice;
+            try
+            {
+                MainWindow dw = new MainWindow(opt);
+                dw.Show();
+                Dispatcher.UIThread.RunJobs();
+                ConsoleView dv = dw.View;
+                dv.OpenBox("settings");
+                Dispatcher.UIThread.RunJobs();
+                SettingsOverlay ds = dv.SettingsBox;
+                ds.PressLearn();
+                bool waiting = ds.Learning && fakeDevice.Learning != null;
+                fakeDevice.Learning(25, "KEYCODE_VOLUME_DOWN");
+                bool learned = !ds.Learning && ds.PttKey == 25;
+                ds.PressSave();
+                Dispatcher.UIThread.RunJobs();
+                Check(waiting && learned && !ds.IsOpen && fakeDevice.AppliedKey == 25 && fakeDevice.AppliedName == "KEYCODE_VOLUME_DOWN" &&
+                      SettingsOverlay.KeyLabel("KEYCODE_VOLUME_DOWN", 25) == "Volume down" && SettingsOverlay.KeyLabel("KEYCODE_1015", 1015) == "key 1015",
+                      "device: Settings learns a hardware PTT key by pressing it (Volume down), and Save hands it to the platform");
+                dw.Close();
+            }
+            finally { GuiPlatform.Current = null; }
 
             w.KeyPressQwerty(PhysicalKey.Q, RawInputModifiers.Control);
             Dispatcher.UIThread.RunJobs();
