@@ -59,8 +59,6 @@ jobs:
 
       - name: Build libvocoder
         run: |
-          # patches/: fixes to libvocoder that haven't reached DVMProject/dvmvocoder yet
-          for p in patches/dvmvocoder-*.patch; do git -C extern/dvmvocoder apply "$PWD/$p"; done
           cmake -S extern/dvmvocoder -B build/vocoder -DCMAKE_BUILD_TYPE=Release
           cmake --build build/vocoder -j"$(nproc)"
           mkdir -p build/native
@@ -279,7 +277,6 @@ jobs:
 
       - name: Build libvocoder for Android
         run: |
-          for p in patches/dvmvocoder-*.patch; do git -C extern/dvmvocoder apply "$PWD/$p"; done
           for abi in arm64-v8a x86_64; do
             cmake -S extern/dvmvocoder -B "build/vocoder-android-$abi" -DCMAKE_BUILD_TYPE=Release \
               -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_LATEST_HOME/build/cmake/android.toolchain.cmake" \

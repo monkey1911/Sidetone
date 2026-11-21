@@ -65,8 +65,7 @@ src/sidetone/               graphical front end (Avalonia 12.1.6), namespace Sid
 src/sidetone-android/       Sidetone for Android (net10.0-android, API 30+, targets 36, org.sidetone.app): compiles
                             src/sidetone's sources (all but Program.cs) and adds the activity, audio, service, TTS, keystore
 extern/dvmconsole           submodule: monkey1911/dvmconsole-ARM64, branch dev (the Windows console)
-extern/dvmvocoder           submodule: DVMProject/dvmvocoder v0.2, built by CMake into libvocoder.so
-patches/                    dvmvocoder-*.patch, applied to the submodule before CMake (CI and local builds)
+extern/dvmvocoder           submodule: DVMProject/dvmvocoder main at e7ab96e (v0.2 plus the m_autoGain fix), built by CMake into libvocoder.so
 packaging/                  icons, sidetone.desktop (for packages; the dvmcli/dvmgui wrappers went in 0.29),
                             appimage/ (AppRun, build-appimage.sh: pinned appimagetool 1.9.1 + runtime 20251108,
                             SHA-256 checked), arch/ (PKGBUILD.in template + make-pkgbuild.sh, sidetone.install)
@@ -157,7 +156,6 @@ Local build, the same steps as `build.yml` (run from the repository root; `build
 git-ignored):
 
 ```
-for p in patches/dvmvocoder-*.patch; do git -C extern/dvmvocoder apply --check "$PWD/$p" 2>/dev/null && git -C extern/dvmvocoder apply "$PWD/$p"; done
 cmake -S extern/dvmvocoder -B build/vocoder -DCMAKE_BUILD_TYPE=Release
 cmake --build build/vocoder -j"$(nproc)"
 mkdir -p build/native && cp "$(find build/vocoder -name libvocoder.so | head -1)" build/native/
@@ -168,7 +166,7 @@ out/sidetone-$R/sidetone-cli selftest     # ends with ALL TESTS PASSED
 out/sidetone-$R/sidetone --selfcheck      # ends with ALL GUI CHECKS PASSED
 ```
 
-libvocoder only needs rebuilding when the `extern/dvmvocoder` submodule or `patches/` changes (the patch leaves the submodule showing as modified; that is expected). A screenshot works
+libvocoder only needs rebuilding when the `extern/dvmvocoder` submodule changes. A screenshot works
 locally too: `out/sidetone-$R/sidetone --screenshot FILE --demo --size 1180x760 --theme dark`
 (add `--show page|radio|settings|keyfile|patch|recall|tabs` for a box). Save these to the scratchpad and
 read the PNG directly, with no CI round trip.
@@ -260,14 +258,14 @@ every release on the air and on their hardware after publishing it.
   reported hot on RF). `AnnouncementLevel` (-9 to +3 dB) is applied at send time and in Hear it;
   `TonePlan.FromAudio` sends it through the voice encoder like a tone job. IMBE mangles pure sines,
   so test announcements with speech-like audio (`VoicedFrame`), compared with the vocoder alone.
-- **libvocoder's `MBEDecoder` never initialised `m_autoGain`** (upstream too, as of 2026-11), so a decoder
-  made in reused heap memory turned on its automatic gain and decoded about six times too loud, at
-  random. It showed up as an Opus recording check failing now and then in CI (it looked like an
-  AVX-512 problem at first: it isn't). `patches/dvmvocoder-autogain.patch` sets it to false; the
-  self-test makes decoders in dirtied memory. The C# wrapper has no way to set it.
-  Reported upstream as DVMProject/dvmvocoder#2 (2026-11-20), with the fix sent as pull request
-  DVMProject/dvmvocoder#3 (2026-11-21, from the owner's fork monkey1911/dvmvocoder, branch
-  fix-autogain-init); drop the patch once that is merged and the submodule is moved past it.
+- **libvocoder's `MBEDecoder` didn't initialise `m_autoGain`** until upstream commit e7ab96e, so a
+  decoder made in reused heap memory turned on its automatic gain and decoded about six times too
+  loud, at random. It showed up as an Opus recording check failing now and then in CI (it looked like
+  an AVX-512 problem at first: it isn't). Reported as DVMProject/dvmvocoder#2 and fixed by the
+  owner's pull request DVMProject/dvmvocoder#3, merged 2026-11-21; the submodule is at that commit
+  and Sidetone's own patch (patches/, gone since) was dropped. The self-test still makes decoders in
+  dirtied memory, so a submodule move that loses the fix fails it. Keep the submodule at or past
+  e7ab96e.
 - Tones go out as IMBE tone frames (as the Windows console does), so QCII tones are quantised to
   about 31 Hz steps.
 - Patch members have a `PatchRole` (Both, SourceOnly, TargetOnly); the Windows console's one-way
