@@ -99,7 +99,7 @@ namespace Sidetone.Droid
                 .SetSmallIcon(Resource.Drawable.icon)
                 .SetOngoing(true)
                 .SetContentIntent(OpenApp(this))
-                .AddAction(0, "Disconnect", stop)
+                .AddAction(0, "Go offline", stop)
                 .SetCategory(NotificationCompat.CategoryService)
                 .Build();
 

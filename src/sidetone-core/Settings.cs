@@ -143,6 +143,8 @@ namespace Sidetone.Core
         public string LastCodeplug { get; set; }
         /// <summary>The system the graphical console used last.</summary>
         public string LastSystem { get; set; }
+        /// <summary>The console was taken offline (Go offline): start offline too, until Go online. Null: online.</summary>
+        public bool? Offline { get; set; }
         public Dictionary<string, SystemSettings> Systems { get; set; } = new Dictionary<string, SystemSettings>(StringComparer.OrdinalIgnoreCase);
 
         private static readonly JsonSerializerOptions Json = new JsonSerializerOptions

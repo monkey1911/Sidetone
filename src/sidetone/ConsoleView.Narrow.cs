@@ -223,6 +223,7 @@ namespace Sidetone.Gui
             bool lists = page == NarrowPage.Calls || page == NarrowPage.Log;
 
             consoleButtons.IsVisible = open && !narrow;
+            offlineTap.Root.IsVisible = open;
             themeRow.IsVisible = !narrow;
             quit.Root.IsVisible = !narrow && !OperatingSystem.IsAndroid();
             details.IsVisible = !narrow;

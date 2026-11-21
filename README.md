@@ -30,6 +30,7 @@ There are two front ends over the same console:
 - [Terminal console (TUI)](#terminal-console-tui)
 - [Graphical console (sidetone)](#graphical-console-sidetone)
   - [Settings](#settings)
+  - [Going offline](#going-offline)
   - [App launcher](#app-launcher)
   - [Command-line options](#command-line-options)
 - [Audio devices](#audio-devices)
@@ -128,7 +129,7 @@ Audio plays through Android's own audio: the speaker, a wired or USB headset, or
 
 ### Staying connected with the screen off
 
-While a console is open, Sidetone runs as a foreground service. It shows a "Connected to SYSTEM" notification with **Disconnect**, and keeps the connection, receive audio and the microphone working with the screen off. Some phones (Samsung, Xiaomi, OnePlus and others) still stop apps in the background to save battery. If Sidetone drops off when the screen is off, open **Settings, Battery settings…** and let Sidetone run without restrictions. **Settings, Screen** can also keep the screen on while a console is open.
+While a console is open, Sidetone runs as a foreground service. It shows a "Connected to SYSTEM" notification with **Go offline**, and keeps the connection, receive audio and the microphone working with the screen off. Some phones (Samsung, Xiaomi, OnePlus and others) still stop apps in the background to save battery. If Sidetone drops off when the screen is off, open **Settings, Battery settings…** and let Sidetone run without restrictions. **Settings, Screen** can also keep the screen on while a console is open.
 
 When a call comes in on a listening channel while the screen is off, Sidetone turns the screen on, the way a radio lights up. If Sidetone was on show when the screen went off, it appears over the lock screen; anything else still needs the phone unlocked. The screen then goes off again on the phone's usual timeout. Muted channels (or Mute all) don't wake it. To keep the screen dark, set **Settings, Incoming calls** to **Leave it off**.
 
@@ -327,6 +328,10 @@ What it has so far:
 If a saved audio device isn't connected when Sidetone starts, it uses the system default and says so in the log. The saved choice is kept for next time.
 
 A command-line option still wins for the run it was given on, and Settings says so when one is in effect.
+
+### Going offline
+
+**Go offline**, at the top next to Settings, logs the console out of the FNE: nothing is received or sent, and nothing keeps running in the background. It keeps the codeplug ready. **Go online** logs in again with the same channels listening, and **Open another codeplug…** is there too. Sidetone remembers being offline: the next time it starts it stays offline until you press Go online, instead of logging in by itself. On Android, the "Connected" notification's **Go offline** does the same.
 
 ### App launcher
 

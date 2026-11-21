@@ -113,6 +113,7 @@ jobs:
           # the phone layout (narrower than 700 px), as on an Android phone
           shot phone --theme dark --size 412x915
           shot phone-more --theme light --size 412x915 --show more
+          shot offline --theme dark --show offline
           # the first-run view, with no codeplug
           out/sidetone-$RID/sidetone --screenshot out/gui-welcome.png --no-settings --theme dark --size 1180x760
           echo "-----BEGIN PNG welcome-----"

@@ -684,6 +684,22 @@ namespace Sidetone.Gui
             }
             finally { GuiPlatform.Current = null; }
 
+            // Go offline logs out and keeps the codeplug; Go online logs in again with it
+            int channelsBefore = w.View.ActiveConsole?.Channels.Count ?? -1;
+            void TapOn(Tap t)
+            {
+                Point at = t.Root.TranslatePoint(new Point(t.Root.Bounds.Width / 2, t.Root.Bounds.Height / 2), w) ?? new Point(-1, -1);
+                w.MouseDown(at, MouseButton.Left);
+                w.MouseUp(at, MouseButton.Left);
+                Dispatcher.UIThread.RunJobs();
+                w.UpdateLayout();
+            }
+            TapOn(w.View.OfflineTap);
+            bool wentOffline = w.View.ActiveConsole == null && w.View.IsOffline && w.View.GoOnlineTap.Root.IsEffectivelyVisible && !w.View.OfflineTap.Root.IsEffectivelyVisible;
+            TapOn(w.View.GoOnlineTap);
+            Check(wentOffline && w.View.ActiveConsole != null && !w.View.IsOffline && w.View.ActiveConsole.Channels.Count == channelsBefore && w.View.OfflineTap.Root.IsEffectivelyVisible,
+                  "Go offline closes the console (logged out) and shows Go online, which opens the same codeplug again");
+
             w.KeyPressQwerty(PhysicalKey.Q, RawInputModifiers.Control);
             Dispatcher.UIThread.RunJobs();
             Check(closed, "Ctrl+Q closes the window");

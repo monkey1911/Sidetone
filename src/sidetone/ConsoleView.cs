@@ -110,11 +110,12 @@ namespace Sidetone.Gui
         private readonly ScrollViewer logScroll = new ScrollViewer { HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
 
         // welcome view
-        private readonly StackPanel welcome = new StackPanel { Spacing = 12, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, MaxWidth = 620 };
+        private readonly StackPanel welcome = new StackPanel { Spacing = 12, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, MaxWidth = 620, Margin = new Thickness(20, 0) };
         private readonly TextBlock welcomeTitle = new TextBlock { Text = "Sidetone", FontSize = 28, FontWeight = FontWeight.Bold, HorizontalAlignment = HorizontalAlignment.Center };
         private readonly TextBlock welcomeText = new TextBlock { FontSize = 14, TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center };
         private readonly TextBlock welcomeError = new TextBlock { FontSize = 14, FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center };
-        private Tap openCodeplug, saveLogsTap;
+        private Tap openCodeplug, saveLogsTap, goOnlineTap, offlineTap;
+        private string offlinePath, offlineSystem;      // the codeplug and system taken offline, or null
         private readonly TextBlock saveLogsResult = new TextBlock { FontSize = 12, TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center };
 
         /// <summary>Raised when the title should change (the window's title on a desktop).</summary>
@@ -155,7 +156,9 @@ namespace Sidetone.Gui
             ActualThemeVariantChanged += (s, e) => ApplyTheme();
 
             string path = opt.Demo ? DemoCodeplug.Write() : opt.Codeplug ?? appSettings.LastCodeplug;
-            if (path != null)
+            if (path != null && opt.Codeplug == null && !opt.Demo && appSettings.Offline == true)
+                ShowOffline(path, appSettings.LastSystem);       // left offline last time: stay so until Go online
+            else if (path != null)
                 OpenCodeplug(path, opt.SystemName ?? (opt.Codeplug == null && !opt.Demo ? appSettings.LastSystem : null));
             else
                 ShowWelcome(null);
@@ -239,6 +242,7 @@ namespace Sidetone.Gui
                 case "calls": ShowPage(NarrowPage.Calls); break;
                 case "log": ShowPage(NarrowPage.Log); break;
                 case "more": ShowPage(NarrowPage.More); break;
+                case "offline": GoOffline(); break;
             }
         }
 
@@ -282,6 +286,7 @@ namespace Sidetone.Gui
             themeRow.Children.Add(themeLight.Root);
             themeRow.Children.Add(themeDark.Root);
 
+            offlineTap = new Tap("Go offline", GoOffline, fontSize: 12, padX: 10, padY: 4);
             settingsTap = new Tap("Settings", ShowSettings, fontSize: 12, padX: 10, padY: 4);
             settingsTap.Root.Margin = new Thickness(6, 0, 0, 0);
             quit = new Tap("Quit", RequestQuit, fontSize: 12, padX: 10, padY: 4);
@@ -289,6 +294,7 @@ namespace Sidetone.Gui
             headerRight = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right };
             headerRight.Children.Add(consoleButtons);
             headerRight.Children.Add(themeRow);
+            headerRight.Children.Add(offlineTap.Root);
             headerRight.Children.Add(settingsTap.Root);
             headerRight.Children.Add(quit.Root);
 
@@ -390,6 +396,10 @@ namespace Sidetone.Gui
             openCodeplug.Root.HorizontalAlignment = HorizontalAlignment.Center;
             welcome.Children.Add(welcomeTitle);
             welcome.Children.Add(welcomeText);
+            goOnlineTap = new Tap("Go online", GoOnline, fontSize: 15, minWidth: 180, padY: 10);
+            goOnlineTap.Root.HorizontalAlignment = HorizontalAlignment.Center;
+            goOnlineTap.Root.IsVisible = false;
+            welcome.Children.Add(goOnlineTap.Root);
             welcome.Children.Add(openCodeplug.Root);
             welcome.Children.Add(welcomeError);
             saveLogsTap = new Tap("Save debug logs…", () => _ = SaveDebugLogsFromWelcome(), fontSize: 13, padY: 6);
@@ -485,6 +495,10 @@ namespace Sidetone.Gui
             consoleView.IsVisible = false;
             UpdateLayoutMode();
             welcome.IsVisible = true;
+            offlinePath = offlineSystem = null;
+            goOnlineTap.Root.IsVisible = false;
+            openCodeplug.Text = "Open codeplug…";
+            welcomeTitle.Text = "Sidetone";
             systemName.Text = "Sidetone";
             connection.Text = string.Empty;
             details.Text = "no codeplug open";
@@ -554,6 +568,7 @@ namespace Sidetone.Gui
                 {
                     appSettings.LastCodeplug = Path.GetFullPath(path);
                     appSettings.LastSystem = system.Name;
+                    appSettings.Offline = null;     // opening a codeplug is going online
                     appSettings.Theme = themeSetting;
                     try { appSettings.Save(settingsPath); } catch { /* not worth stopping for */ }
                 }
@@ -1076,11 +1091,76 @@ namespace Sidetone.Gui
             saveLogsResult.Text = await SaveDebugLogs();
         }
 
-        /// <summary>Stops the console and goes back to the start (Android's Disconnect, in the connection's notification).</summary>
-        public void Disconnect()
+        /// <summary>Goes offline (Android's Disconnect, in the connection's notification).</summary>
+        public void Disconnect() => GoOffline();
+
+        /// <summary>The console is offline: logged out of the FNE, its codeplug ready for Go online (self-check hook).</summary>
+        internal bool IsOffline => offlinePath != null;
+
+        /// <summary>The header's Go offline and the offline view's Go online (self-check hooks).</summary>
+        internal Tap OfflineTap => offlineTap;
+        internal Tap GoOnlineTap => goOnlineTap;
+
+        /// <summary>
+        /// Logs out of the FNE and stops listening, keeping the codeplug ready: Go online logs in again with the same
+        /// channels listening. Remembered, so Sidetone starts offline next time too, until Go online.
+        /// </summary>
+        public void GoOffline()
         {
+            DispatchConsole c = console;
+            if (c == null || currentPath == null)
+                return;
+            string path = currentPath, system = currentSystem;
+            DebugLog.Mark("console", $"going offline from {system}");
             CloseConsole();
+            if (!offline)
+            {
+                appSettings.Offline = true;
+                if (settingsPath != null)
+                {
+                    try { appSettings.Save(settingsPath); } catch { /* not worth stopping for */ }
+                }
+            }
+            ShowOffline(path, system);
+            ApplyTheme();
+        }
+
+        /// <summary>Logs in again with the codeplug taken offline.</summary>
+        public void GoOnline()
+        {
+            string path = offlinePath, system = offlineSystem;
+            if (path == null)
+                return;
+            DebugLog.Mark("console", $"going online to {system}");
+            if (!offline && settingsPath != null)
+            {
+                appSettings = AppSettings.Load(settingsPath, out _);
+                appSettings.Offline = null;
+                try { appSettings.Save(settingsPath); } catch { /* not worth stopping for */ }
+            }
+            offlinePath = offlineSystem = null;
+            goOnlineTap.Root.IsVisible = false;
+            OpenCodeplug(path, system);
+            ApplyTheme();
+        }
+
+        /// <summary>The offline view: the system's name, Go online, and Open another codeplug.</summary>
+        private void ShowOffline(string path, string system)
+        {
             ShowWelcome(null);
+            offlinePath = path;
+            offlineSystem = system;
+            goOnlineTap.Root.IsVisible = true;
+            openCodeplug.Text = "Open another codeplug…";
+            string name = system ?? Path.GetFileNameWithoutExtension(path);
+            welcomeTitle.Text = "Offline";
+            systemName.Text = name;
+            connection.Text = "○ offline";
+            connection.Foreground = palette.Dim;
+            details.Text = Path.GetFileName(path);
+            welcomeText.Text = $"Sidetone isn't logged in to {name}: nothing is received or sent.\n" +
+                               "Go online to log in again, with the same channels listening.";
+            UpdateLayoutMode();
             RefreshNow();
         }
 
@@ -1155,7 +1235,12 @@ namespace Sidetone.Gui
             welcomeTitle.Foreground = p.Text;
             welcomeText.Foreground = p.Dim;
             welcomeError.Foreground = p.Tx;
-            openCodeplug.Paint(p.Accent, p.OnStrong);
+            goOnlineTap.Paint(p.Accent, p.OnStrong);
+            if (offlinePath != null)
+                openCodeplug.Paint(Brushes.Transparent, p.Text, p.Edge);
+            else
+                openCodeplug.Paint(p.Accent, p.OnStrong);
+            offlineTap.Paint(Brushes.Transparent, p.Dim, p.Edge);
             saveLogsTap.Paint(Brushes.Transparent, p.Dim, p.Edge);
             saveLogsResult.Foreground = p.Dim;
             quit.Paint(Brushes.Transparent, p.Dim, p.Edge);
