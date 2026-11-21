@@ -23,6 +23,11 @@ namespace Sidetone.Gui
         /// <summary>Narrower than this (in device-independent pixels), the phone layout is used.</summary>
         public const double NarrowWidth = 700;
 
+        /// <summary>Narrower than this, the usual layout puts the header's buttons on a second row (an upright tablet).</summary>
+        public const double TwoRowHeaderWidth = 1150;
+
+        private double lastWidth;
+
         /// <summary>The pages of the phone layout.</summary>
         internal enum NarrowPage { Channels, Calls, Log, More }
 
@@ -198,14 +203,15 @@ namespace Sidetone.Gui
 
         private void WidthChanged(double width)
         {
+            lastWidth = width;
             bool n = width > 0 && width < NarrowWidth;
             if (n != narrow)
             {
                 narrow = n;
                 if (!narrow)
                     page = NarrowPage.Channels;
-                UpdateLayoutMode();
             }
+            UpdateLayoutMode();
             FitBoxes(width);
             RefreshNow();
         }
@@ -221,6 +227,12 @@ namespace Sidetone.Gui
             quit.Root.IsVisible = !narrow && !OperatingSystem.IsAndroid();
             details.IsVisible = !narrow;
             header.Padding = narrow ? new Thickness(12, 8) : new Thickness(16, 10);
+            bool twoRows = !narrow && lastWidth > 0 && lastWidth < TwoRowHeaderWidth;
+            Grid.SetRow(headerRight, twoRows ? 1 : 0);
+            Grid.SetColumn(headerRight, twoRows ? 0 : 1);
+            Grid.SetColumnSpan(headerRight, twoRows ? 2 : 1);
+            headerRight.HorizontalAlignment = twoRows ? HorizontalAlignment.Left : HorizontalAlignment.Right;
+            headerRight.Margin = twoRows ? new Thickness(0, 8, 0, 0) : new Thickness(0);
             systemName.FontSize = narrow ? 18 : 20;
             titleRow.Orientation = narrow ? Orientation.Vertical : Orientation.Horizontal;     // the connection under the name, clear of Settings
             titleRow.Spacing = narrow ? 1 : 14;

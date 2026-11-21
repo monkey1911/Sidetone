@@ -60,7 +60,8 @@ namespace Sidetone.Gui
 
         // console view
         private readonly Grid consoleView = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*,Auto,230,Auto,Auto") };
-        private StackPanel themeRow, titleRow;
+        private StackPanel themeRow, titleRow, headerRight;
+        private Grid headerGrid;
         private ScrollViewer cardScroll;
         private Grid bottom;
         private readonly ZoneTabs zoneTabs = new ZoneTabs();
@@ -283,17 +284,17 @@ namespace Sidetone.Gui
             settingsTap.Root.Margin = new Thickness(6, 0, 0, 0);
             quit = new Tap("Quit", RequestQuit, fontSize: 12, padX: 10, padY: 4);
 
-            StackPanel right = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right };
-            right.Children.Add(consoleButtons);
-            right.Children.Add(themeRow);
-            right.Children.Add(settingsTap.Root);
-            right.Children.Add(quit.Root);
+            headerRight = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right };
+            headerRight.Children.Add(consoleButtons);
+            headerRight.Children.Add(themeRow);
+            headerRight.Children.Add(settingsTap.Root);
+            headerRight.Children.Add(quit.Root);
 
-            Grid headerGrid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+            headerGrid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), RowDefinitions = new RowDefinitions("Auto,Auto") };
             Grid.SetColumn(left, 0);
-            Grid.SetColumn(right, 1);
+            Grid.SetColumn(headerRight, 1);
             headerGrid.Children.Add(left);
-            headerGrid.Children.Add(right);
+            headerGrid.Children.Add(headerRight);
             header.Child = headerGrid;
 
             // tool bar: alert tones, page, radio command, channel marker
@@ -322,7 +323,7 @@ namespace Sidetone.Gui
             announceTap = new Tap("Announce…", () => ShowAnnouncements(), fontSize: 12, padY: 5);
             announceTap.Root.Margin = new Thickness(6, 0, 0, 0);
             tools.Children.Add(announceTap.Root);
-            toolBar.Child = tools;
+            toolBar.Child = new ScrollViewer { Content = tools, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled };
 
             overlay = new CommandOverlay(() => console, RefreshNow, () => root.Focus());
             settingsBox = new SettingsOverlay(SaveSettings, () => _ = PickCodeplug(), LauncherAction, () => root.Focus(),
