@@ -8,15 +8,18 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
 
 ## State at hand-off (2026-11-16)
 
-- Version **0.30.3** on `main` (set once, in `src/Directory.Build.props`): announcements levelled
+- Version **0.31.0** on `main` (set once, in `src/Directory.Build.props`): Sidetone for Android
+  (src/sidetone-android, CI-built APK/AAB, Android 11+), the GUI's console as `ConsoleView` with a
+  phone layout below 700 px, and core platform hooks. 0.30.3: announcements levelled
   like the mic (speech at -20 dBFS) and a Level setting; 0.30.2 fixed the time
   announcement playing again when its schedule was turned on just after the hour; 0.30.1 added a
   speed setting for text to speech; 0.30.0 brought spoken announcements (Piper or espeak-ng) and the time
   announcement; 0.29 brought WAV
   announcements, `listen --key-file`, the dvmcli/dvmgui wrappers removed. Check
   `gh release list` for what was last published.
-- 344 checks (283 in `sidetone-cli selftest`, one of which runs only when a speech engine is
-  installed; 61 in the GUI's `--selfcheck`) plus screenshots.
+- 357 checks (289 in `sidetone-cli selftest`, one of which runs only when a speech engine is
+  installed; 68 in the GUI's `--selfcheck`) plus screenshots, and the Android job's on-device
+  self-test (`DeviceSelfTest.cs`, on an API 30 emulator).
 - **Tested on the air by the owner:** RX/TX clear and AES, key delivery from the FNE, alias sync,
   alert tones, channel marker, QCII and digital pages, radio check (the radio answers; see the FNE
   limitation below), GUI on x86-64 under Hyprland, GUI on ARM64 (Surface Pro 11), display
@@ -41,7 +44,9 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
   Settings screen with real devices, the Motorola desk mic in the GUI, `--wayland`, and from 0.25:
   log files and Copy log, the TUI using the GUI's saved settings, the TUI's card buttons and key
   file box; from 0.26: Opus recordings and Delete after; from 0.28: one-way patches, outputs per
-  tab and channel, the call history between runs; from 0.29: announcements, `listen --key-file`; from 0.30: the scheduled time announcement, the new announcement level (0.30.3)
+  tab and channel, the call history between runs; from 0.29: announcements, `listen --key-file`; from 0.30: the scheduled time announcement, the new announcement level (0.30.3); from 0.31:
+  everything on Android (real audio, the background service with the screen off, hardware PTT
+  keys, Bluetooth, the phone's TTS) and the desktop's phone layout
   (Piper is installed on the owner's Surface, through `uv tool install piper-tts`, with the
   en_US-lessac-medium voice).
 - Next on the wishlist ("To be implemented"): a CI test against a real dvmfne, then NXDN/DMR
@@ -53,14 +58,17 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
 src/Directory.Build.props   shared: Version, net10.0, nullable off, unsafe on
 src/sidetone-core/          class library, namespace Sidetone.Core: everything that isn't UI
 src/sidetone-cli/           terminal front end (TUI; `Tui` is partial: Tui.Zones.cs tabs, Tui.KeyFile.cs key file box), commands, self-test
-src/sidetone/               graphical front end (Avalonia 12.1.6), namespace Sidetone.Gui
+src/sidetone/               graphical front end (Avalonia 12.1.6), namespace Sidetone.Gui; ConsoleView is the console,
+                            MainWindow only its desktop frame
+src/sidetone-android/       Sidetone for Android (net10.0-android, API 30+, targets 36, org.sidetone.app): compiles
+                            src/sidetone's sources (all but Program.cs) and adds the activity, audio, service, TTS, keystore
 extern/dvmconsole           submodule: monkey1911/dvmconsole-ARM64, branch dev (the Windows console)
 extern/dvmvocoder           submodule: DVMProject/dvmvocoder v0.2, built by CMake into libvocoder.so
 patches/                    dvmvocoder-*.patch, applied to the submodule before CMake (CI and local builds)
 packaging/                  icons, sidetone.desktop (for packages; the dvmcli/dvmgui wrappers went in 0.29),
                             appimage/ (AppRun, build-appimage.sh: pinned appimagetool 1.9.1 + runtime 20251108,
                             SHA-256 checked), arch/ (PKGBUILD.in template + make-pkgbuild.sh, sidetone.install)
-tools/                      ci-status.sh, ci-screenshots.sh (see Testing)
+tools/                      ci-status.sh, ci-screenshots.sh (see Testing), android-check.sh (the emulator self-test)
 .github/workflows/build.yml the only CI workflow ("Build (Linux)")
 ```
 
@@ -114,13 +122,21 @@ receiver's lock.
 
 ### GUI (`src/sidetone`)
 
+`ConsoleView` (a `UserControl`, partial: `ConsoleView.Narrow.cs` is the phone layout) is the whole
+console; `MainWindow` is a thin desktop `Window` around it (title, icon, keys, closing). On Android,
+`App` hands the same view to `IActivityApplicationLifetime.MainViewFactory` (made once, kept).
+Below 700 px wide the view switches to the phone layout (one column, big PTT, Channels/Calls/Log/More
+pages, boxes scaled down with a `LayoutTransformControl`). `IGuiPlatform` (`GuiPlatform.Current`,
+null on a desktop) is what a device adds: the hardware PTT key, keep screen on, the foreground
+service, battery settings; `SettingsOverlay.Device.cs` holds its Settings rows.
+
 No XAML: everything is built in C#. `Palette` (light/dark) is painted by hand on a 100 ms
-`DispatcherTimer` refresh (`MainWindow.RefreshNow`). Boxes are in-window overlays
+`DispatcherTimer` refresh (`ConsoleView.RefreshNow`). Boxes are in-window overlays
 (`CommandOverlay` for page/radio, `SettingsOverlay`, `KeyFileOverlay`, `PatchOverlay`,
 `RecallOverlay`, `ZoneOverlay` for the Tabs box), not separate windows. `ZoneTabs` is the tab strip;
 all cards are built once and only the current zone's are made visible. `Tap` (in `Controls.cs`) is the flat button used
 everywhere; set `Released` for hold-to-talk. `ChannelCard` is one card. Keyboard handling is in
-`MainWindow.HandleKeyDown/Up` (tunnel handlers; an open box takes keys first). `DemoCodeplug` is a
+`ConsoleView.HandleKeyDown/Up` (tunnel handlers on the window or top level; an open box takes keys first). `DemoCodeplug` is a
 made-up system for `--demo`, screenshots and the self-check. The GUI uses only the core's public
 API (only `sidetone-cli` has `InternalsVisibleTo`).
 
@@ -154,6 +170,18 @@ libvocoder only needs rebuilding when the `extern/dvmvocoder` submodule or `patc
 locally too: `out/sidetone-$R/sidetone --screenshot FILE --demo --size 1180x760 --theme dark`
 (add `--show page|radio|settings|keyfile|patch|recall|tabs` for a box). Save these to the scratchpad and
 read the PNG directly, with no CI round trip.
+
+**Android builds happen in CI only** (job `android`): the NDK that builds libvocoder for Android runs on
+x86-64 hosts only, and this Surface is ARM64 with little disk. The job builds libvocoder for arm64-v8a
+and x86_64 (`-Wl,-z,max-page-size=16384`), publishes the APK and AAB, checks every `.so` for 16 KB
+page alignment, and runs `tools/android-check.sh` on an API 30 emulator (the on-device self-test,
+`DeviceSelfTest.cs`, logs to logcat tag `sidetone`, then phone and tablet screenshots, uploaded as the
+`sidetone-android` artifact). Signing uses repo secrets `ANDROID_KEYSTORE_BASE64`,
+`ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` when set, else a throwaway debug key. The desktop
+GUI's phone layout can be checked locally: `--size 412x915` (and `--show calls|log|more`).
+Platform hooks in the core for Android: `Speech.Platform`, `SecretStore.Platform`,
+`DesktopNotify.Platform`; files go under the XDG variables, which the Android app points into its
+own storage.
 
 The build should have no NuGet warnings. `System.Security.Cryptography.Xml` (a direct reference in
 `sidetone-core`, used only for `.ekc` key files) was raised to 10.0.15 in 0.23.1 for advisories in

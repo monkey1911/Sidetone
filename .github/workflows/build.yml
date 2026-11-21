@@ -348,6 +348,7 @@ jobs:
           api-level: 30
           arch: x86_64
           target: google_apis
+          profile: pixel_6
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: tools/android-check.sh "out/release/Sidetone-${{ env.TAG }}-android.apk" out/android-check

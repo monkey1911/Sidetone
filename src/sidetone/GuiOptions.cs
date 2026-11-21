@@ -92,7 +92,7 @@ namespace Sidetone.Gui
                     {
                         string[] wh = Next().ToLowerInvariant().Split('x');
                         if (wh.Length != 2 || !int.TryParse(wh[0], out o.Width) || !int.TryParse(wh[1], out o.Height) ||
-                            o.Width < 400 || o.Height < 300 || o.Width > 4000 || o.Height > 3000)
+                            o.Width < 320 || o.Height < 300 || o.Width > 4000 || o.Height > 3000)
                             throw new ArgumentException("--size must look like 1280x800");
                         break;
                     }

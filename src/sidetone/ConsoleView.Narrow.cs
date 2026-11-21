@@ -142,7 +142,7 @@ namespace Sidetone.Gui
 
         private Tap NavButton(string text, NarrowPage which, int column)
         {
-            Tap t = new Tap(text, () => ShowPage(which), fontSize: 13, padY: 14);
+            Tap t = new Tap(text, () => ShowPage(which), fontSize: 13, padX: 2, padY: 14);
             t.Root.HorizontalAlignment = HorizontalAlignment.Stretch;
             t.Root.CornerRadius = new CornerRadius(0);
             t.Root.BorderThickness = new Thickness(0, 3, 0, 0);
@@ -222,6 +222,9 @@ namespace Sidetone.Gui
             details.IsVisible = !narrow;
             header.Padding = narrow ? new Thickness(12, 8) : new Thickness(16, 10);
             systemName.FontSize = narrow ? 18 : 20;
+            titleRow.Orientation = narrow ? Orientation.Vertical : Orientation.Horizontal;     // the connection under the name, clear of Settings
+            titleRow.Spacing = narrow ? 1 : 14;
+            connection.FontSize = narrow ? 12 : 13;
             toolBar.IsVisible = !narrow;
             keyHints.IsVisible = !narrow && !OperatingSystem.IsAndroid();
             txText.TextTrimming = TextTrimming.CharacterEllipsis;

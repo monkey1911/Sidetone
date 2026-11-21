@@ -1,6 +1,6 @@
 # Sidetone: an IP dispatch console for DVMProject FNE networks
 
-Sidetone is a dispatch console for [DVMProject](https://github.com/DVMProject) FNE networks. It runs on Linux, on ARM64 (aarch64) and x86-64, and is built on the [DVM Desktop Dispatch Console](https://github.com/DVMProject/dvmconsole). It was made for Omarchy on a Surface Pro 11 and runs the same way on x86-64 PCs. It connects to an FNE as a console peer using your dvmconsole codeplug, receives and transmits P25 voice with libvocoder, and plays it through PipeWire.
+Sidetone is a dispatch console for [DVMProject](https://github.com/DVMProject) FNE networks. It runs on Linux, on ARM64 (aarch64) and x86-64, and on Android phones and tablets (Android 11 and newer), and is built on the [DVM Desktop Dispatch Console](https://github.com/DVMProject/dvmconsole). It was made for Omarchy on a Surface Pro 11 and runs the same way on x86-64 PCs. It connects to an FNE as a console peer using your dvmconsole codeplug, receives and transmits P25 voice with libvocoder, and plays it through PipeWire.
 
 Up to version 0.16 this project was called dvmconsole-linux, and its programs were `dvmcli` and `dvmgui`. See [Coming from dvmcli and dvmgui](#coming-from-dvmcli-and-dvmgui).
 
@@ -8,6 +8,7 @@ There are two front ends over the same console:
 
 - **`sidetone-cli`**: a terminal console (TUI) that works anywhere, including over SSH, plus the `listen`, `ptt` and `devices` commands.
 - **`sidetone`**: a graphical console (Avalonia), with light and dark themes. See [Graphical console (sidetone)](#graphical-console-sidetone).
+- **Sidetone for Android**: the same graphical console as an Android app, with a phone layout. See [Android](#android).
 
 **What works:** FNE login, P25 receive and transmit (clear, AES-256, DES, ADP/ARC4 with keys from the FNE or a KFDtool key file), PipeWire audio, channel cards in tabs for the codeplug's zones, push-to-talk from the keyboard, a hotkey or a PTT device, alert tones, pages, radio commands, the channel marker, radio aliases, patching (two-way and one-way), instant recall with a call history kept between runs, audio outputs per tab and channel, recording to Opus or WAV, announcements (WAV files, or text spoken by Piper or espeak-ng, played onto talkgroups), a time announcement that can play by itself on the clock, and log files.
 
@@ -19,6 +20,10 @@ There are two front ends over the same console:
   - [AppImage](#appimage)
   - [Arch Linux and Omarchy](#arch-linux-and-omarchy)
   - [Tarball](#tarball)
+- [Android](#android)
+  - [Staying connected with the screen off](#staying-connected-with-the-screen-off)
+  - [Hardware PTT key](#hardware-ptt-key)
+  - [The phone layout](#the-phone-layout)
 - [Codeplug](#codeplug)
 - [Use](#use)
 - [Terminal console (TUI)](#terminal-console-tui)
@@ -104,6 +109,34 @@ tar -xzf ~/Downloads/sidetone-*-linux-x64.tar.gz -C ~
 ```
 
 Then run `./sidetone` or `./sidetone-cli` from that folder; **Add to app launcher** in Settings adds a launcher entry for it. The `desktop/` folder holds a launcher entry and icons for anyone packaging it.
+
+## Android
+
+Sidetone for Android is the graphical console as an app for phones and tablets running **Android 11 or newer**. It is built for the newest Android (API 36), as Google Play requires. Each release has `Sidetone-VERSION-android.apk` attached: download it on the phone and open it to install (Android asks you to allow installing apps from your browser or file manager the first time). It isn't on Google Play yet.
+
+To start, tap **Open codeplug…** and choose your dvmconsole codeplug. Sidetone keeps a copy in its own storage and opens it again next time. A KFDtool key file is chosen the same way, in Settings. Its password can be remembered; it's kept encrypted with a key in the Android Keystore.
+
+Sidetone asks for three permissions the first time a console starts:
+
+- **Microphone**: needed to transmit. Without it you can still listen.
+- **Notifications** (Android 13 and newer): the "Connected" notification, and a notification when a radio pages the console.
+- **Nearby devices** (Android 12 and newer): only needed for Bluetooth headsets and PTT buttons.
+
+Audio plays through Android's own audio: the speaker, a wired or USB headset, or Bluetooth. Choose the device in Settings, or per tab and channel. Spoken announcements and the time announcement use the phone's own text-to-speech engine (Settings, Accessibility, Text-to-speech output), so there is nothing to install. Everything else works as on Linux, except the control socket, PTT devices read from `/dev/input` (see [Hardware PTT key](#hardware-ptt-key) instead), and the app launcher entry.
+
+### Staying connected with the screen off
+
+While a console is open, Sidetone runs as a foreground service. It shows a "Connected to SYSTEM" notification with **Disconnect**, and keeps the connection, receive audio and the microphone working with the screen off. Some phones (Samsung, Xiaomi, OnePlus and others) still stop apps in the background to save battery. If Sidetone drops off when the screen is off, open **Settings, Battery settings…** and let Sidetone run without restrictions. **Settings, Screen** can also keep the screen on while a console is open.
+
+### Hardware PTT key
+
+Phones and radios with a PTT key (rugged phones, PoC radios), Bluetooth PTT buttons, a headset button, or a volume key can be the PTT. In **Settings, PTT key**, tap **Learn…** and press the key. Sidetone shows its name, and after **Save** it is hold-to-talk on the focused channel. **None** removes it. Back, Home and the power key can't be used.
+
+The key works while Sidetone is on screen. Bluetooth PTT buttons and headset buttons that act as media buttons also work with the screen off. Some rugged phones send their PTT key only to apps that know that maker's own signal; if Learn… doesn't see your phone's PTT key, please open an issue with the phone's make and model.
+
+### The phone layout
+
+On a screen narrower than 700 points (a phone held upright), the cards are in one column, and only the focused card shows its volume, mute and recording buttons. At the bottom are a big hold-to-talk **PTT**, **Tones** and **Mute all**, and four pages: **Channels**, **Calls** (recent calls), **Log**, and **More** (alert tones, the channel marker, page, radio command, patch, recall, announcements, tabs, the microphone and the theme). Boxes are scaled down to fit the screen. Android's Back closes the open box, or goes back to the channels. A tablet, or a phone turned on its side, gets the usual layout. On a desktop, making the window narrow shows the phone layout too.
 
 ## Codeplug
 
@@ -714,13 +747,16 @@ git clone --recursive https://github.com/monkey1911/sidetone.git
 
 Then follow the same steps as `.github/workflows/build.yml`, with `linux-arm64` or `linux-x64` as the runtime identifier. `sidetone --screenshot FILE.png --demo --theme dark` renders the window to a PNG without a display, which is how CI checks both themes.
 
+The Android app (`src/sidetone-android`) needs the .NET `android` workload, Java 21, the Android SDK (platform 36) and the Android NDK, which runs on x86-64 Linux only. CI's `android` job has every step: libvocoder built with the NDK for arm64-v8a and x86_64, the APK and the bundle for Google Play, a check that the native libraries suit 16 KB memory pages, and the on-device self-test on an Android 11 emulator (`tools/android-check.sh`, which also works with a phone on `adb`).
+
 ## How it is put together
 
 - `extern/dvmconsole` is a submodule of [monkey1911/dvmconsole-ARM64](https://github.com/monkey1911/dvmconsole-ARM64) (`dev` branch). `sidetone-core` compiles its Windows-independent sources directly (codeplug, vocoder interop, logging) and uses its `fnecore` networking library.
 - `extern/dvmvocoder` is [DVMProject/dvmvocoder](https://github.com/DVMProject/dvmvocoder), built as `libvocoder.so`.
 - `src/sidetone-core` is everything that isn't user interface: the FNE peer, P25 receive and transmit, keys, PipeWire audio, tones, aliases, the PTT socket and PTT devices, settings, and `DispatchConsole`, the console itself.
 - `src/sidetone-cli` is the terminal front end: the TUI (which derives from `DispatchConsole`), the commands and the self-test.
-- `src/sidetone` is the graphical front end (Avalonia): windows, cards and themes over a `DispatchConsole`.
+- `src/sidetone` is the graphical front end (Avalonia): `ConsoleView` (the whole console: cards, boxes, themes, the phone layout) over a `DispatchConsole`, in a desktop window.
+- `src/sidetone-android` is the Android app: the same `ConsoleView` in an Android activity, with Android's audio, a foreground service, text to speech, the Keystore and a hardware PTT key. It compiles `src/sidetone`'s sources (all but its `Program.cs`).
 
 ## License
 

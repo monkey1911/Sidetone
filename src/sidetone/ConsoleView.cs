@@ -60,7 +60,7 @@ namespace Sidetone.Gui
 
         // console view
         private readonly Grid consoleView = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*,Auto,230,Auto,Auto") };
-        private StackPanel themeRow;
+        private StackPanel themeRow, titleRow;
         private ScrollViewer cardScroll;
         private Grid bottom;
         private readonly ZoneTabs zoneTabs = new ZoneTabs();
@@ -250,7 +250,7 @@ namespace Sidetone.Gui
         private void BuildShell()
         {
             // header, left: system and connection
-            StackPanel titleRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 14 };
+            titleRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 14 };
             titleRow.Children.Add(systemName);
             titleRow.Children.Add(connection);
             StackPanel left = new StackPanel { Spacing = 3, VerticalAlignment = VerticalAlignment.Center };

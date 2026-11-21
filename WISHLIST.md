@@ -29,6 +29,12 @@ Roughly in the order that makes sense to do them.
 
 ## Partially implemented
 
+- ~~**Android.**~~ Done in 0.31: Sidetone for Android 11 and newer (built for API 36, as Google Play requires), the graphical console with a phone layout, Android's audio, a foreground service that stays connected with the screen off, the phone's own text to speech, key-file passwords in the Android Keystore, and a hardware PTT key learned by pressing it. CI builds the APK and the Play Store bundle and runs the self-test on an Android 11 emulator.
+  - Still to do: publish on Google Play: a developer account, the store listing, the privacy policy, the Data safety form, and the foreground service declaration (with a short video). Maybe separate US and international builds, if the encryption export rules call for it.
+  - Still to do: rugged phones whose PTT key reaches only apps that know the maker's own signal (Sonim, Kyocera and others), once someone with such a phone can say which signal it sends.
+  - Still to do: exporting or sharing recordings (they stay in the app's storage).
+  - Still to do: boxes laid out for a phone (today the desktop boxes are scaled down to fit).
+
 - ~~**Selectable encryption and local key files.**~~ Done in 0.19: channels marked `selectable_encryption` can be switched between secure and clear for transmit, and keys can come from a password-protected KFDtool `.ekc` container.
   - ~~The terminal console can only unlock a key file before it starts.~~ Done in 0.25: `K` opens its key file box at any time.
   - ~~`sidetone-cli listen` doesn't use a key file yet.~~ Done in 0.29: `--key-file`, Settings' choice or the codeplug's.

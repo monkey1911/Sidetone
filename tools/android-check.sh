@@ -39,12 +39,15 @@ adb shell am force-stop "$pkg"
 adb shell am start -W -n "$activity" --ez demo true --es theme dark
 sleep 6
 adb exec-out screencap -p > "$out/android-phone.png"
-adb shell wm size 2560x1600
+adb shell wm size 1600x2560
 adb shell wm density 320
-sleep 6
+adb shell settings put system accelerometer_rotation 0
+adb shell settings put system user_rotation 1
+sleep 8
 adb exec-out screencap -p > "$out/android-tablet.png"
 adb shell wm size reset
 adb shell wm density reset
+adb shell settings put system user_rotation 0
 for f in "$out"/android-*.png; do
   name=$(basename "$f" .png)
   echo "-----BEGIN PNG $name-----"
