@@ -127,7 +127,7 @@ namespace Sidetone.Droid
             if (wifiLock == null)
             {
                 WifiManager wm = (WifiManager)ApplicationContext.GetSystemService(WifiService);
-                wifiLock = wm?.CreateWifiLock(WifiMode.FullLowLatency, "sidetone:connection");
+                wifiLock = wm?.CreateWifiLock(Android.Net.WifiMode.FullLowLatency, "sidetone:connection");
                 wifiLock?.SetReferenceCounted(false);
                 wifiLock?.Acquire();
             }

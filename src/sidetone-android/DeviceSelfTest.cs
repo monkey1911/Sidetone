@@ -9,7 +9,7 @@
 */
 
 using Android.App;
-using Android.Util;
+using Log = Android.Util.Log;
 using Avalonia.Threading;
 using dvmconsole;
 

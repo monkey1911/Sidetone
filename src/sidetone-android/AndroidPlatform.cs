@@ -47,11 +47,11 @@ namespace Sidetone.Droid
             instance = new AndroidPlatform(app);
 
             // the core keeps settings, logs, history and recordings under the XDG folders: point them into the app's own storage
-            string files = app.FilesDir?.AbsolutePath ?? Environment.GetFolderPath(Environment.SpecialFolder.Personal);
-            Environment.SetEnvironmentVariable("XDG_CONFIG_HOME", Path.Combine(files, "config"));
-            Environment.SetEnvironmentVariable("XDG_DATA_HOME", Path.Combine(files, "data"));
-            Environment.SetEnvironmentVariable("XDG_STATE_HOME", Path.Combine(files, "state"));
-            Environment.SetEnvironmentVariable("XDG_RUNTIME_DIR", app.CacheDir?.AbsolutePath);
+            string files = app.FilesDir?.AbsolutePath ?? System.Environment.GetFolderPath(System.Environment.SpecialFolder.Personal);
+            System.Environment.SetEnvironmentVariable("XDG_CONFIG_HOME", Path.Combine(files, "config"));
+            System.Environment.SetEnvironmentVariable("XDG_DATA_HOME", Path.Combine(files, "data"));
+            System.Environment.SetEnvironmentVariable("XDG_STATE_HOME", Path.Combine(files, "state"));
+            System.Environment.SetEnvironmentVariable("XDG_RUNTIME_DIR", app.CacheDir?.AbsolutePath);
 
             AudioBackend.Current = new AndroidAudioBackend(app);
             Speech.Platform = new AndroidSpeech(app);

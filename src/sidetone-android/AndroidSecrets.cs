@@ -26,7 +26,7 @@ namespace Sidetone.Droid
 
         private static IKey Key()
         {
-            KeyStore ks = KeyStore.GetInstance("AndroidKeyStore");
+            Java.Security.KeyStore ks = Java.Security.KeyStore.GetInstance("AndroidKeyStore");
             ks.Load(null);
             if (ks.GetKey(Alias, null) is IKey existing)
                 return existing;
