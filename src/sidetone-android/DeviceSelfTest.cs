@@ -136,6 +136,14 @@ namespace Sidetone.Droid
                 return stored && back == "s3cret" && cleared && SecretStore.Lookup(keyFile) == null;
             });
 
+            Try("debug log: it's in the app's own storage and has this start written down", () =>
+            {
+                string files = AndroidPlatform.Instance.AppContext.FilesDir.AbsolutePath;
+                string today = Directory.GetFiles(DebugLog.Folder, "debug-*.log").OrderBy(f => f).Last();
+                string text = File.ReadAllText(today);
+                return DebugLog.Folder.StartsWith(files, StringComparison.Ordinal) && text.Contains("start: Sidetone") && text.Contains("app: activity created (self-test)");
+            });
+
             Try("hardware PTT: a learned key is named the way Settings shows it", () =>
                 SettingsOverlay.KeyLabel(Android.Views.KeyEvent.KeyCodeToString(Android.Views.Keycode.VolumeDown), 25) == "Volume down");
 

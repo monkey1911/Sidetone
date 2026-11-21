@@ -24,6 +24,7 @@ There are two front ends over the same console:
   - [Staying connected with the screen off](#staying-connected-with-the-screen-off)
   - [Hardware PTT key](#hardware-ptt-key)
   - [The phone layout](#the-phone-layout)
+  - [When something goes wrong on Android](#when-something-goes-wrong-on-android)
 - [Codeplug](#codeplug)
 - [Use](#use)
 - [Terminal console (TUI)](#terminal-console-tui)
@@ -46,6 +47,7 @@ There are two front ends over the same console:
 - [Desktop notifications](#desktop-notifications)
 - [Tabs (zones)](#tabs-zones)
 - [Log files](#log-files)
+  - [Debug logs](#debug-logs)
 - [Patching](#patching)
 - [Encryption keys](#encryption-keys)
   - [Local key file](#local-key-file)
@@ -139,6 +141,10 @@ The key works while Sidetone is on screen. Bluetooth PTT buttons and headset but
 ### The phone layout
 
 On a screen narrower than 700 points (a phone held upright), the cards are in one column, and only the focused card shows its volume, mute and recording buttons. At the bottom are a big hold-to-talk **PTT**, **Tones** and **Mute all**, and four pages: **Channels**, **Calls** (recent calls), **Log**, and **More** (alert tones, the channel marker, page, radio command, patch, recall, announcements, tabs, the microphone and the theme). Boxes are scaled down to fit the screen. Android's Back closes the open box, or goes back to the channels. A tablet, or a phone turned on its side, gets the usual layout. On a desktop, making the window narrow shows the phone layout too.
+
+### When something goes wrong on Android
+
+If a codeplug won't open, or Sidetone freezes or closes, open Sidetone again and press **Save debug logs…** (on the start screen, or in Settings). Send the zip to whoever is helping you. See [Debug logs](#debug-logs).
 
 ## Codeplug
 
@@ -641,6 +647,19 @@ Both consoles write their log to a file as well as the screen, one file per day:
 - The demo, screenshots and the self-tests never write a log file.
 
 The log never contains passwords or keys. It does contain radio IDs, aliases and talkgroups, so think before posting a whole file publicly.
+
+### Debug logs
+
+When something goes wrong (a codeplug won't open, the app freezes or closes), the **debug log** says what Sidetone was doing. It starts with the program, before any codeplug is opened. Every line is written to the file at once, so the log survives a freeze or a crash. It records:
+
+- each step of opening a codeplug: the file's name and size, never its contents;
+- errors with their full details;
+- crashes;
+- a note when the screen stops responding for 5 seconds, with what it was doing.
+
+On Android it also records why the app stopped the last time (a crash, "not responding", or the system closing it), with the details Android keeps.
+
+To send them to someone, press **Save debug logs…**. It's on the start screen, and in Settings under Log. It saves one zip: the last three days of debug and console logs, plus a short `about.txt` with the versions and the device. On a phone you choose where it goes (Downloads, Drive and so on), then share it from there. Debug logs are kept for 7 days in `~/.local/state/sidetone/debug/`, or in the app's own storage on Android. Codeplugs, passwords and keys are never in them.
 
 ## Patching
 

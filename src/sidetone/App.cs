@@ -38,6 +38,9 @@ namespace Sidetone.Gui
 
         public override void OnFrameworkInitializationCompleted()
         {
+            // the debug log notes when the UI stops answering (and what it was doing)
+            if (DebugLog.Folder != null)
+                DebugLog.WatchUi(job => Avalonia.Threading.Dispatcher.UIThread.Post(job));
             if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
                 desktop.MainWindow = CreateWindow?.Invoke(Options);
             else if (ApplicationLifetime is IActivityApplicationLifetime activity)

@@ -9,6 +9,7 @@
 * which is how light and dark themes work.
 */
 
+using System.Text;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
@@ -113,7 +114,8 @@ namespace Sidetone.Gui
         private readonly TextBlock welcomeTitle = new TextBlock { Text = "Sidetone", FontSize = 28, FontWeight = FontWeight.Bold, HorizontalAlignment = HorizontalAlignment.Center };
         private readonly TextBlock welcomeText = new TextBlock { FontSize = 14, TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center };
         private readonly TextBlock welcomeError = new TextBlock { FontSize = 14, FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center };
-        private Tap openCodeplug;
+        private Tap openCodeplug, saveLogsTap;
+        private readonly TextBlock saveLogsResult = new TextBlock { FontSize = 12, TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center };
 
         /// <summary>Raised when the title should change (the window's title on a desktop).</summary>
         public event Action<string> TitleChanged;
@@ -331,6 +333,7 @@ namespace Sidetone.Gui
                                               () => _ = PickRecordingsFolder(), () => SetRecordingsFolder(null), OpenRecordingsFolder)
             {
                 CopyLog = CopyLog,
+                SaveDebugLogs = SaveDebugLogs,
                 OpenLogFolder = OpenLogFolder,
                 OpenRouting = () => ShowRouting()
             };
@@ -389,6 +392,10 @@ namespace Sidetone.Gui
             welcome.Children.Add(welcomeText);
             welcome.Children.Add(openCodeplug.Root);
             welcome.Children.Add(welcomeError);
+            saveLogsTap = new Tap("Save debug logs…", () => _ = SaveDebugLogsFromWelcome(), fontSize: 13, padY: 6);
+            saveLogsTap.Root.HorizontalAlignment = HorizontalAlignment.Center;
+            welcome.Children.Add(saveLogsTap.Root);
+            welcome.Children.Add(saveLogsResult);
 
             Grid.SetRow(header, 0);
             Grid.SetRow(consoleView, 1);
@@ -498,7 +505,11 @@ namespace Sidetone.Gui
                     FileTypeFilter = OperatingSystem.IsAndroid() ? null : new[] { new FilePickerFileType("Codeplug (YAML)") { Patterns = new[] { "*.yml", "*.yaml" } } }
                 });
                 if (files == null || files.Count == 0)
+                {
+                    DebugLog.Write("codeplug", "no file chosen");
                     return;
+                }
+                DebugLog.Mark("codeplug", $"chosen: {files[0].Name} (local path: {(files[0].TryGetLocalPath() != null ? "yes" : "no, copying it in")})");
                 string path = await GuiPlatform.LocalPath(files[0], "codeplugs");
                 if (path == null)
                 {
@@ -510,7 +521,9 @@ namespace Sidetone.Gui
             }
             catch (Exception ex)
             {
-                ShowWelcome($"Couldn't open a file dialog ({ex.Message}). Start with: sidetone --codeplug FILE");
+                DebugLog.Exception("codeplug", "choosing or copying the codeplug failed", ex);
+                ShowWelcome($"Couldn't open the codeplug ({ex.GetType().Name}: {ex.Message}). " +
+                            (OperatingSystem.IsAndroid() ? "Save debug logs to send the details." : "You can also start with: sidetone --codeplug FILE"));
             }
         }
 
@@ -524,7 +537,10 @@ namespace Sidetone.Gui
                 appSettings = AppSettings.Load(settingsPath, out _);    // the console that just closed may have saved since
             try
             {
+                long size = File.Exists(path) ? new FileInfo(path).Length : -1;
+                DebugLog.Mark("codeplug", $"loading {Path.GetFileName(path)} ({size} bytes)");
                 Codeplug cp = CodeplugLoader.Load(path);
+                DebugLog.Mark("codeplug", $"loaded: {cp.Systems?.Count ?? 0} system(s), {cp.Zones?.Count ?? 0} zone(s)");
                 Codeplug.System system;
                 try { system = CodeplugLoader.FindSystem(cp, wantedSystem); }
                 catch (ArgumentException) when (wantedSystem != null && opt.SystemName == null) { system = cp.Systems[0]; }   // a remembered system that's gone
@@ -615,8 +631,15 @@ namespace Sidetone.Gui
             }
             catch (Exception ex) when (ex is ArgumentException || ex is IOException || ex is InvalidOperationException || ex is YamlDotNet.Core.YamlException)
             {
+                DebugLog.Exception("codeplug", $"{Path.GetFileName(path)} wasn't opened", ex);
                 console = null;
                 ShowWelcome($"{Path.GetFileName(path)}: {ex.Message}");
+            }
+            catch (Exception ex)
+            {
+                DebugLog.Exception("codeplug", $"{Path.GetFileName(path)}: something unexpected went wrong", ex);
+                console = null;
+                ShowWelcome($"{Path.GetFileName(path)}: something went wrong ({ex.GetType().Name}: {ex.Message}). Save debug logs to send the details.");
             }
         }
 
@@ -993,6 +1016,66 @@ namespace Sidetone.Gui
             }
         }
 
+        /// <summary>What goes into about.txt in the saved logs: versions, the platform, the screen, the codeplug's name.</summary>
+        internal string AboutForLogs()
+        {
+            StringBuilder sb = new StringBuilder();
+            sb.AppendLine($"Sidetone {typeof(ConsoleView).Assembly.GetName().Version}");
+            sb.AppendLine($"Saved {DateTime.Now:yyyy-MM-dd HH:mm:ss zzz}");
+            sb.AppendLine($"System: {System.Runtime.InteropServices.RuntimeInformation.OSDescription} ({System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture})");
+            sb.AppendLine($".NET {Environment.Version}, Avalonia {typeof(Avalonia.Application).Assembly.GetName().Version}");
+            if (GuiPlatform.Current?.DeviceDescription is string device)
+                sb.AppendLine($"Device: {device}");
+            sb.AppendLine($"View: {Bounds.Width:F0} x {Bounds.Height:F0}, {(narrow ? "phone layout" : "usual layout")}, scale {TopLevel.GetTopLevel(this)?.RenderScaling ?? 1:0.##}");
+            sb.AppendLine($"Audio: {AudioBackend.Current.Name}");
+            sb.AppendLine(console != null ? $"Codeplug: {Path.GetFileName(currentPath)}, system {currentSystem}, {console.Channels.Count} channels, {(console.Connected ? "connected" : "not connected")}"
+                                          : "Codeplug: none open");
+            sb.AppendLine();
+            sb.AppendLine("Codeplugs, passwords and keys are never put in these logs.");
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// Saves the debug logs and the console's logs as one zip, wherever the person chooses (on Android, Downloads,
+        /// Drive and so on), to send to whoever is helping. Returns what happened, as a sentence.
+        /// </summary>
+        private async Task<string> SaveDebugLogs()
+        {
+            string temp = Path.Combine(Path.GetTempPath(), $"sidetone-logs-{Environment.ProcessId}.zip");
+            try
+            {
+                int files = DebugLog.MakeBundle(temp, AboutForLogs(), console?.LogFilePath != null ? Path.GetDirectoryName(console.LogFilePath) : LogFiles.DefaultFolder);
+                IStorageFile target = await Storage.SaveFilePickerAsync(new FilePickerSaveOptions
+                {
+                    Title = "Save debug logs",
+                    SuggestedFileName = $"sidetone-logs-{DateTime.Now:yyyyMMdd-HHmm}.zip",
+                    DefaultExtension = "zip",
+                    FileTypeChoices = new[] { new FilePickerFileType("Zip file") { Patterns = new[] { "*.zip" }, MimeTypes = new[] { "application/zip" } } }
+                });
+                if (target == null)
+                    return "Not saved.";
+                await using (Stream to = await target.OpenWriteAsync())
+                await using (FileStream from = File.OpenRead(temp))
+                    await from.CopyToAsync(to);
+                DebugLog.Write("logs", $"saved {files} log file(s) as {target.Name}");
+                return $"Saved {files} log file{(files == 1 ? string.Empty : "s")} as {target.Name}. Codeplugs, passwords and keys aren't in it.";
+            }
+            catch (Exception ex)
+            {
+                DebugLog.Exception("logs", "saving the logs failed", ex);
+                return $"Couldn't save the logs ({ex.Message}).";
+            }
+            finally
+            {
+                try { File.Delete(temp); } catch (Exception) { /* a temporary file */ }
+            }
+        }
+
+        private async Task SaveDebugLogsFromWelcome()
+        {
+            saveLogsResult.Text = await SaveDebugLogs();
+        }
+
         /// <summary>Stops the console and goes back to the start (Android's Disconnect, in the connection's notification).</summary>
         public void Disconnect()
         {
@@ -1073,6 +1156,8 @@ namespace Sidetone.Gui
             welcomeText.Foreground = p.Dim;
             welcomeError.Foreground = p.Tx;
             openCodeplug.Paint(p.Accent, p.OnStrong);
+            saveLogsTap.Paint(Brushes.Transparent, p.Dim, p.Edge);
+            saveLogsResult.Foreground = p.Dim;
             quit.Paint(Brushes.Transparent, p.Dim, p.Edge);
             settingsTap.Paint(Brushes.Transparent, p.Dim, p.Edge);
 

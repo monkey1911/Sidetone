@@ -8,7 +8,9 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
 
 ## State at hand-off (2026-11-16)
 
-- Version **0.31.1** on `main` (set once, in `src/Directory.Build.props`): Android wakes the screen
+- Version **0.31.1** on `main` (set once, in `src/Directory.Build.props`): debug logs (`DebugLog`:
+  written line by line from start-up, crashes, UI freezes, Android's last exit reasons; Save debug
+  logs… zips them), Android wakes the screen
   for incoming calls (Settings, Incoming calls; on by default), and libvocoder is upstream's own
   (the m_autoGain fix was merged). 0.31.0: Sidetone for Android
   (src/sidetone-android, CI-built APK/AAB, Android 11+), the GUI's console as `ConsoleView` with a
@@ -19,7 +21,7 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
   announcement; 0.29 brought WAV
   announcements, `listen --key-file`, the dvmcli/dvmgui wrappers removed. Check
   `gh release list` for what was last published.
-- 359 checks (290 in `sidetone-cli selftest`, one of which runs only when a speech engine is
+- 362 checks (293 in `sidetone-cli selftest`, one of which runs only when a speech engine is
   installed; 69 in the GUI's `--selfcheck`) plus screenshots, and the Android job's on-device
   self-test (`DeviceSelfTest.cs`, on an API 30 emulator).
 - **Tested on the air by the owner:** RX/TX clear and AES, key delivery from the FNE, alias sync,
@@ -183,6 +185,11 @@ page alignment, and runs `tools/android-check.sh` on an API 30 emulator (the on-
 `sidetone-android` artifact). Signing uses repo secrets `ANDROID_KEYSTORE_BASE64`,
 `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` when set, else a throwaway debug key. The desktop
 GUI's phone layout can be checked locally: `--size 412x915` (and `--show calls|log|more`).
+Debug logs (`DebugLog.cs`, 0.31.1, asked for when an Android tester's codeplug wouldn't load): one
+file a day in `$XDG_STATE_HOME/sidetone/debug`, each line appended at once (survives crashes);
+`DebugLog.Mark` records the current step, which the UI watchdog (`WatchUi`, started in `App`) reports
+on a freeze; Android adds `ApplicationExitInfo` (last exits, ANR thread dumps). Never put codeplug
+contents, passwords or keys in it. Not started for the demo, screenshots, self-checks or `--no-log`.
 Platform hooks in the core for Android: `Speech.Platform`, `SecretStore.Platform`,
 `DesktopNotify.Platform`; files go under the XDG variables, which the Android app points into its
 own storage.

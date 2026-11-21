@@ -108,13 +108,15 @@ namespace Sidetone.Gui
         private readonly List<TextBlock> headings = new List<TextBlock>();
         private readonly TextBlock keyFileText = new TextBlock { FontSize = 12, TextWrapping = TextWrapping.Wrap };
         private readonly TextBlock recordingsText = new TextBlock { FontSize = 12, TextWrapping = TextWrapping.Wrap };
-        private Tap recChoose, recOpen, recDefault, notifyOn, notifyOff, logCopy, logOpen;
+        private Tap recChoose, recOpen, recDefault, notifyOn, notifyOff, logCopy, logOpen, logSave;
         private readonly List<Tap> routingTaps = new List<Tap>();
         private readonly TextBlock logText = new TextBlock { FontSize = 12, TextWrapping = TextWrapping.Wrap };
         private readonly TextBlock logResult = new TextBlock { FontSize = 12, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
 
         /// <summary>Copies the log to the clipboard; returns what happened, as a sentence.</summary>
         public Func<string> CopyLog;
+        /// <summary>Saves the debug logs as a zip, wherever the person chooses; returns what happened, as a sentence.</summary>
+        public Func<Task<string>> SaveDebugLogs;
         /// <summary>Opens the folder with the log files.</summary>
         public Action OpenLogFolder;
         /// <summary>Opens the Audio outputs box (outputs per tab and channel).</summary>
@@ -129,6 +131,12 @@ namespace Sidetone.Gui
 
         /// <summary>The result of the last Copy log (self-check hook).</summary>
         public string LogResult => logResult.Text ?? string.Empty;
+
+        private async Task PressSaveDebugLogs()
+        {
+            logResult.Text = "Saving…";
+            logResult.Text = SaveDebugLogs == null ? string.Empty : await SaveDebugLogs();
+        }
 
         /// <summary>Presses Copy log (self-check hook).</summary>
         public void PressCopyLog() => logResult.Text = CopyLog?.Invoke() ?? string.Empty;
@@ -223,9 +231,11 @@ namespace Sidetone.Gui
 
             logCopy = new Tap("Copy log", PressCopyLog, fontSize: 12, padX: 10, padY: 5);
             logOpen = new Tap("Open folder", () => OpenLogFolder?.Invoke(), fontSize: 12, padX: 10, padY: 5);
+            logSave = new Tap("Save debug logs…", () => _ = PressSaveDebugLogs(), fontSize: 12, padX: 10, padY: 5);
             StackPanel logRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
             logRow.Children.Add(logCopy.Root);
             logRow.Children.Add(logOpen.Root);
+            logRow.Children.Add(logSave.Root);
             logRow.Children.Add(logResult);
 
             keyChoose = new Tap("Choose…", () => { Close(); pickKeyFile(); }, fontSize: 12, padX: 10, padY: 5);
@@ -627,6 +637,7 @@ namespace Sidetone.Gui
             foreach (Tap t in routingTaps)
                 t.Paint(Brushes.Transparent, p.Text, p.Edge);
             logOpen.Paint(Brushes.Transparent, p.Text, p.Edge);
+            logSave.Paint(Brushes.Transparent, p.Text, p.Edge);
             recChoose.Paint(Brushes.Transparent, p.Text, p.Edge);
             recOpen.Paint(Brushes.Transparent, p.Text, p.Edge);
             recDefault.Paint(Brushes.Transparent, p.Text, p.Edge);

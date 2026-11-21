@@ -2125,6 +2125,56 @@ zones:
             }
         }
 
+        private static void DebugLogTests(string tmp)
+        {
+            string dir = Path.Combine(tmp, "debug"), consoleLogs = Path.Combine(tmp, "debug-console-logs");
+            Directory.CreateDirectory(consoleLogs);
+            File.WriteAllText(LogFiles.FileFor(consoleLogs, DateTime.Now), "12:00:00 Tac 1: RX Unit 12\n");
+            File.WriteAllText(LogFiles.FileFor(consoleLogs, DateTime.Now.AddDays(-10)), "old\n");
+            File.SetLastWriteTime(LogFiles.FileFor(consoleLogs, DateTime.Now.AddDays(-10)), DateTime.Now.AddDays(-10));
+            DebugLog.StopForTest();
+            DebugLog.Start(dir, "self-test");
+            try
+            {
+                DebugLog.Mark("codeplug", "loading test.yml (1234 bytes)");
+                try { throw new InvalidOperationException("outer", new FormatException("inner")); }
+                catch (InvalidOperationException ex) { DebugLog.Exception("codeplug", "test.yml wasn't opened", ex); }
+                string today = File.ReadAllText(Directory.GetFiles(dir, "debug-*.log").Single());
+                Check(today.Contains("start: Sidetone") && today.Contains("codeplug: loading test.yml (1234 bytes)") && DebugLog.Step == "codeplug: loading test.yml (1234 bytes)" &&
+                      today.Contains("System.InvalidOperationException: outer") && today.Contains("caused by System.FormatException: inner") && today.Contains("at Sidetone"),
+                      "debug log: each line is on disk at once (it survives a crash), with the step it's on and exceptions with their stack traces");
+
+                // a UI that stops answering is noticed, with what it was doing, and noted again when it answers
+                DebugLog.FreezeAfter = TimeSpan.FromMilliseconds(300);
+                DebugLog.AskEvery = TimeSpan.FromMilliseconds(50);
+                ManualResetEventSlim release = new ManualResetEventSlim(false);
+                bool frozen = true;
+                DebugLog.WatchUi(job => Task.Run(() => { if (Volatile.Read(ref frozen)) release.Wait(); job(); }));
+                Thread.Sleep(700);
+                Volatile.Write(ref frozen, false);
+                release.Set();
+                Thread.Sleep(300);
+                string later = File.ReadAllText(Directory.GetFiles(dir, "debug-*.log").Single());
+                Check(later.Contains("the UI hasn't answered for 0 s; it was on: codeplug: loading test.yml") && later.Contains("freeze: the UI answered again after"),
+                      "debug log: a frozen UI is written down with the step it was on, and again when it answers");
+
+                string zip = Path.Combine(tmp, "logs.zip");
+                int files = DebugLog.MakeBundle(zip, "about this test", consoleLogs);
+                using System.IO.Compression.ZipArchive z = System.IO.Compression.ZipFile.OpenRead(zip);
+                List<string> names = z.Entries.Select(e => e.FullName).OrderBy(n => n).ToList();
+                string about;
+                using (StreamReader r = new StreamReader(z.GetEntry("about.txt").Open()))
+                    about = r.ReadToEnd();
+                Check(files == 2 && names.Count == 3 && names.Contains("about.txt") && names.Any(n => n.StartsWith("debug/debug-")) &&
+                      names.Contains($"console/{Path.GetFileName(LogFiles.FileFor(consoleLogs, DateTime.Now))}") && about == "about this test",
+                      $"debug log: Save debug logs zips the debug log, the recent console logs (not old ones) and about.txt ({string.Join(", ", names)})");
+            }
+            finally
+            {
+                DebugLog.StopForTest();
+            }
+        }
+
         private static void PlatformHookTests(string tmp)
         {
             // text to speech: a platform engine wins over Piper and espeak-ng, and its audio is levelled like the rest
@@ -2175,6 +2225,7 @@ zones:
         private static void SpeechTests(string tmp, Codeplug cp, Codeplug.System sys)
         {
             PlatformHookTests(tmp);
+            DebugLogTests(tmp);
 
             // the time in words, as every engine will say it
             Check(Speech.TimeWords(14, 20, false) == "two twenty P M" && Speech.TimeWords(14, 5, false) == "two oh five P M" &&

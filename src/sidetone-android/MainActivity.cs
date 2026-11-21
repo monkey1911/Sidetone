@@ -46,6 +46,7 @@ namespace Sidetone.Droid
             }
 
             AndroidPlatform.Instance.Activity = this;
+            DebugLog.Mark("app", $"activity created{(selfTest ? " (self-test)" : App.Options.Demo ? " (demo)" : string.Empty)}");
             base.OnCreate(savedInstanceState);
 
             BackRequested += (s, e) =>
@@ -61,12 +62,14 @@ namespace Sidetone.Droid
         protected override void OnResume()
         {
             base.OnResume();
+            DebugLog.Write("app", "on screen");
             AndroidPlatform.Instance.Activity = this;
             AndroidPlatform.Instance.ApplyScreen();
         }
 
         protected override void OnStop()
         {
+            DebugLog.Write("app", "out of sight");
             AndroidPlatform.Instance.ActivityStopped(this);
             base.OnStop();
         }

@@ -33,6 +33,9 @@ namespace Sidetone.Gui
 
         /// <summary>Opens the platform's battery optimisation settings, where Sidetone can be let run unrestricted.</summary>
         void OpenBatterySettings();
+
+        /// <summary>The device, for the saved debug logs (like "Samsung SM-G736U, Android 14 (API 34)").</summary>
+        string DeviceDescription { get; }
     }
 
     public static class GuiPlatform

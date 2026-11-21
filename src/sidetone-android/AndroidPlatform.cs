@@ -53,6 +53,13 @@ namespace Sidetone.Droid
             System.Environment.SetEnvironmentVariable("XDG_STATE_HOME", Path.Combine(files, "state"));
             System.Environment.SetEnvironmentVariable("XDG_RUNTIME_DIR", app.CacheDir?.AbsolutePath);
 
+            // the debug log first, so everything after it (and a crash) is written down
+            DebugLog.Start(DebugLog.DefaultFolder, instance.DeviceDescription);
+            DebugLog.CatchCrashes();
+            Android.Runtime.AndroidEnvironment.UnhandledExceptionRaiser += (s, e) =>
+                DebugLog.Exception("crash", $"unhandled exception on an Android thread (last step: {DebugLog.Step})", e.Exception);
+            instance.LogPreviousExits();
+
             AudioBackend.Current = new AndroidAudioBackend(app);
             Speech.Platform = new AndroidSpeech(app);
             SecretStore.Platform = (AndroidSecrets.Lookup, AndroidSecrets.Store, AndroidSecrets.Clear);
@@ -222,6 +229,50 @@ namespace Sidetone.Droid
             DispatchConsole c = running;
             if (c != null)
                 ConsoleService.Start(AppContext, c.SystemConfig.Name, HasMicrophone);
+        }
+
+        public string DeviceDescription =>
+            $"{Build.Manufacturer} {Build.Model}, Android {Build.VERSION.Release} (API {(int)Build.VERSION.SdkInt})";
+
+        /// <summary>
+        /// Writes why the app stopped the last times (Android keeps the reasons: a crash, the app not responding, the
+        /// system ending it for memory, the person swiping it away), with the thread dump of an app-not-responding,
+        /// which shows where it was stuck. Each reason is written once.
+        /// </summary>
+        private void LogPreviousExits()
+        {
+            try
+            {
+                ActivityManager am = (ActivityManager)AppContext.GetSystemService(Context.ActivityService);
+                ISharedPreferences prefs = AppContext.GetSharedPreferences("debug", FileCreationMode.Private);
+                long seen = prefs.GetLong("last-exit", 0), newest = seen;
+                IList<ApplicationExitInfo> exits = am?.GetHistoricalProcessExitReasons(AppContext.PackageName, 0, 5);
+                foreach (ApplicationExitInfo x in (exits ?? new List<ApplicationExitInfo>()).OrderBy(x => x.Timestamp))
+                {
+                    if (x.Timestamp <= seen)
+                        continue;
+                    newest = Math.Max(newest, x.Timestamp);
+                    DateTime when = DateTimeOffset.FromUnixTimeMilliseconds(x.Timestamp).LocalDateTime;
+                    DebugLog.Write("last-exit", $"{when:yyyy-MM-dd HH:mm:ss}: {x.Reason} ({x.Description ?? "no description"}), status {x.Status}, importance {x.Importance}");
+                    if (x.Reason == ApplicationExitInfoReason.Anr)
+                    {
+                        using Stream trace = x.TraceInputStream;
+                        if (trace != null)
+                        {
+                            using StreamReader r = new StreamReader(trace);
+                            char[] buffer = new char[48 * 1024];
+                            int n = r.ReadBlock(buffer, 0, buffer.Length);
+                            DebugLog.Write("last-exit", "the app-not-responding thread dump:\n" + new string(buffer, 0, n));
+                        }
+                    }
+                }
+                if (newest != seen)
+                    prefs.Edit().PutLong("last-exit", newest).Apply();
+            }
+            catch (Exception ex)
+            {
+                DebugLog.Exception("last-exit", "couldn't read why the app last stopped", ex);
+            }
         }
 
         public void OpenBatterySettings()

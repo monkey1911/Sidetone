@@ -38,6 +38,7 @@ namespace Sidetone.Gui
         public void ConsoleStarted(DispatchConsole console) { }
         public void ConsoleStopped() { }
         public void OpenBatterySettings() { }
+        public string DeviceDescription => "Test device";
     }
 
     public static class Program
@@ -71,6 +72,11 @@ namespace Sidetone.Gui
                 return 2;
             }
             App.Options = opt;
+            if (!opt.SelfCheck && opt.Screenshot == null && !opt.NoLog && !opt.Demo)
+            {
+                DebugLog.Start(DebugLog.DefaultFolder, $"on {System.Runtime.InteropServices.RuntimeInformation.OSDescription}");
+                DebugLog.CatchCrashes();
+            }
             App.CreateWindow = o => new MainWindow(o);
 
             if (opt.SelfCheck)
