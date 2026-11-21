@@ -65,8 +65,8 @@ namespace Sidetone.Gui
                     case "--selfcheck": o.SelfCheck = true; break;
                     case "--show":
                         o.Show = Next().ToLowerInvariant();
-                        if (o.Show is not ("page" or "digital" or "radio" or "settings" or "keyfile" or "patch" or "recall" or "tabs" or "outputs" or "announce"))
-                            throw new ArgumentException("--show must be page, digital, radio, settings, keyfile, patch, recall, tabs, outputs or announce");
+                        if (o.Show is not ("page" or "digital" or "radio" or "settings" or "keyfile" or "patch" or "recall" or "tabs" or "outputs" or "announce" or "calls" or "log" or "more"))
+                            throw new ArgumentException("--show must be page, digital, radio, settings, keyfile, patch, recall, tabs, outputs, announce, calls, log or more");
                         break;
                     case "--space":
                     {

@@ -21,7 +21,7 @@ namespace Sidetone.Gui
             Title = "Sidetone";
             Width = opt.Width;
             Height = opt.Height;
-            MinWidth = 640;
+            MinWidth = 360;     // narrower than ConsoleView.NarrowWidth is the phone layout
             MinHeight = 420;
 
             try

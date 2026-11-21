@@ -108,7 +108,14 @@ namespace Sidetone.Gui
         private readonly Border statusPill;
         private readonly Tap listen, keyTap, quieter, louder, mute, secureTap, pttTap, replayTap, recTap;
         private readonly StackPanel volRow;
-        private readonly Grid bottomRow;
+        private readonly Grid bottomRow, line2, lastRow;
+
+        /// <summary>
+        /// The phone layout: the card's width (it fills the screen), or null for the usual card. A narrow card
+        /// shows its volume, mute and recording controls only when it's the focused one, with bigger buttons,
+        /// and no PTT of its own (the big PTT under the cards keys the focused channel).
+        /// </summary>
+        public double? NarrowWidth;
 
         /// <param name="pttDown">The card's PTT was pressed.</param>
         /// <param name="pttUp">It was let go.</param>
@@ -134,7 +141,7 @@ namespace Sidetone.Gui
 
             keyLine = new TextBlock { FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
             keyTap = new Tap("Request key", () => { console.RequestKey(chan); changed(); }, fontSize: 11, padX: 8, padY: 2);
-            Grid line2 = Row(keyLine, keyTap.Root);
+            line2 = Row(keyLine, keyTap.Root);
             line2.MinHeight = 24;
 
             status = new TextBlock { FontSize = 13, FontWeight = FontWeight.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis };
@@ -146,7 +153,7 @@ namespace Sidetone.Gui
             StackPanel recallRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
             recallRow.Children.Add(replayTap.Root);
             recallRow.Children.Add(recTap.Root);
-            Grid lastRow = Row(last, recallRow);
+            lastRow = Row(last, recallRow);
             lastRow.MinHeight = 22;
 
             vol = new TextBlock { FontSize = 12, VerticalAlignment = VerticalAlignment.Center, MinWidth = 50 };
@@ -332,6 +339,34 @@ namespace Sidetone.Gui
                 mute.Paint(p.Warn, p.OnStrong);
             else
                 mute.Paint(Brushes.Transparent, p.Text, p.Edge);
+
+            // the phone layout
+            bool narrow = NarrowWidth != null;
+            Root.Width = narrow ? NarrowWidth.Value : CardWidth;
+            if (narrow != wasNarrow)
+            {
+                wasNarrow = narrow;
+                Thickness small = new Thickness(narrow ? 14 : 6, narrow ? 9 : 1);
+                listen.Root.Padding = new Thickness(narrow ? 16 : 10, narrow ? 9 : 3);
+                foreach (Tap t in new[] { quieter, louder, mute, replayTap, recTap })
+                    t.Root.Padding = small;
+                Root.Margin = new Thickness(narrow ? 4 : 6);
+            }
+            if (narrow)
+            {
+                line2.IsVisible = focused || keyTap.Root.IsVisible;
+                lastRow.IsVisible = focused && chan.IsP25;
+                bottomRow.IsVisible = focused && chan.IsP25;
+                pttTap.Root.IsVisible = false;
+            }
+            else
+            {
+                line2.IsVisible = true;
+                lastRow.IsVisible = true;
+                bottomRow.IsVisible = chan.IsP25;
+            }
         }
+
+        private bool wasNarrow;
     } // public sealed class ChannelCard
 }

@@ -24,7 +24,7 @@ using dvmconsole;
 
 namespace Sidetone.Gui
 {
-    public sealed class ConsoleView : UserControl
+    public sealed partial class ConsoleView : UserControl
     {
         private const int MaxLogLines = 200;
         private const int MaxRecentRows = 50;
@@ -59,7 +59,10 @@ namespace Sidetone.Gui
         private readonly StackPanel consoleButtons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
 
         // console view
-        private readonly Grid consoleView = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*,Auto,230") };
+        private readonly Grid consoleView = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*,Auto,230,Auto,Auto") };
+        private StackPanel themeRow;
+        private ScrollViewer cardScroll;
+        private Grid bottom;
         private readonly ZoneTabs zoneTabs = new ZoneTabs();
         private ZoneOverlay zoneBox;
         private RoutingOverlay routingBox;
@@ -155,6 +158,8 @@ namespace Sidetone.Gui
                 ShowWelcome(null);
             ApplyTheme();
 
+            SizeChanged += (s, e) => WidthChanged(e.NewSize.Width);
+
             timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(100) };
             timer.Tick += (s, e) => OnTick();
             timer.Start();
@@ -228,6 +233,9 @@ namespace Sidetone.Gui
                 case "tabs": ShowZones(); break;
                 case "outputs": ShowRouting(); break;
                 case "announce": ShowAnnouncements(); break;
+                case "calls": ShowPage(NarrowPage.Calls); break;
+                case "log": ShowPage(NarrowPage.Log); break;
+                case "more": ShowPage(NarrowPage.More); break;
             }
         }
 
@@ -266,7 +274,7 @@ namespace Sidetone.Gui
             themeSystem = new Tap("Auto", () => SetTheme(null), fontSize: 12, padX: 9, padY: 4);
             themeLight = new Tap("Light", () => SetTheme("light"), fontSize: 12, padX: 9, padY: 4);
             themeDark = new Tap("Dark", () => SetTheme("dark"), fontSize: 12, padX: 9, padY: 4);
-            StackPanel themeRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0) };
+            themeRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0) };
             themeRow.Children.Add(themeSystem.Root);
             themeRow.Children.Add(themeLight.Root);
             themeRow.Children.Add(themeDark.Root);
@@ -333,7 +341,7 @@ namespace Sidetone.Gui
             routingBox = new RoutingOverlay(() => console, () => offline ? DemoCodeplug.AudioDevices() : AudioDeviceList.Query(), RefreshNow, () => root.Focus());
 
             // console view: cards, transmit bar, recent calls and log
-            ScrollViewer cardScroll = new ScrollViewer { Content = cardPanel, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
+            cardScroll = new ScrollViewer { Content = cardPanel, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
             UpdateKeyHints();
             Grid txGrid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
             Grid.SetColumn(txText, 0);
@@ -355,7 +363,7 @@ namespace Sidetone.Gui
             logDock.Children.Add(logScroll);
             logPanel.Child = logDock;
 
-            Grid bottom = new Grid { ColumnDefinitions = new ColumnDefinitions("2*,3*") };
+            bottom = new Grid { ColumnDefinitions = new ColumnDefinitions("2*,3*") };
             Grid.SetColumn(recentPanel, 0);
             Grid.SetColumn(logPanel, 1);
             bottom.Children.Add(recentPanel);
@@ -371,6 +379,7 @@ namespace Sidetone.Gui
             consoleView.Children.Add(cardScroll);
             consoleView.Children.Add(txBar);
             consoleView.Children.Add(bottom);
+            BuildNarrow();
 
             // welcome view
             openCodeplug = new Tap("Open codeplug…", () => _ = PickCodeplug(), fontSize: 15, minWidth: 180, padY: 10);
@@ -402,6 +411,8 @@ namespace Sidetone.Gui
             root.Children.Add(routingBox.Root);
             root.Children.Add(announceBox.Root);
             root.Children.Add(keyBox.Root);
+            foreach (Grid box in new[] { overlay.Root, settingsBox.Root, patchBox.Root, recallBox.Root, zoneBox.Root, routingBox.Root, announceBox.Root, keyBox.Root })
+                FitBoxToWidth(box);
             Content = root;
         }
 
@@ -464,7 +475,7 @@ namespace Sidetone.Gui
         private void ShowWelcome(string error)
         {
             consoleView.IsVisible = false;
-            consoleButtons.IsVisible = false;
+            UpdateLayoutMode();
             welcome.IsVisible = true;
             systemName.Text = "Sidetone";
             connection.Text = string.Empty;
@@ -594,7 +605,7 @@ namespace Sidetone.Gui
 
                 welcome.IsVisible = false;
                 consoleView.IsVisible = true;
-                consoleButtons.IsVisible = true;
+                UpdateLayoutMode();
                 SetTitle($"Sidetone: {system.Name}");
                 if (askForPassword)
                     ShowKeyBox();
@@ -1170,6 +1181,7 @@ namespace Sidetone.Gui
             RefreshTxBar(c, p, tx, tone);
             RefreshRecent(c, p);
             RefreshLog(c, p);
+            RefreshNarrow(c, p, tx, tone);
         }
 
         private void RefreshTxBar(DispatchConsole c, Palette p, bool tx, ToneJob tone)

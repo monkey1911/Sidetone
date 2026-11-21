@@ -576,6 +576,63 @@ namespace Sidetone.Gui
                   "tabs: Z opens the Tabs box; arrows and Space hide and show zones (hiding the tab on show moves to another); Esc closes it");
             c.SetFocus(1);
 
+            // the phone layout: narrower than ConsoleView.NarrowWidth
+            ConsoleView v = w.View;
+            void Resize(double width, double height)
+            {
+                w.Width = width;
+                w.Height = height;
+                Dispatcher.UIThread.RunJobs();
+                w.UpdateLayout();
+                Dispatcher.UIThread.RunJobs();
+                w.UpdateLayout();
+            }
+            Resize(412, 915);
+            Check(v.Narrow && v.PageShown == ConsoleView.NarrowPage.Channels && v.BigPtt.Root.IsEffectivelyVisible && v.CardsOnShow && !v.PttTap.Root.IsEffectivelyVisible,
+                  "phone layout: a narrow window shows the cards in one column with a big PTT at the bottom (the header's PTT hidden)");
+
+            int pressesBefore = v.PointerPresses, releasesBefore = v.PointerReleases, refusedBefore = c.SnapshotLog(200).Count(l => l.Contains("not connected to the FNE yet"));
+            Point onBig = v.BigPtt.Root.TranslatePoint(new Point(20, 20), w) ?? new Point(-1, -1);
+            w.MouseDown(onBig, MouseButton.Left);
+            Dispatcher.UIThread.RunJobs();
+            bool bigPressed = v.PointerPresses == pressesBefore + 1 && c.SnapshotLog(200).Count(l => l.Contains("not connected to the FNE yet")) == refusedBefore + 1;
+            w.MouseUp(onBig, MouseButton.Left);
+            Dispatcher.UIThread.RunJobs();
+            Check(bigPressed && v.PointerReleases == releasesBefore + 1, "phone layout: the big PTT is hold-to-talk (pressed and let go)");
+
+            void Tap(Tap t)
+            {
+                Point at = t.Root.TranslatePoint(new Point(t.Root.Bounds.Width / 2, t.Root.Bounds.Height / 2), w) ?? new Point(-1, -1);
+                w.MouseDown(at, MouseButton.Left);
+                w.MouseUp(at, MouseButton.Left);
+                Dispatcher.UIThread.RunJobs();
+                w.UpdateLayout();
+            }
+            Tap(v.NavTap(ConsoleView.NarrowPage.Calls));
+            bool callsShown = v.PageShown == ConsoleView.NarrowPage.Calls && !v.CardsOnShow;
+            Tap(v.NavTap(ConsoleView.NarrowPage.Log));
+            bool logShown = v.PageShown == ConsoleView.NarrowPage.Log;
+            Tap(v.NavTap(ConsoleView.NarrowPage.More));
+            bool moreShown = v.PageShown == ConsoleView.NarrowPage.More;
+            bool backed = v.GoBack() && v.PageShown == ConsoleView.NarrowPage.Channels && v.CardsOnShow && !v.GoBack();
+            Check(callsShown && logShown && moreShown && backed, "phone layout: Calls, Log and More pages; Back returns to the channels, then has nothing to go back from");
+
+            Tap(v.MuteAllTap);
+            bool allMuted = c.GlobalMute;
+            Tap(v.MuteAllTap);
+            Check(allMuted && !c.GlobalMute, "phone layout: Mute all mutes and unmutes everything");
+
+            v.OpenBox("settings");
+            Dispatcher.UIThread.RunJobs();
+            w.UpdateLayout();
+            double settingsScale = v.BoxScale(v.SettingsBox.Root);
+            bool closedByBack = v.GoBack() && !v.SettingsBox.IsOpen;
+            Check(settingsScale < 1 && settingsScale >= 0.4 && closedByBack, $"phone layout: a box wider than the screen is scaled to fit ({settingsScale:0.00}), and Back closes it");
+
+            Resize(1280, 800);
+            Check(!v.Narrow && v.PttTap.Root.IsEffectivelyVisible && !v.BigPtt.Root.IsEffectivelyVisible && v.BoxScale(v.SettingsBox.Root) == 1,
+                  "phone layout: widening the window brings the usual layout back");
+
             w.KeyPressQwerty(PhysicalKey.Q, RawInputModifiers.Control);
             Dispatcher.UIThread.RunJobs();
             Check(closed, "Ctrl+Q closes the window");
