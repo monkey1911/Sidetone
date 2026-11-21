@@ -253,8 +253,9 @@ namespace Sidetone.Droid
                         continue;
                     newest = Math.Max(newest, x.Timestamp);
                     DateTime when = DateTimeOffset.FromUnixTimeMilliseconds(x.Timestamp).LocalDateTime;
-                    DebugLog.Write("last-exit", $"{when:yyyy-MM-dd HH:mm:ss}: {x.Reason} ({x.Description ?? "no description"}), status {x.Status}, importance {x.Importance}");
-                    if (x.Reason == ApplicationExitInfoReason.Anr)
+                    ApplicationExitInfoReason reason = (ApplicationExitInfoReason)x.Reason;
+                    DebugLog.Write("last-exit", $"{when:yyyy-MM-dd HH:mm:ss}: {reason} ({x.Description ?? "no description"}), status {x.Status}, importance {x.Importance}");
+                    if (reason == ApplicationExitInfoReason.Anr)
                     {
                         using Stream trace = x.TraceInputStream;
                         if (trace != null)
