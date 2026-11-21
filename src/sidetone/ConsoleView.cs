@@ -481,8 +481,8 @@ namespace Sidetone.Gui
             connection.Text = string.Empty;
             details.Text = "no codeplug open";
             welcomeText.Text = "An IP dispatch console for DVMProject FNE networks.\n\n" +
-                               "Open the codeplug you use with the Windows DVM console.\n" +
-                               "You can also start with: sidetone --codeplug FILE";
+                               "Open the codeplug you use with the Windows DVM console." +
+                               (OperatingSystem.IsAndroid() ? string.Empty : "\nYou can also start with: sidetone --codeplug FILE");
             welcomeError.Text = error ?? string.Empty;
         }
 
@@ -988,6 +988,14 @@ namespace Sidetone.Gui
             {
                 return $"Couldn't do that: {ex.Message}";
             }
+        }
+
+        /// <summary>Stops the console and goes back to the start (Android's Disconnect, in the connection's notification).</summary>
+        public void Disconnect()
+        {
+            CloseConsole();
+            ShowWelcome(null);
+            RefreshNow();
         }
 
         /// <summary>Stops the console (when the window closes or another codeplug is opened).</summary>

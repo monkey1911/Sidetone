@@ -7,3 +7,6 @@ out/
 *.yml
 !.github/workflows/*.yml
 ci-shots/
+# Android signing keys: never in the repository
+*.keystore
+*.jks

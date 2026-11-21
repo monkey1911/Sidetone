@@ -9,8 +9,9 @@ using dvmconsole;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
 
-// Linux only (PipeWire, Unix sockets and file modes, evdev)
+// Linux (PipeWire, Unix sockets and file modes, evdev) and Android (which brings its own audio, speech and keystore)
 [assembly: System.Runtime.Versioning.SupportedOSPlatform("linux")]
+[assembly: System.Runtime.Versioning.SupportedOSPlatform("android")]
 
 namespace Sidetone.Core
 {

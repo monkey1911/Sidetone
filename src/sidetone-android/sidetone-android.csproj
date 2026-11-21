@@ -1,0 +1,57 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    sidetone-android - Sidetone for Android phones and tablets. The console view is the desktop GUI's
+    own (its sources are compiled in here, all but the desktop's Program.cs); this project adds the
+    Android activity, audio (AudioTrack / AudioRecord), a foreground service that keeps the console
+    connected with the screen off, text to speech, the keystore, notifications and a hardware PTT key.
+    Built in CI (the NDK that builds libvocoder for Android runs on x86-64 hosts only).
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-android</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>sidetone-android</AssemblyName>
+    <RootNamespace>Sidetone.Droid</RootNamespace>
+    <!-- Android 11 and newer; built for the newest Android, as Google Play requires -->
+    <SupportedOSPlatformVersion>30</SupportedOSPlatformVersion>
+    <ApplicationId>org.sidetone.app</ApplicationId>
+    <ApplicationTitle>Sidetone</ApplicationTitle>
+    <ApplicationDisplayVersion>$(Version)</ApplicationDisplayVersion>
+    <!-- 0.31.0 is 3100: major * 10000 + minor * 100 + patch, always rising -->
+    <ApplicationVersion>$([MSBuild]::Add($([MSBuild]::Add($([MSBuild]::Multiply($([System.Version]::Parse('$(Version)').Major), 10000)), $([MSBuild]::Multiply($([System.Version]::Parse('$(Version)').Minor), 100)))), $([System.Version]::Parse('$(Version)').Build)))</ApplicationVersion>
+    <RuntimeIdentifiers>android-arm64;android-x64</RuntimeIdentifiers>
+    <AndroidPackageFormats>apk;aab</AndroidPackageFormats>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- codeplugs (YamlDotNet) and settings (System.Text.Json) are read by reflection: nothing is trimmed away -->
+    <PublishTrimmed>false</PublishTrimmed>
+    <AndroidLinkMode>None</AndroidLinkMode>
+    <AndroidEnableProfiledAot>false</AndroidEnableProfiledAot>
+  </PropertyGroup>
+
+  <!-- the console view and everything around it: the desktop GUI's sources -->
+  <ItemGroup>
+    <Compile Include="..\sidetone\**\*.cs" Exclude="..\sidetone\Program.cs;..\sidetone\obj\**;..\sidetone\bin\**" LinkBase="gui" />
+    <EmbeddedResource Include="..\..\packaging\icons\sidetone.svg" LogicalName="sidetone.svg" />
+    <EmbeddedResource Include="..\..\packaging\icons\sidetone-256.png" LogicalName="sidetone-256.png" />
+    <AndroidResource Include="..\..\packaging\icons\sidetone-256.png" Link="Resources\drawable\icon.png" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\sidetone-core\sidetone-core.csproj" />
+    <Using Include="Sidetone.Core" />
+    <Using Include="Sidetone.Gui" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia.Android" Version="12.1.6" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.6" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.6" />
+  </ItemGroup>
+
+  <!-- libvocoder for each ABI, built with the NDK by CI into build/android/ABI -->
+  <ItemGroup>
+    <AndroidNativeLibrary Include="..\..\build\android\arm64-v8a\libvocoder.so" Abi="arm64-v8a" Condition="Exists('..\..\build\android\arm64-v8a\libvocoder.so')" />
+    <AndroidNativeLibrary Include="..\..\build\android\x86_64\libvocoder.so" Abi="x86_64" Condition="Exists('..\..\build\android\x86_64\libvocoder.so')" />
+  </ItemGroup>
+
+</Project>
