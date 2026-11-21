@@ -29,7 +29,8 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
   granted and heard through the owner's hotspot), text to speech with Piper at a slower speed
   (0.30.1: "sounds much better" than the voice's own pace), the Android app (0.31.0) receiving and
   transmitting both clear and AES on a real device, spoken announcements with the phone's own
-  text to speech, instant recall, and tones.
+  text to speech, instant recall, tones, and receive with the screen off for several minutes (the
+  foreground service keeps it connected; the screen stays off, by design).
 - The owner tests every release on the air and on their hardware after publishing it. The list
   below is only what the earlier sessions never heard results for, not what is known to be
   untested. Ask the owner before calling something untested, and move items up once confirmed.
@@ -47,7 +48,7 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
   log files and Copy log, the TUI using the GUI's saved settings, the TUI's card buttons and key
   file box; from 0.26: Opus recordings and Delete after; from 0.28: one-way patches, outputs per
   tab and channel, the call history between runs; from 0.29: announcements, `listen --key-file`; from 0.30: the scheduled time announcement, the new announcement level (0.30.3); from 0.31:
-  on Android, the background service with the screen off, hardware PTT keys and Bluetooth; and the
+  on Android, transmitting with the screen off, hardware PTT keys and Bluetooth; and the
   desktop's phone layout
   (Piper is installed on the owner's Surface, through `uv tool install piper-tts`, with the
   en_US-lessac-medium voice).
