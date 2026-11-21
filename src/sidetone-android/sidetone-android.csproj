@@ -41,6 +41,13 @@
     <ProjectReference Include="..\sidetone-core\sidetone-core.csproj" />
     <Using Include="Sidetone.Core" />
     <Using Include="Sidetone.Gui" />
+    <!-- the Android SDK's implicit usings would clash with Avalonia in the shared GUI sources (Application, Window, View); the Android files name their own -->
+    <Using Remove="Android.App" />
+    <Using Remove="Android.Widget" />
+    <Using Remove="Android.OS" />
+    <Using Remove="Android.Views" />
+    <Using Remove="Android.Content" />
+    <Using Remove="Android.Runtime" />
   </ItemGroup>
 
   <ItemGroup>
