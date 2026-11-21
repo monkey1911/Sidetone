@@ -92,6 +92,12 @@ namespace Sidetone.Core
         public string PttButton { get; set; }
         /// <summary>Mute button on that device, "none", or null to choose automatically.</summary>
         public string MuteButton { get; set; }
+        /// <summary>Android: the hardware key used as PTT (its key code), or null for none.</summary>
+        public int? HardwarePttKey { get; set; }
+        /// <summary>Android: that key's name, as Android gives it (like KEYCODE_VOLUME_DOWN).</summary>
+        public string HardwarePttKeyName { get; set; }
+        /// <summary>Android: keep the screen on while a console is open (null: off).</summary>
+        public bool? KeepScreenOn { get; set; }
         /// <summary>Microphone processing stages; null means the default (on for all but the noise gate).</summary>
         public bool? MicLowCut { get; set; }
         public bool? MicAutoLevel { get; set; }

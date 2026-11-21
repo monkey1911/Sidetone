@@ -2090,8 +2090,78 @@ zones:
                   "TUI announcements box: n opens it, a adds a file by path, Enter tries to play it (and says why not), r removes it");
         }
 
+        /// <summary>A stand-in for a platform's text to speech (Android's): writes a second of speech-like audio.</summary>
+        private sealed class FakePlatformSpeech : IPlatformSpeech
+        {
+            public string Name => "Test speech";
+            public string VoiceName => "test voice";
+            public string LastText;
+            public double LastRate;
+            public bool Fail;
+
+            public void SpeakToWav(string text, double rate, string wavPath)
+            {
+                LastText = text;
+                LastRate = rate;
+                if (Fail)
+                    throw new ArgumentException("Test speech isn't ready");
+                using WavSink sink = new WavSink(wavPath);
+                for (int f = 0; f < 50; f++)
+                    sink.Write(VoicedFrame(f));
+            }
+        }
+
+        private static void PlatformHookTests(string tmp)
+        {
+            // text to speech: a platform engine wins over Piper and espeak-ng, and its audio is levelled like the rest
+            FakePlatformSpeech fake = new FakePlatformSpeech();
+            Speech.Platform = fake;
+            try
+            {
+                SpeechEngine e = Speech.Choose(Speech.PiperSetting, "/nowhere/voice.onnx", out string why);
+                Check(e != null && why == null && e.Kind == SpeechEngineKind.Platform && e.Label == "Test speech, voice test voice",
+                      "platform speech: chosen whatever the engine setting, and named for the platform's engine");
+                e.Rate = 0.9;
+                short[] said = Speech.Synthesize(e, "Shift change\nin ten minutes");
+                Check(said.Length >= 7000 && Math.Abs(WavFile.SpeechLevelDb(said) - VoiceProcessor.TargetDb) < 2 && fake.LastText == "Shift change in ten minutes" && fake.LastRate == 0.9,
+                      "platform speech: text and speed handed over, the WAV read back and levelled to the microphone's level");
+                fake.Fail = true;
+                string failed = null;
+                try { Speech.Synthesize(e, "hello"); } catch (ArgumentException ex) { failed = ex.Message; }
+                Check(failed == "Test speech isn't ready", "platform speech: its failure comes back as the reason");
+            }
+            finally { Speech.Platform = null; }
+            Check(Speech.Choose(Speech.PiperSetting, null, out _)?.Kind != SpeechEngineKind.Platform, "platform speech: unset, the programs are looked for again");
+
+            // key file passwords: the platform's store is used instead of secret-tool
+            Dictionary<string, string> kept = new Dictionary<string, string>();
+            SecretStore.Platform = (k => kept.TryGetValue(k, out string v) ? v : null, (k, v) => { kept[k] = v; return true; }, k => kept.Remove(k));
+            try
+            {
+                string keyFile = Path.Combine(tmp, "platform.ekc");
+                bool stored = SecretStore.Store(keyFile, "pa55");
+                string back = SecretStore.Lookup(keyFile);
+                bool cleared = SecretStore.Clear(keyFile);
+                Check(SecretStore.Available && stored && back == "pa55" && cleared && SecretStore.Lookup(keyFile) == null && kept.Count == 0,
+                      "key file passwords: kept in the platform's store when there is one (stored, found, forgotten)");
+            }
+            finally { SecretStore.Platform = null; }
+
+            // notifications: the platform's own
+            List<string> notes = new List<string>();
+            DesktopNotify.Platform = (title, body, urgent) => { notes.Add($"{title}|{urgent}"); return true; };
+            try
+            {
+                Check(DesktopNotify.Send("Paged by Unit 12", "body", true) && notes.Count == 1 && notes[0] == "Paged by Unit 12|True",
+                      "notifications: shown by the platform when it has its own");
+            }
+            finally { DesktopNotify.Platform = null; }
+        }
+
         private static void SpeechTests(string tmp, Codeplug cp, Codeplug.System sys)
         {
+            PlatformHookTests(tmp);
+
             // the time in words, as every engine will say it
             Check(Speech.TimeWords(14, 20, false) == "two twenty P M" && Speech.TimeWords(14, 5, false) == "two oh five P M" &&
                   Speech.TimeWords(0, 0, false) == "twelve A M" && Speech.TimeWords(12, 0, false) == "twelve P M" && Speech.TimeWords(9, 45, false) == "nine forty five A M",

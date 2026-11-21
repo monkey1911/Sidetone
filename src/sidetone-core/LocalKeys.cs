@@ -98,22 +98,32 @@ namespace Sidetone.Core
 
         private static string Tool => AudioDeviceList.FindOnPath("secret-tool");
 
+        /// <summary>
+        /// The platform's own password store (Android's Keystore), used instead of secret-tool when set.
+        /// Lookup returns null when nothing is remembered; Store and Clear return false when they couldn't.
+        /// </summary>
+        public static (Func<string, string> Lookup, Func<string, string, bool> Store, Func<string, bool> Clear)? Platform { get; set; }
+
         /// <summary>The keyring can be used on this machine.</summary>
-        public static bool Available => Tool != null;
+        public static bool Available => Platform != null || Tool != null;
 
         /// <summary>The remembered password for a key file, or null.</summary>
         public static string Lookup(string keyFile)
         {
+            if (Platform is { } platform)
+                return platform.Lookup(Path.GetFullPath(keyFile));
             string output = Run(null, "lookup", "application", "sidetone", "keyfile", Path.GetFullPath(keyFile));
             return string.IsNullOrEmpty(output) ? null : output.TrimEnd('\n');
         }
 
         /// <summary>Remembers the password for a key file. Returns false when it couldn't.</summary>
         public static bool Store(string keyFile, string password) =>
+            Platform is { } platform ? platform.Store(Path.GetFullPath(keyFile), password) :
             Run(password, "store", "--label", "Sidetone key file password", "application", "sidetone", "keyfile", Path.GetFullPath(keyFile)) != null;
 
         /// <summary>Forgets the password for a key file.</summary>
         public static bool Clear(string keyFile) =>
+            Platform is { } platform ? platform.Clear(Path.GetFullPath(keyFile)) :
             Run(null, "clear", "application", "sidetone", "keyfile", Path.GetFullPath(keyFile)) != null;
 
         /// <summary>Runs secret-tool; returns what it printed, or null when it isn't there, failed or took too long.</summary>

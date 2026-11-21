@@ -580,9 +580,14 @@ namespace Sidetone.Core
     /// </summary>
     public static class DesktopNotify
     {
+        /// <summary>The platform's own notifications (Android's), used instead of notify-send and gdbus when set: (title, body, urgent) → shown.</summary>
+        public static Func<string, string, bool, bool> Platform { get; set; }
+
         /// <summary>Shows a notification. Returns false when neither tool is there or it failed.</summary>
         public static bool Send(string title, string body, bool urgent)
         {
+            if (Platform != null)
+                return Platform(title, body, urgent);
             string notifySend = AudioDeviceList.FindOnPath("notify-send");
             if (notifySend != null)
                 return Run(notifySend, "--app-name=Sidetone", "--icon=sidetone", $"--urgency={(urgent ? "critical" : "normal")}", title, body);

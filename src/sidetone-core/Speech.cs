@@ -17,7 +17,23 @@ using System.Text;
 
 namespace Sidetone.Core
 {
-    public enum SpeechEngineKind { Piper, EspeakNg }
+    public enum SpeechEngineKind { Piper, EspeakNg, Platform }
+
+    /// <summary>
+    /// A platform's own text-to-speech engine (Android's), used instead of Piper and espeak-ng when one
+    /// is set. Called on a worker thread; it may take a few seconds.
+    /// </summary>
+    public interface IPlatformSpeech
+    {
+        /// <summary>The engine's name, as people know it.</summary>
+        string Name { get; }
+
+        /// <summary>The voice it will use, as people know it.</summary>
+        string VoiceName { get; }
+
+        /// <summary>Speaks the text into a WAV file at the speed (1 is the voice's own pace). Throws ArgumentException with a plain reason when it can't.</summary>
+        void SpeakToWav(string text, double rate, string wavPath);
+    }
 
     /// <summary>An engine that was found, and the voice it will use.</summary>
     public sealed class SpeechEngine
@@ -30,10 +46,15 @@ namespace Sidetone.Core
         /// <summary>Speaking speed: 1 is the voice's own pace, 0.9 is 10% slower.</summary>
         public double Rate = 1;
 
-        public string Name => Kind == SpeechEngineKind.Piper ? "Piper" : "espeak-ng";
+        public string Name => Kind switch
+        {
+            SpeechEngineKind.Piper => "Piper",
+            SpeechEngineKind.EspeakNg => "espeak-ng",
+            _ => Speech.Platform?.Name ?? "text to speech"
+        };
 
         /// <summary>Like "Piper, voice en_US-lessac-medium".</summary>
-        public string Label => $"{Name}, voice {Speech.VoiceName(Voice)}";
+        public string Label => Kind == SpeechEngineKind.Platform ? $"{Name}, voice {Voice}" : $"{Name}, voice {Speech.VoiceName(Voice)}";
 
         /// <summary>Tells cached audio apart: the same text in another voice is different audio.</summary>
         internal string CacheKey => $"{Kind}|{Program}|{Voice}|{Rate.ToString(CultureInfo.InvariantCulture)}";
@@ -45,6 +66,9 @@ namespace Sidetone.Core
         public const string PiperSetting = "piper", EspeakSetting = "espeak-ng";
 
         public const string DefaultEspeakVoice = "en-us";
+
+        /// <summary>The platform's own engine (Android's), or null to look for Piper and espeak-ng. When set, it's always the one used.</summary>
+        public static IPlatformSpeech Platform { get; set; }
 
         /// <summary>espeak-ng's own speed, in words per minute.</summary>
         public const int EspeakWordsPerMinute = 175;
@@ -163,6 +187,8 @@ namespace Sidetone.Core
         public static SpeechEngine Choose(string engine, string voice, out string why)
         {
             why = null;
+            if (Platform != null)
+                return new SpeechEngine { Kind = SpeechEngineKind.Platform, Voice = Platform.VoiceName };
             bool auto = string.IsNullOrEmpty(engine);
             string piper = auto || engine == PiperSetting ? FindProgram("piper", "piper-tts") : null;
             string espeak = auto || engine == EspeakSetting ? FindProgram("espeak-ng") : null;
@@ -203,6 +229,15 @@ namespace Sidetone.Core
             string wav = Path.Combine(Path.GetTempPath(), $"sidetone-speech-{Environment.ProcessId}-{Guid.NewGuid():N}.wav");
             try
             {
+                if (engine.Kind == SpeechEngineKind.Platform)
+                {
+                    IPlatformSpeech platform = Platform ?? throw new ArgumentException("the platform's text to speech is gone");
+                    platform.SpeakToWav(text.Replace('\n', ' ').Trim(), engine.Rate, wav);
+                    if (!File.Exists(wav) || new FileInfo(wav).Length <= 44)
+                        throw new ArgumentException($"{engine.Name} made no audio");
+                    return WavFile.ReadAnnouncement(wav);
+                }
+
                 ProcessStartInfo psi = new ProcessStartInfo(engine.Program)
                 {
                     RedirectStandardInput = true,
