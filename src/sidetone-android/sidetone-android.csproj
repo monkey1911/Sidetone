@@ -25,6 +25,8 @@
     <!-- codeplugs (YamlDotNet) and settings (System.Text.Json) are read by reflection: nothing is trimmed away -->
     <PublishTrimmed>false</PublishTrimmed>
     <AndroidLinkMode>None</AndroidLinkMode>
+    <!-- ahead-of-time compilation needs trimming; without it the app is compiled as it starts (a little slower to open) -->
+    <RunAOTCompilation>false</RunAOTCompilation>
     <AndroidEnableProfiledAot>false</AndroidEnableProfiledAot>
   </PropertyGroup>
 
