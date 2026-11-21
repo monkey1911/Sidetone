@@ -84,6 +84,33 @@ namespace Sidetone.Core
         }
 
         /// <summary>
+        /// The FNE's address: an IP address as it is, or a host name looked up (IPv4 first). Spaces around it are
+        /// ignored. Throws FneAddressException, saying what to check, when the name can't be found.
+        /// </summary>
+        internal static IPAddress ResolveAddress(string text)
+        {
+            string host = (text ?? string.Empty).Trim();
+            if (IPAddress.TryParse(host, out IPAddress ip))
+                return ip;
+            if (host.Contains("://"))
+                throw new FneAddressException(host, "the FNE's address has a scheme (like http://) in it: the codeplug's address should be just the host name or IP address");
+            int colon = host.LastIndexOf(':');
+            if (colon > 0 && host.IndexOf(':') == colon && int.TryParse(host.Substring(colon + 1), out _))
+                throw new FneAddressException(host, "the FNE's address has a port in it: the codeplug's address should be just the host name, with the port in its own field");
+            try
+            {
+                IPAddress[] found = Dns.GetHostAddresses(host);
+                return found.FirstOrDefault(a => a.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork) ?? found.FirstOrDefault()
+                    ?? throw new FneAddressException(host, "the FNE's address was looked up but has no IP address");
+            }
+            catch (System.Net.Sockets.SocketException ex)
+            {
+                throw new FneAddressException(host, $"couldn't find the FNE's address ({ex.SocketErrorCode}). Check this device's internet connection, " +
+                                                    "the address in the codeplug, and whether it only works on a particular network or VPN");
+            }
+        }
+
+        /// <summary>
         /// Builds the fnecore peer from a codeplug system entry.
         /// </summary>
         private static FnePeer CreatePeer(Codeplug.System system)
@@ -91,13 +118,7 @@ namespace Sidetone.Core
             if (string.IsNullOrWhiteSpace(system.Address))
                 throw new ArgumentException($"system '{system.Name}' has no address");
 
-            IPAddress address;
-            if (!IPAddress.TryParse(system.Address, out address))
-            {
-                IPAddress[] found = Dns.GetHostAddresses(system.Address);
-                address = found.FirstOrDefault(a => a.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork) ?? found.FirstOrDefault()
-                    ?? throw new ArgumentException($"could not resolve '{system.Address}'");
-            }
+            IPAddress address = ResolveAddress(system.Address);
 
             string networkKey = system.Encrypted ? system.PresharedKey : null;
             FnePeer peer = new FnePeer("SIDETONE", system.PeerId, new IPEndPoint(address, system.Port), networkKey);
@@ -424,4 +445,15 @@ namespace Sidetone.Core
         /// <inheritdoc/>
         protected override void NXDNDataReceived(object sender, NXDNDataReceivedEvent e) { }
     } // public sealed class CliPeer
+
+    /// <summary>
+    /// The FNE's address in the codeplug couldn't be used. The message says why and what to check; Host is the
+    /// address (kept out of the message, so a debug log doesn't record it).
+    /// </summary>
+    public sealed class FneAddressException : ArgumentException
+    {
+        public string Host { get; }
+
+        public FneAddressException(string host, string message) : base(message) => Host = host;
+    }
 }

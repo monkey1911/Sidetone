@@ -10,3 +10,6 @@ ci-shots/
 # Android signing keys: never in the repository
 *.keystore
 *.jks
+# debug logs people send (Save debug logs…)
+sidetone-logs-*/
+sidetone-logs-*.zip

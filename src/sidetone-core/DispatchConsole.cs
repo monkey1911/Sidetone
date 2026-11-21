@@ -218,7 +218,12 @@ namespace Sidetone.Core
             if (LogFolder != null && logFile == null)
                 LogFiles.Prune(LogFolder, DateTime.Now);
             AddLog($"Sidetone {Version} started{(LogFilePath != null ? $"; log file {LogFilePath}" : string.Empty)}");
-            peer = new CliPeer(system, keys, verbose: false);
+            try { peer = new CliPeer(system, keys, verbose: false); }
+            catch (FneAddressException ex)
+            {
+                AddLog($"error: {ex.Message} (address \"{ex.Host}\")");
+                throw;
+            }
             peer.Status += AddLog;
             peer.P25Frame += OnFrame;
             peer.P25Control += OnP25Control;

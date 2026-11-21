@@ -644,6 +644,13 @@ namespace Sidetone.Gui
                 if (askForPassword)
                     ShowKeyBox();
             }
+            catch (FneAddressException ex)
+            {
+                DebugLog.Write("codeplug", $"{Path.GetFileName(path)}: the FNE's address wasn't usable: {ex.Message}");
+                CloseConsole();
+                console = null;
+                ShowWelcome($"{Path.GetFileName(path)}: {ex.Message}. The address is \"{ex.Host}\".");
+            }
             catch (Exception ex) when (ex is ArgumentException || ex is IOException || ex is InvalidOperationException || ex is YamlDotNet.Core.YamlException)
             {
                 DebugLog.Exception("codeplug", $"{Path.GetFileName(path)} wasn't opened", ex);

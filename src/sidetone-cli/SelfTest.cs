@@ -2125,6 +2125,21 @@ zones:
             }
         }
 
+        private static void AddressTests()
+        {
+            Check(CliPeer.ResolveAddress(" 10.0.0.5 ").ToString() == "10.0.0.5" && CliPeer.ResolveAddress("localhost") != null,
+                  "FNE address: an IP address (spaces around it ignored) or a host name that can be looked up");
+            string Why(string address)
+            {
+                try { CliPeer.ResolveAddress(address); return null; }
+                catch (FneAddressException ex) { return ex.Host == address.Trim() && !ex.Message.Contains(address.Trim()) ? ex.Message : "host in the message"; }
+            }
+            string unknown = Why("sidetone-selftest.invalid"), scheme = Why("http://fne.example.org"), port = Why("fne.example.org:62031");
+            Check(unknown != null && unknown.StartsWith("couldn't find the FNE's address") && unknown.Contains("VPN") &&
+                  scheme != null && scheme.Contains("http://") && port != null && port.Contains("port in it"),
+                  $"FNE address: a name that can't be found, a scheme or a port each get a plain reason, without the address in it (for the debug log) ({unknown})");
+        }
+
         private static void DebugLogTests(string tmp)
         {
             string dir = Path.Combine(tmp, "debug"), consoleLogs = Path.Combine(tmp, "debug-console-logs");
@@ -2226,6 +2241,7 @@ zones:
         {
             PlatformHookTests(tmp);
             DebugLogTests(tmp);
+            AddressTests();
 
             // the time in words, as every engine will say it
             Check(Speech.TimeWords(14, 20, false) == "two twenty P M" && Speech.TimeWords(14, 5, false) == "two oh five P M" &&
