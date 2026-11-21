@@ -28,8 +28,8 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
   demands accepted by a site strapped to encryption (0.24.2: the channel marker on TG 500 was
   granted and heard through the owner's hotspot), text to speech with Piper at a slower speed
   (0.30.1: "sounds much better" than the voice's own pace), the Android app (0.31.0) receiving and
-  transmitting both clear and AES on a real device, and spoken announcements with the phone's own
-  text to speech.
+  transmitting both clear and AES on a real device, spoken announcements with the phone's own
+  text to speech, instant recall, and tones.
 - The owner tests every release on the air and on their hardware after publishing it. The list
   below is only what the earlier sessions never heard results for, not what is known to be
   untested. Ask the owner before calling something untested, and move items up once confirmed.
