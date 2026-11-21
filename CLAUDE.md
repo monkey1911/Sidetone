@@ -263,8 +263,9 @@ every release on the air and on their hardware after publishing it.
   random. It showed up as an Opus recording check failing now and then in CI (it looked like an
   AVX-512 problem at first: it isn't). `patches/dvmvocoder-autogain.patch` sets it to false; the
   self-test makes decoders in dirtied memory. The C# wrapper has no way to set it.
-  Reported upstream as DVMProject/dvmvocoder#2 (2026-11-20); drop the patch once that is fixed and
-  the submodule is moved past it.
+  Reported upstream as DVMProject/dvmvocoder#2 (2026-11-20), with the fix sent as pull request
+  DVMProject/dvmvocoder#3 (2026-11-21, from the owner's fork monkey1911/dvmvocoder, branch
+  fix-autogain-init); drop the patch once that is merged and the submodule is moved past it.
 - Tones go out as IMBE tone frames (as the Windows console does), so QCII tones are quantised to
   about 31 Hz steps.
 - Patch members have a `PatchRole` (Both, SourceOnly, TargetOnly); the Windows console's one-way
