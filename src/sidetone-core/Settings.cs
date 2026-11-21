@@ -98,6 +98,8 @@ namespace Sidetone.Core
         public string HardwarePttKeyName { get; set; }
         /// <summary>Android: keep the screen on while a console is open (null: off).</summary>
         public bool? KeepScreenOn { get; set; }
+        /// <summary>Android: wake the screen when a call comes in while it's off (null: on).</summary>
+        public bool? WakeOnCall { get; set; }
         /// <summary>Microphone processing stages; null means the default (on for all but the noise gate).</summary>
         public bool? MicLowCut { get; set; }
         public bool? MicAutoLevel { get; set; }

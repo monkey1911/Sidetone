@@ -38,6 +38,8 @@ namespace Sidetone.Gui
             public int? HardwarePttKey;
             public string HardwarePttKeyName;
             public bool KeepScreenOn;
+            /// <summary>Android: wake the screen when a call comes in while it's off.</summary>
+            public bool WakeOnCall = true;
         }
 
         /// <summary>One line in a drop-down list.</summary>

@@ -484,7 +484,11 @@ namespace Sidetone.Core
             rx.Status += s => { if (!s.StartsWith("CALL ")) AddLog($"{c.Cfg.Name}: {s}"); };
             rx.KeyNeeded += (alg, kid) => peer?.RequestKey(alg, kid);
             rx.DescribeSource = aliases.Describe;
-            rx.CallStarted += src => AddLog($"{c.Cfg.Name}: RX {aliases.Describe(src)}");
+            rx.CallStarted += src =>
+            {
+                AddLog($"{c.Cfg.Name}: RX {aliases.Describe(src)}");
+                CallStarted?.Invoke(c, src);
+            };
             rx.CallEnded += (src, secs, played, muted, crypt) =>
             {
                 c.LastCall = $"{aliases.Label(src)} at {DateTime.Now:HH:mm} ({secs:F0} s)";
@@ -803,6 +807,12 @@ namespace Sidetone.Core
 
         /// <summary>Raised (on any thread) when work is waiting for <see cref="RunControlCalls"/> or <see cref="Tick"/>.</summary>
         public event Action WorkQueued;
+
+        /// <summary>
+        /// A call started on a listening channel (with its source radio ID). Raised on the network thread:
+        /// a handler must not touch console state (Android wakes the screen with it).
+        /// </summary>
+        public event Action<ConsoleChannel, uint> CallStarted;
 
         private void Wake()
         {

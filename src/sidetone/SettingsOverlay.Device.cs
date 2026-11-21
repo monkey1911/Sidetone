@@ -18,10 +18,14 @@ namespace Sidetone.Gui
     {
         private readonly TextBlock pttKeyText = new TextBlock { FontSize = 13, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap };
         private readonly TextBlock deviceNote = new TextBlock { FontSize = 12, TextWrapping = TextWrapping.Wrap };
-        private Tap pttLearn, pttNone, screenOn, screenOff, battery;
+        private Tap pttLearn, pttNone, screenOn, screenOff, wakeOn, wakeOff, battery;
         private int? pttKey;
         private string pttKeyName;
-        private bool keepScreenOn, learning;
+        private bool keepScreenOn, wakeOnCall = true, learning;
+
+        /// <summary>Whether the screen is woken for incoming calls, and pressing its buttons (self-check hooks).</summary>
+        internal bool WakeOnCall => wakeOnCall;
+        internal void PressWake(bool on) => wakeOnCall = on;
 
         /// <summary>The hardware PTT key chosen so far, and whether a key is being waited for (self-check hooks).</summary>
         internal int? PttKey => pttKey;
@@ -50,12 +54,19 @@ namespace Sidetone.Gui
             screenRow.Children.Add(screenOn.Root);
             screenRow.Children.Add(screenOff.Root);
 
+            wakeOn = new Tap("Wake the screen", () => wakeOnCall = true, fontSize: 13, padX: 12, padY: 7);
+            wakeOff = new Tap("Leave it off", () => wakeOnCall = false, fontSize: 13, padX: 12, padY: 7);
+            StackPanel wakeRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+            wakeRow.Children.Add(wakeOn.Root);
+            wakeRow.Children.Add(wakeOff.Root);
+
             battery = new Tap("Battery settings…", () => GuiPlatform.Current?.OpenBatterySettings(), fontSize: 13, padX: 12, padY: 7);
             battery.Root.HorizontalAlignment = HorizontalAlignment.Left;
 
-            deviceNote.Text = "A hardware PTT key works while Sidetone is on screen; Bluetooth and headset buttons also with the screen off. " +
+            deviceNote.Text = "Incoming calls: when the screen is off, a call on a listening channel turns it on for a moment (muted channels don't). " +
+                              "A hardware PTT key works while Sidetone is on screen; Bluetooth and headset buttons also with the screen off. " +
                               "To stay connected with the screen off, let Sidetone run without battery restrictions.";
-            return new Control[] { Field("PTT key", keyRow), Field("Screen", screenRow), Field("Battery", battery.Root), deviceNote };
+            return new Control[] { Field("PTT key", keyRow), Field("Screen", screenRow), Field("Incoming calls", wakeRow), Field("Battery", battery.Root), deviceNote };
         }
 
         private void ShowDeviceValues(Values current)
@@ -64,6 +75,7 @@ namespace Sidetone.Gui
             pttKey = current.HardwarePttKey;
             pttKeyName = current.HardwarePttKeyName;
             keepScreenOn = current.KeepScreenOn;
+            wakeOnCall = current.WakeOnCall;
         }
 
         private void CollectDeviceValues(Values v)
@@ -71,6 +83,7 @@ namespace Sidetone.Gui
             v.HardwarePttKey = pttKey;
             v.HardwarePttKeyName = pttKeyName;
             v.KeepScreenOn = keepScreenOn;
+            v.WakeOnCall = wakeOnCall;
         }
 
         private void StartLearning()
@@ -124,6 +137,8 @@ namespace Sidetone.Gui
             pttNone.Root.IsVisible = pttKey != null || learning;
             Paint(screenOn, keepScreenOn, p);
             Paint(screenOff, !keepScreenOn, p);
+            Paint(wakeOn, wakeOnCall, p);
+            Paint(wakeOff, !wakeOnCall, p);
             battery.Paint(Brushes.Transparent, p.Text, p.Edge);
             deviceNote.Foreground = p.Dim;
         }

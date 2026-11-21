@@ -30,10 +30,11 @@ namespace Sidetone.Gui
         public Action<int, string> Learning;
         public int? AppliedKey;
         public string AppliedName;
+        public bool? AppliedWake;
 
         public void LearnPttKey(Action<int, string> learned) => Learning = learned;
         public void CancelLearn() => Learning = null;
-        public void Apply(AppSettings settings, DispatchConsole console) { AppliedKey = settings.HardwarePttKey; AppliedName = settings.HardwarePttKeyName; }
+        public void Apply(AppSettings settings, DispatchConsole console) { AppliedKey = settings.HardwarePttKey; AppliedName = settings.HardwarePttKeyName; AppliedWake = settings.WakeOnCall != false; }
         public void ConsoleStarted(DispatchConsole console) { }
         public void ConsoleStopped() { }
         public void OpenBatterySettings() { }
@@ -664,8 +665,12 @@ namespace Sidetone.Gui
                 bool waiting = ds.Learning && fakeDevice.Learning != null;
                 fakeDevice.Learning(25, "KEYCODE_VOLUME_DOWN");
                 bool learned = !ds.Learning && ds.PttKey == 25;
+                bool wakeByDefault = ds.WakeOnCall;
+                ds.PressWake(false);
                 ds.PressSave();
                 Dispatcher.UIThread.RunJobs();
+                Check(wakeByDefault && fakeDevice.AppliedWake == false,
+                      "device: waking the screen for incoming calls is on until Settings turns it off, and the platform is told");
                 Check(waiting && learned && !ds.IsOpen && fakeDevice.AppliedKey == 25 && fakeDevice.AppliedName == "KEYCODE_VOLUME_DOWN" &&
                       SettingsOverlay.KeyLabel("KEYCODE_VOLUME_DOWN", 25) == "Volume down" && SettingsOverlay.KeyLabel("KEYCODE_1015", 1015) == "key 1015",
                       "device: Settings learns a hardware PTT key by pressing it (Volume down), and Save hands it to the platform");

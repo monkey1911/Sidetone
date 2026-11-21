@@ -65,6 +65,12 @@ namespace Sidetone.Droid
             AndroidPlatform.Instance.ApplyScreen();
         }
 
+        protected override void OnStop()
+        {
+            AndroidPlatform.Instance.ActivityStopped(this);
+            base.OnStop();
+        }
+
         protected override void OnDestroy()
         {
             if (AndroidPlatform.Instance.Activity == this)

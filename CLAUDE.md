@@ -8,7 +8,9 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
 
 ## State at hand-off (2026-11-16)
 
-- Version **0.31.0** on `main` (set once, in `src/Directory.Build.props`): Sidetone for Android
+- Version **0.31.1** on `main` (set once, in `src/Directory.Build.props`): Android wakes the screen
+  for incoming calls (Settings, Incoming calls; on by default), and libvocoder is upstream's own
+  (the m_autoGain fix was merged). 0.31.0: Sidetone for Android
   (src/sidetone-android, CI-built APK/AAB, Android 11+), the GUI's console as `ConsoleView` with a
   phone layout below 700 px, and core platform hooks. 0.30.3: announcements levelled
   like the mic (speech at -20 dBFS) and a Level setting; 0.30.2 fixed the time
@@ -17,8 +19,8 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
   announcement; 0.29 brought WAV
   announcements, `listen --key-file`, the dvmcli/dvmgui wrappers removed. Check
   `gh release list` for what was last published.
-- 357 checks (289 in `sidetone-cli selftest`, one of which runs only when a speech engine is
-  installed; 68 in the GUI's `--selfcheck`) plus screenshots, and the Android job's on-device
+- 359 checks (290 in `sidetone-cli selftest`, one of which runs only when a speech engine is
+  installed; 69 in the GUI's `--selfcheck`) plus screenshots, and the Android job's on-device
   self-test (`DeviceSelfTest.cs`, on an API 30 emulator).
 - **Tested on the air by the owner:** RX/TX clear and AES, key delivery from the FNE, alias sync,
   alert tones, channel marker, QCII and digital pages, radio check (the radio answers; see the FNE
@@ -48,7 +50,8 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
   log files and Copy log, the TUI using the GUI's saved settings, the TUI's card buttons and key
   file box; from 0.26: Opus recordings and Delete after; from 0.28: one-way patches, outputs per
   tab and channel, the call history between runs; from 0.29: announcements, `listen --key-file`; from 0.30: the scheduled time announcement, the new announcement level (0.30.3); from 0.31:
-  on Android, transmitting with the screen off, hardware PTT keys and Bluetooth; and the
+  on Android, transmitting with the screen off, hardware PTT keys, Bluetooth, and waking the
+  screen for incoming calls (0.31.1); and the
   desktop's phone layout
   (Piper is installed on the owner's Surface, through `uv tool install piper-tts`, with the
   en_US-lessac-medium voice).

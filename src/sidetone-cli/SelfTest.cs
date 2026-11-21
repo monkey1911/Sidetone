@@ -1856,6 +1856,20 @@ zones:
                   "zones: traffic on a hidden zone isn't shown; traffic on a tab marks it");
             zt.Channels[n1].Active = false;
 
+            // a call starting on a listening channel is announced (Android wakes the screen with it)
+            List<(ConsoleChannel Chan, uint Src)> callsStarted = new List<(ConsoleChannel, uint)>();
+            zt.CallStarted += (ch, src) => callsStarted.Add((ch, src));
+            bool wasListening = zt.Channels[n1].Selected;
+            zt.Select(zt.Channels[n1]);
+            zt.OnFrame(new fnecore.P25DataReceivedEvent(1, 3012, 611, fnecore.CallType.GROUP, P25DUID.LDU1, fnecore.FrameType.VOICE, 0, 90, new byte[300]));
+            zt.OnFrame(new fnecore.P25DataReceivedEvent(1, 3012, 611, fnecore.CallType.GROUP, P25DUID.LDU2, fnecore.FrameType.VOICE, 0, 90, new byte[300]));
+            zt.OnFrame(new fnecore.P25DataReceivedEvent(1, 3012, 611, fnecore.CallType.GROUP, P25DUID.TDU, fnecore.FrameType.TERMINATOR, 0, 90, new byte[300]));
+            Check(callsStarted.Count == 1 && callsStarted[0].Chan == zt.Channels[n1] && callsStarted[0].Src == 3012,
+                  $"console: a call starting on a listening channel is announced once, with its source (Android wakes the screen with it) [{string.Join(", ", callsStarted.Select(x => $"{x.Chan.Cfg.Name}/{x.Src}"))}]");
+            if (!wasListening)
+                zt.Deselect(zt.Channels[n1]);
+            zt.Channels[n1].Active = false;
+
             string onlyOne = zt.SetZoneHidden(unnamed, true) == null ? zt.SetZoneHidden(bravo, true) : "first refused";
             Check(onlyOne != null && onlyOne.Contains("only zone on show") && !bravo.Hidden && unnamed.Hidden,
                   $"zones: the last zone on show can't be hidden ('{onlyOne}')");

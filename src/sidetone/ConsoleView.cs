@@ -836,7 +836,8 @@ namespace Sidetone.Gui
                 HistorySecure = appSettings.HistoryKeepSecure,
                 HardwarePttKey = appSettings.HardwarePttKey,
                 HardwarePttKeyName = appSettings.HardwarePttKeyName,
-                KeepScreenOn = appSettings.KeepScreenOn == true
+                KeepScreenOn = appSettings.KeepScreenOn == true,
+                WakeOnCall = appSettings.WakeOnCall != false
             }, audio, inputs, opt.Demo ? "The demo system (no codeplug file)." : currentPath, CommandLineOverrides(),
                !offline && AppLauncher.IsInstalled(AppLauncher.DataHome), KeyFileSummary(out bool locked), locked,
                appSettings.KeyFile != null && opt.KeyFile == null,
@@ -891,6 +892,7 @@ namespace Sidetone.Gui
                 s.HardwarePttKey = v.HardwarePttKey;
                 s.HardwarePttKeyName = v.HardwarePttKey == null ? null : v.HardwarePttKeyName;
                 s.KeepScreenOn = v.KeepScreenOn ? true : null;
+                s.WakeOnCall = v.WakeOnCall ? null : false;
             });
             GuiPlatform.Current?.Apply(appSettings, offline ? null : console);
             if (historyChanged && !offline)

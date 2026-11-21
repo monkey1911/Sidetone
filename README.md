@@ -128,6 +128,8 @@ Audio plays through Android's own audio: the speaker, a wired or USB headset, or
 
 While a console is open, Sidetone runs as a foreground service. It shows a "Connected to SYSTEM" notification with **Disconnect**, and keeps the connection, receive audio and the microphone working with the screen off. Some phones (Samsung, Xiaomi, OnePlus and others) still stop apps in the background to save battery. If Sidetone drops off when the screen is off, open **Settings, Battery settings…** and let Sidetone run without restrictions. **Settings, Screen** can also keep the screen on while a console is open.
 
+When a call comes in on a listening channel while the screen is off, Sidetone turns the screen on, the way a radio lights up. If Sidetone was on show when the screen went off, it appears over the lock screen; anything else still needs the phone unlocked. The screen then goes off again on the phone's usual timeout. Muted channels (or Mute all) don't wake it. To keep the screen dark, set **Settings, Incoming calls** to **Leave it off**.
+
 ### Hardware PTT key
 
 Phones and radios with a PTT key (rugged phones, PoC radios), Bluetooth PTT buttons, a headset button, or a volume key can be the PTT. In **Settings, PTT key**, tap **Learn…** and press the key. Sidetone shows its name, and after **Save** it is hold-to-talk on the focused channel. **None** removes it. Back, Home and the power key can't be used.

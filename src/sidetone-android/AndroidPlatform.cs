@@ -33,7 +33,7 @@ namespace Sidetone.Droid
 
         private Action<int, string> learning;
         private int? pttKey;
-        private bool keepScreenOn, keyHolding, permissionsAsked;
+        private bool keepScreenOn, wakeOnCall = true, keyHolding, permissionsAsked, shownOverLock;
         private DispatchConsole running;     // the console the service keeps going, or null
 
         private AndroidPlatform(Context context) => AppContext = context;
@@ -115,6 +115,7 @@ namespace Sidetone.Droid
         {
             pttKey = settings?.HardwarePttKey;
             keepScreenOn = settings?.KeepScreenOn == true;
+            wakeOnCall = settings?.WakeOnCall != false;
             ApplyScreen();
         }
 
@@ -138,6 +139,7 @@ namespace Sidetone.Droid
         public void ConsoleStarted(DispatchConsole console)
         {
             running = console;
+            console.CallStarted += (c, src) => CallCameIn(console, c);
             AskForPermissions();
             ConsoleService.Start(AppContext, console.SystemConfig.Name, HasMicrophone);
             ApplyScreen();
@@ -149,6 +151,43 @@ namespace Sidetone.Droid
             keyHolding = false;
             ConsoleService.Stop(AppContext);
             ApplyScreen();
+        }
+
+        /// <summary>
+        /// A call started (on the network thread). With the screen off and Settings' "Wake the screen" on, the screen
+        /// is turned on for the call, the way a radio lights up, then sleeps again on the phone's own timeout. If
+        /// Sidetone was on show when the screen went off, it shows over the lock screen; unlocking is still needed for
+        /// anything else. Muted channels, or everything muted, don't wake it.
+        /// </summary>
+        private void CallCameIn(DispatchConsole console, ConsoleChannel channel)
+        {
+            if (!wakeOnCall || console != running || channel.Muted || console.GlobalMute)
+                return;
+            PowerManager pm = (PowerManager)AppContext.GetSystemService(Context.PowerService);
+            if (pm == null || pm.IsInteractive)
+                return;
+            Activity a = Activity;
+            a?.RunOnUiThread(() =>
+            {
+                a.SetShowWhenLocked(true);
+                a.SetTurnScreenOn(true);
+                shownOverLock = true;
+            });
+#pragma warning disable CA1422, CS0618 // a screen wake lock is how a background app turns the screen on; it's let go after 3 s
+            PowerManager.WakeLock wake = pm.NewWakeLock(WakeLockFlags.ScreenBright | WakeLockFlags.AcquireCausesWakeup | WakeLockFlags.OnAfterRelease, "sidetone:call");
+#pragma warning restore CA1422, CS0618
+            wake.SetReferenceCounted(false);
+            wake.Acquire(3000);
+        }
+
+        /// <summary>The activity went out of sight (the screen went off again, or another app): no longer shown over the lock screen.</summary>
+        public void ActivityStopped(Activity a)
+        {
+            if (!shownOverLock || a == null)
+                return;
+            shownOverLock = false;
+            a.SetShowWhenLocked(false);
+            a.SetTurnScreenOn(false);
         }
 
         /// <summary>The service's Disconnect: closes the console and goes back to the start.</summary>
