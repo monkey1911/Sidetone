@@ -24,105 +24,6 @@ using Avalonia.Threading;
 
 namespace Sidetone.Gui
 {
-    /// <summary>
-    /// Command line options.
-    /// </summary>
-    public sealed class GuiOptions
-    {
-        public string Codeplug, SystemName, Output, Input, PttDevice, PttButton, MuteButton, Socket, LogFile, Theme, Screenshot, SettingsFile, Show, KeyFile;
-        public bool NoSocket, Wayland, Demo, NoSettings, SelfCheck, NoNotify, NoProcessing, NoLog;
-        public string RecordDir;
-        /// <summary>Given on the command line; null leaves it to the saved settings.</summary>
-        public bool? SpaceToggle;
-        public int? TxLimit;
-        public double? Scale;
-        public int Width = 1280, Height = 800;
-
-        public static GuiOptions Parse(string[] args)
-        {
-            GuiOptions o = new GuiOptions();
-            for (int i = 0; i < args.Length; i++)
-            {
-                string Next() => i + 1 < args.Length ? args[++i] : throw new ArgumentException($"{args[i]} needs a value");
-                switch (args[i])
-                {
-                    case "--codeplug": o.Codeplug = Next(); break;
-                    case "--system": o.SystemName = Next(); break;
-                    case "--output": o.Output = Next(); break;
-                    case "--input": o.Input = Next(); break;
-                    case "--ptt-device": o.PttDevice = Next(); break;
-                    case "--key-file": o.KeyFile = Next(); break;
-                    case "--record-dir": o.RecordDir = Next(); break;
-                    case "--no-notify": o.NoNotify = true; break;
-                    case "--no-processing": o.NoProcessing = true; break;
-                    case "--scale":
-                    {
-                        string text = Next().TrimEnd('%');
-                        if (!double.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double scale))
-                            throw new ArgumentException("--scale must be a number, like 2 or 1.5 (or a percentage, like 150%)");
-                        if (scale > DisplayScale.Max)
-                            scale /= 100;       // 150 means 150%
-                        if (scale < DisplayScale.Min || scale > DisplayScale.Max)
-                            throw new ArgumentException("--scale must be 0.5 to 4 (50% to 400%)");
-                        o.Scale = scale;
-                        break;
-                    }
-                    case "--ptt-button": o.PttButton = Next(); break;
-                    case "--mute-button": o.MuteButton = Next(); break;
-                    case "--socket": o.Socket = Next(); break;
-                    case "--no-socket": o.NoSocket = true; break;
-                    case "--log": o.LogFile = Next(); break;
-                    case "--no-log": o.NoLog = true; break;
-                    case "--settings": o.SettingsFile = Next(); break;
-                    case "--no-settings": o.NoSettings = true; break;
-                    case "--wayland": o.Wayland = true; break;
-                    case "--demo": o.Demo = true; break;
-                    case "--screenshot": o.Screenshot = Next(); break;
-                    case "--selfcheck": o.SelfCheck = true; break;
-                    case "--show":
-                        o.Show = Next().ToLowerInvariant();
-                        if (o.Show is not ("page" or "digital" or "radio" or "settings" or "keyfile" or "patch" or "recall" or "tabs" or "outputs" or "announce"))
-                            throw new ArgumentException("--show must be page, digital, radio, settings, keyfile, patch, recall, tabs, outputs or announce");
-                        break;
-                    case "--space":
-                    {
-                        string mode = Next().ToLowerInvariant();
-                        if (mode is not ("hold" or "toggle"))
-                            throw new ArgumentException("--space must be hold or toggle");
-                        o.SpaceToggle = mode == "toggle";
-                        break;
-                    }
-                    case "--theme":
-                        o.Theme = Next().ToLowerInvariant();
-                        if (o.Theme is not ("system" or "light" or "dark"))
-                            throw new ArgumentException("--theme must be system, light or dark");
-                        break;
-                    case "--tx-limit":
-                    {
-                        if (!int.TryParse(Next(), out int limit) || limit < StartupChoices.MinTxLimit || limit > StartupChoices.MaxTxLimit)
-                            throw new ArgumentException($"--tx-limit must be {StartupChoices.MinTxLimit}-{StartupChoices.MaxTxLimit} seconds");
-                        o.TxLimit = limit;
-                        break;
-                    }
-                    case "--size":
-                    {
-                        string[] wh = Next().ToLowerInvariant().Split('x');
-                        if (wh.Length != 2 || !int.TryParse(wh[0], out o.Width) || !int.TryParse(wh[1], out o.Height) ||
-                            o.Width < 400 || o.Height < 300 || o.Width > 4000 || o.Height > 3000)
-                            throw new ArgumentException("--size must look like 1280x800");
-                        break;
-                    }
-                    default:
-                        throw new ArgumentException($"unknown option '{args[i]}'");
-                }
-            }
-
-            if (o.PttDevice == null && (o.PttButton != null || o.MuteButton != null))
-                throw new ArgumentException("--ptt-button and --mute-button need --ptt-device");
-            return o;
-        }
-    } // public sealed class GuiOptions
-
     public static class Program
     {
         [STAThread]
@@ -154,6 +55,7 @@ namespace Sidetone.Gui
                 return 2;
             }
             App.Options = opt;
+            App.CreateWindow = o => new MainWindow(o);
 
             if (opt.SelfCheck)
                 return SelfCheck(opt);
@@ -225,8 +127,8 @@ namespace Sidetone.Gui
             MainWindow window = new MainWindow(opt);
             window.Show();
             if (opt.Show != null)
-                window.OpenBox(opt.Show);
-            window.RefreshNow();
+                window.View.OpenBox(opt.Show);
+            window.View.RefreshNow();
             Dispatcher.UIThread.RunJobs();
 
             using var frame = window.CaptureRenderedFrame();
@@ -240,7 +142,7 @@ namespace Sidetone.Gui
             frame.Save(path);
 #pragma warning restore CS0618
             Console.WriteLine($"sidetone: wrote {path} ({frame.PixelSize.Width}x{frame.PixelSize.Height})");
-            window.CloseConsole();
+            window.View.CloseConsole();
             return 0;
         }
 
@@ -266,7 +168,7 @@ namespace Sidetone.Gui
             w.Closed += (s, e) => closed = true;
             w.Show();
             Dispatcher.UIThread.RunJobs();
-            DispatchConsole c = w.ActiveConsole;
+            DispatchConsole c = w.View.ActiveConsole;
 
             int failures = 0;
             void Check(bool ok, string what)
@@ -326,14 +228,14 @@ namespace Sidetone.Gui
             w.KeyReleaseQwerty(PhysicalKey.Space, RawInputModifiers.None);
             w.KeyPressQwerty(PhysicalKey.Space, RawInputModifiers.None);
             Dispatcher.UIThread.RunJobs();
-            Check(w.SpacePresses == 1 && w.SpaceReleases == 0, $"holding Space is one press, however the repeats arrive ({w.SpacePresses} / {w.SpaceReleases})");
+            Check(w.View.SpacePresses == 1 && w.View.SpaceReleases == 0, $"holding Space is one press, however the repeats arrive ({w.View.SpacePresses} / {w.View.SpaceReleases})");
             Check(c.SnapshotLog(5).Any(l => l.Contains("not connected to the FNE yet")), "Space reaches the console's push-to-talk (refused here: the demo isn't connected)");
 
             // the release is decided by a timer, so run the real event loop for a moment
             w.KeyReleaseQwerty(PhysicalKey.Space, RawInputModifiers.None);
             using (CancellationTokenSource stop = new CancellationTokenSource(TimeSpan.FromMilliseconds(500)))
                 Dispatcher.UIThread.MainLoop(stop.Token);
-            Check(w.SpacePresses == 1 && w.SpaceReleases == 1, $"letting go of Space releases once, shortly after ({w.SpacePresses} / {w.SpaceReleases})");
+            Check(w.View.SpacePresses == 1 && w.View.SpaceReleases == 1, $"letting go of Space releases once, shortly after ({w.View.SpacePresses} / {w.View.SpaceReleases})");
 
             // tones, the marker, and the page and radio command boxes
             Press(PhysicalKey.C);
@@ -344,7 +246,7 @@ namespace Sidetone.Gui
             Press(PhysicalKey.Digit1);
             Check(c.SnapshotLog(1).Any(l => l.Contains("not connected to the FNE yet")), "1 asks the console for alert tone 1 (refused here: not connected)");
 
-            CommandOverlay box = w.Overlay;
+            CommandOverlay box = w.View.Overlay;
             Press(PhysicalKey.R);
             Check(box.Open == CommandOverlay.Kind.Radio, "R opens the radio command box");
             w.KeyTextInput("1234");
@@ -352,7 +254,7 @@ namespace Sidetone.Gui
             Check(box.RadioRid.Text == "1234", $"typing goes into the radio ID field ('{box.RadioRid.Text}')");
             Press(PhysicalKey.M);
             Press(PhysicalKey.Space);
-            Check(!focus.Muted && w.SpacePresses == 1 && box.Open == CommandOverlay.Kind.Radio, "while a box is open, shortcut keys don't act on the console");
+            Check(!focus.Muted && w.View.SpacePresses == 1 && box.Open == CommandOverlay.Kind.Radio, "while a box is open, shortcut keys don't act on the console");
 
             box.SelectRadioAction(1);
             Press(PhysicalKey.Enter);
@@ -384,14 +286,14 @@ namespace Sidetone.Gui
 
             // on-screen PTT: hold-to-talk with the pointer
             int refusals = c.SnapshotLog(200).Count(l => l.Contains("not connected to the FNE yet"));
-            Point onPtt = w.PttTap.Root.TranslatePoint(new Point(10, 10), w) ?? new Point(-1, -1);
+            Point onPtt = w.View.PttTap.Root.TranslatePoint(new Point(10, 10), w) ?? new Point(-1, -1);
             w.MouseDown(onPtt, MouseButton.Left);
             Dispatcher.UIThread.RunJobs();
-            bool pressed = w.PointerPresses == 1 && w.PointerReleases == 0 &&
+            bool pressed = w.View.PointerPresses == 1 && w.View.PointerReleases == 0 &&
                            c.SnapshotLog(200).Count(l => l.Contains("not connected to the FNE yet")) == refusals + 1;
             w.MouseUp(onPtt, MouseButton.Left);
             Dispatcher.UIThread.RunJobs();
-            Check(pressed && w.PointerReleases == 1, $"pressing the PTT button keys the console and letting go releases it ({w.PointerPresses} / {w.PointerReleases})");
+            Check(pressed && w.View.PointerReleases == 1, $"pressing the PTT button keys the console and letting go releases it ({w.View.PointerPresses} / {w.View.PointerReleases})");
 
             // selectable encryption: E on a channel the codeplug allows it on
             Press(PhysicalKey.E);
@@ -427,7 +329,7 @@ namespace Sidetone.Gui
 
             // the Audio outputs box
             Press(PhysicalKey.O);
-            RoutingOverlay routing = w.RoutingBox;
+            RoutingOverlay routing = w.View.RoutingBox;
             bool routingOpen = routing.IsOpen;
             Avalonia.Controls.ComboBox tabCombo = routing.ZoneBox(c.CurrentZone), chanCombo = routing.ChannelBox(focus);
             tabCombo.SelectedIndex = 2;         // demo.headset
@@ -441,7 +343,7 @@ namespace Sidetone.Gui
 
             // Announcements: the demo has two files, a spoken text and the time announcement
             Press(PhysicalKey.N);
-            AnnouncementOverlay announce = w.AnnounceBox;
+            AnnouncementOverlay announce = w.View.AnnounceBox;
             bool annOpen = announce.IsOpen && announce.FileCount == 2 && announce.SpokenCount == 1 && announce.Count == 4;
             Press(PhysicalKey.ArrowDown);
             Press(PhysicalKey.Enter);
@@ -480,7 +382,7 @@ namespace Sidetone.Gui
 
             // instant recall: the demo has calls on Tac 1, the focused channel
             Press(PhysicalKey.L, RawInputModifiers.Shift);
-            RecallOverlay recall = w.RecallBox;
+            RecallOverlay recall = w.View.RecallBox;
             bool listed = recall.IsOpen && recall.Channel == c.Channels[1] && recall.Count == 3;
             recall.PlayRow(0);
             bool playing = c.Replaying != null && c.ReplayChannel == c.Channels[1] && c.Replaying.Who == "Unit 12";
@@ -500,12 +402,12 @@ namespace Sidetone.Gui
             Check(recAfter != recBefore && focus.Record == recBefore, "W turns recording on the focused channel on and off");
 
             // key file password box
-            w.OpenBox("keyfile");
+            w.View.OpenBox("keyfile");
             Dispatcher.UIThread.RunJobs();
             Press(PhysicalKey.Enter);
-            bool needsPassword = w.KeyBox.IsOpen && w.KeyBox.Message.Contains("password");
+            bool needsPassword = w.View.KeyBox.IsOpen && w.View.KeyBox.Message.Contains("password");
             Press(PhysicalKey.Escape);
-            Check(needsPassword && !w.KeyBox.IsOpen, "the key file box wants a password; Esc is 'not now'");
+            Check(needsPassword && !w.View.KeyBox.IsOpen, "the key file box wants a password; Esc is 'not now'");
 
             // display scale
             const string monitors = "[{\"name\":\"eDP-1\",\"scale\":2.44,\"focused\":true},{\"name\":\"DP-1\",\"scale\":1.0,\"focused\":false}]";
@@ -517,7 +419,7 @@ namespace Sidetone.Gui
                   "display scale: taken from Hyprland's focused monitor, only when it leaves XWayland windows unscaled");
 
             // Settings
-            SettingsOverlay set = w.SettingsBox;
+            SettingsOverlay set = w.View.SettingsBox;
             Press(PhysicalKey.Comma, RawInputModifiers.Control);
             Check(set.IsOpen && set.Output.ItemCount == 3 && set.Input.ItemCount == 3 && set.PttDevice.ItemCount == 3,
                   $"Ctrl+, opens Settings with the audio and PTT devices listed ({set.Output.ItemCount} / {set.Input.ItemCount} / {set.PttDevice.ItemCount})");
@@ -526,7 +428,7 @@ namespace Sidetone.Gui
                   $"Settings: recordings are Opus by default, kept until a 'delete after' is chosen ({set.KeepDays.ItemCount} choices)");
             Check(set.KeepHistory && !set.HistorySecure, "Settings: the call history is kept between runs, without secure calls' audio, unless chosen");
             set.PressCopyLog();
-            Check(set.LogResult.StartsWith("Copied ") && (w.LastCopiedLog ?? string.Empty).Contains("demo: a made-up system"),
+            Check(set.LogResult.StartsWith("Copied ") && (w.View.LastCopiedLog ?? string.Empty).Contains("demo: a made-up system"),
                   $"Settings: Copy log puts the console's log on the clipboard ('{set.LogResult}')");
             set.PttDevice.SelectedIndex = 1;
             Dispatcher.UIThread.RunJobs();
@@ -540,12 +442,12 @@ namespace Sidetone.Gui
             set.TxLimit.Text = "90";
             set.Output.SelectedIndex = 2;
             Press(PhysicalKey.Escape);
-            Check(!set.IsOpen && w.TxLimitSeconds == 120, "Esc closes Settings without saving");
+            Check(!set.IsOpen && w.View.TxLimitSeconds == 120, "Esc closes Settings without saving");
 
             Press(PhysicalKey.Comma, RawInputModifiers.Control);
             set.TxLimit.Text = "90";
             set.Save();
-            Check(!set.IsOpen && w.TxLimitSeconds == 90, "Save keeps the new time limit");
+            Check(!set.IsOpen && w.View.TxLimitSeconds == 90, "Save keeps the new time limit");
             Press(PhysicalKey.Comma, RawInputModifiers.Control);
             bool defaults = set.Processing == (true, true, false, true, false);
             set.FlipProcessing(2);
@@ -556,10 +458,10 @@ namespace Sidetone.Gui
                   c.Channels.All(ch => ch.RxLevel != null) && c.SnapshotLog(3).Any(l => l.Contains("audio processing: microphone low cut, noise gate, auto level, limiter; receive leveling on")),
                   "mic processing starts at its defaults; turning on the gate and receive leveling applies at once");
             Press(PhysicalKey.Comma, RawInputModifiers.Control);
-            bool automatic = set.Scale.SelectedIndex == 0 && w.SavedScale == null;
+            bool automatic = set.Scale.SelectedIndex == 0 && w.View.SavedScale == null;
             set.Scale.SelectedIndex = 5;        // 200%
             set.Save();
-            Check(automatic && w.SavedScale == 2.0 && c.SnapshotLog(1).Any(l => l.Contains("next time Sidetone starts")),
+            Check(automatic && w.View.SavedScale == 2.0 && c.SnapshotLog(1).Any(l => l.Contains("next time Sidetone starts")),
                   "the display scale is automatic until one is chosen; a new one is saved for the next start");
             Press(PhysicalKey.Comma, RawInputModifiers.Control);
             set.SetFormat(DispatchConsole.FormatWav);
@@ -573,7 +475,7 @@ namespace Sidetone.Gui
             set.Save();
             Check(savedRec && reopened && c.RecordingFormat == DispatchConsole.FormatOpus && c.RecordingKeepDays == null,
                   "Settings: the recording format and 'delete after' are saved, shown again, and can go back to Opus and keeping them");
-            bool holdBefore = !w.SpaceIsToggle;
+            bool holdBefore = !w.View.SpaceIsToggle;
             Press(PhysicalKey.Comma, RawInputModifiers.Control);
             Check(set.IsOpen && set.TxLimit.Text == "90", "Settings reopens on what was saved");
             Press(PhysicalKey.Escape);
@@ -625,17 +527,17 @@ namespace Sidetone.Gui
             Check(holdBefore, "Space is hold-to-talk unless Settings or --space says otherwise");
 
             // zone tabs: the demo has four zones, one of them hidden
-            ZoneTabs strip = w.ZoneStrip;
+            ZoneTabs strip = w.View.ZoneStrip;
             List<(ConsoleZone Zone, Tap Tap)> tabList = strip.Tabs.ToList();
-            w.RefreshNow();
+            w.View.RefreshNow();
             Check(strip.Root.IsVisible && tabList.Count == 4 && tabList.Count(t => t.Tap.Root.IsVisible) == 3 && c.Zones[3].Hidden &&
-                  w.CardShown(1) && !w.CardShown(4),
+                  w.View.CardShown(1) && !w.View.CardShown(4),
                   $"tabs: one per zone, the hidden zone's tab not shown, and only the tab's own cards ({tabList.Count} tabs)");
             c.SetFocus(3);
             Press(PhysicalKey.ArrowRight);
             bool edge = c.FocusIndex == 3;
             Press(PhysicalKey.PageDown, RawInputModifiers.Control);
-            bool regional = c.CurrentZone == c.Zones[1] && c.FocusIndex == 4 && w.CardShown(4) && !w.CardShown(1);
+            bool regional = c.CurrentZone == c.Zones[1] && c.FocusIndex == 4 && w.View.CardShown(4) && !w.View.CardShown(1);
             Press(PhysicalKey.BracketRight);
             bool fire = c.CurrentZone == c.Zones[2];
             Press(PhysicalKey.BracketLeft);
@@ -651,14 +553,14 @@ namespace Sidetone.Gui
             Check(ctrlTab && c.CurrentZone == c.Zones[2], "tabs: Ctrl+Tab, Ctrl+Shift+Tab and Ctrl+PgUp go through the tabs (round from the first to the last)");
 
             c.ShowZone(c.Zones[0]);     // so the click has something to do
-            w.RefreshNow();
+            w.View.RefreshNow();
             Point onFire = tabList[2].Tap.Root.TranslatePoint(new Point(10, 10), w) ?? new Point(-1, -1);
             w.MouseDown(onFire, MouseButton.Left);
             w.MouseUp(onFire, MouseButton.Left);
             Dispatcher.UIThread.RunJobs();
-            Check(c.CurrentZone == c.Zones[2] && w.CardShown(7), "tabs: clicking a tab shows it");
+            Check(c.CurrentZone == c.Zones[2] && w.View.CardShown(7), "tabs: clicking a tab shows it");
 
-            ZoneOverlay zbox = w.ZoneBox;
+            ZoneOverlay zbox = w.View.ZoneBox;
             Press(PhysicalKey.Z);
             bool zOpen = zbox.IsOpen && zbox.Row == 2;
             Press(PhysicalKey.ArrowDown);

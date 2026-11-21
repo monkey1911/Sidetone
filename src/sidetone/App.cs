@@ -7,6 +7,7 @@
 */
 
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Media;
 using Avalonia.Styling;
@@ -19,6 +20,12 @@ namespace Sidetone.Gui
         /// <summary>Command line options, set by Main before the app starts.</summary>
         public static GuiOptions Options = new GuiOptions();
 
+        /// <summary>Makes the desktop window (set by the desktop program; the Android app has none).</summary>
+        public static Func<GuiOptions, Window> CreateWindow;
+
+        /// <summary>Raised with the console view when it is the single view (Android).</summary>
+        public static event Action<ConsoleView> ViewCreated;
+
         public override void Initialize()
         {
             Styles.Add(new FluentTheme());
@@ -27,7 +34,19 @@ namespace Sidetone.Gui
         public override void OnFrameworkInitializationCompleted()
         {
             if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
-                desktop.MainWindow = new MainWindow(Options);
+                desktop.MainWindow = CreateWindow?.Invoke(Options);
+            else if (ApplicationLifetime is ISingleViewApplicationLifetime single)
+            {
+                // Android: the console view is the whole app
+                ConsoleView view = new ConsoleView(Options);
+                single.MainView = view;
+                view.AttachedToVisualTree += (s, e) =>
+                {
+                    if (TopLevel.GetTopLevel(view) is TopLevel top)
+                        view.ListenToKeys(top);
+                };
+                ViewCreated?.Invoke(view);
+            }
             base.OnFrameworkInitializationCompleted();
         }
 
