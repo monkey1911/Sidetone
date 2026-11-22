@@ -15,6 +15,10 @@
 *     (two of them are the scan triggers).
 *   Anything whose key programmer can send an intent: org.sidetone.app.PTT_DOWN / PTT_UP.
 *
+* Any app on the phone can send these, so they're taken only when Settings' "PTT when locked" is
+* allowed (AppSettings.PttFromBroadcasts); otherwise one would key the transmitter and put the
+* room's audio on the air.
+*
 * Every intent that arrives is written to the debug log ("ptt:" lines), so a device that sends
 * something else can be found out from a tester's saved logs.
 */
@@ -43,6 +47,11 @@ namespace Sidetone.Droid
             if (action == null)
                 return;
             AndroidPlatform p = AndroidPlatform.Instance;
+            if (!p.PttFromBroadcasts)
+            {
+                DebugLog.Write("ptt", $"{action}: ignored (Settings, PTT when locked, is off)");
+                return;
+            }
 #pragma warning disable CA1422, CS0618 // the typed overload is Android 13+
             KeyEvent e = intent.GetParcelableExtra(Intent.ExtraKeyEvent) as KeyEvent;
 #pragma warning restore CA1422, CS0618

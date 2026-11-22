@@ -1866,8 +1866,31 @@ zones:
             zt.OnFrame(new fnecore.P25DataReceivedEvent(1, 3012, 611, fnecore.CallType.GROUP, P25DUID.TDU, fnecore.FrameType.TERMINATOR, 0, 90, new byte[300]));
             Check(callsStarted.Count == 1 && callsStarted[0].Chan == zt.Channels[n1] && callsStarted[0].Src == 3012,
                   $"console: a call starting on a listening channel is announced once, with its source (Android wakes the screen with it) [{string.Join(", ", callsStarted.Select(x => $"{x.Chan.Cfg.Name}/{x.Src}"))}]");
-            if (!wasListening)
-                zt.Deselect(zt.Channels[n1]);
+
+            // a call whose end (a TDU) is lost on the way ends after 3 s without frames; so does a busy channel's
+            DateTime staleClock = DateTime.UtcNow;
+            zt.clockForTest = () => staleClock;
+            zt.OnFrame(new fnecore.P25DataReceivedEvent(1, 3012, 611, fnecore.CallType.GROUP, P25DUID.LDU1, fnecore.FrameType.VOICE, 0, 91, new byte[300]));
+            bool rxStarted = zt.Channels[n1].Rx?.InCall == true;
+            staleClock += TimeSpan.FromSeconds(2);
+            zt.CallHousekeeping();
+            bool rxHeld = zt.Channels[n1].Rx?.InCall == true;
+            staleClock += TimeSpan.FromSeconds(2);
+            zt.CallHousekeeping();
+            bool rxEnded = zt.Channels[n1].Rx?.InCall == false && zt.SnapshotLog(10).Any(l => l.Contains("its end didn't arrive"));
+            zt.Deselect(zt.Channels[n1]);
+            zt.OnFrame(new fnecore.P25DataReceivedEvent(1, 3012, 611, fnecore.CallType.GROUP, P25DUID.LDU1, fnecore.FrameType.VOICE, 0, 92, new byte[300]));
+            bool busy = zt.Channels[n1].Active;
+            staleClock += TimeSpan.FromSeconds(2);
+            zt.CallHousekeeping();
+            bool busyHeld = zt.Channels[n1].Active;
+            staleClock += TimeSpan.FromSeconds(2);
+            zt.CallHousekeeping();
+            zt.clockForTest = null;
+            Check(rxStarted && rxHeld && rxEnded && busy && busyHeld && !zt.Channels[n1].Active,
+                  $"console: a call whose end is lost ends after 3 s without frames, on a listening channel and a busy one [{rxStarted} {rxHeld} {rxEnded} {busy} {busyHeld}]");
+            if (wasListening)
+                zt.Select(zt.Channels[n1]);
             zt.Channels[n1].Active = false;
 
             string onlyOne = zt.SetZoneHidden(unnamed, true) == null ? zt.SetZoneHidden(bravo, true) : "first refused";
@@ -2125,6 +2148,28 @@ zones:
             }
         }
 
+        private static void ConnectionTests()
+        {
+            // fnecore logs in again by itself when the connection is lost; the peer's state follows it (it once stayed "connected")
+            Codeplug.System cs = new Codeplug.System { Name = "Conn", Identity = "CONN", Address = "127.0.0.1", Port = 62031, PeerId = 9000002, Rid = "9000002", Password = "x" };
+            CliPeer cp = new CliPeer(cs, new KeyStore(), verbose: false);
+            bool before = !cp.Connected;
+            cp.PeerForTest.Information.State = fnecore.ConnectionState.RUNNING;
+            bool up = cp.Connected;
+            cp.PeerForTest.Information.State = fnecore.ConnectionState.WAITING_LOGIN;     // what fnecore sets on a lost connection
+            Check(before && up && !cp.Connected, "FNE peer: connected only while logged in; a lost connection (fnecore logging in again) shows as not connected");
+        }
+
+        private static void SettingsRecoveryTests(string tmp)
+        {
+            // an unreadable settings file is kept before the defaults are used, since the next save writes over it
+            string bad = Path.Combine(tmp, "broken-settings.json");
+            File.WriteAllText(bad, "{ \"Theme\": \"dark\", }}");
+            AppSettings got = AppSettings.Load(bad, out string why);
+            Check(got != null && why != null && why.Contains("kept as") && File.Exists(bad + ".bad") && File.ReadAllText(bad + ".bad").Contains("\"dark\""),
+                  $"settings: an unreadable settings file gives defaults, says why, and is kept as .bad before the next save writes over it ({why})");
+        }
+
         private static void AddressTests()
         {
             Check(CliPeer.ResolveAddress(" 10.0.0.5 ").ToString() == "10.0.0.5" && CliPeer.ResolveAddress("localhost") != null,
@@ -2242,6 +2287,8 @@ zones:
             PlatformHookTests(tmp);
             DebugLogTests(tmp);
             AddressTests();
+            ConnectionTests();
+            SettingsRecoveryTests(tmp);
 
             // the time in words, as every engine will say it
             Check(Speech.TimeWords(14, 20, false) == "two twenty P M" && Speech.TimeWords(14, 5, false) == "two oh five P M" &&
@@ -2483,6 +2530,7 @@ zones:
             bool onTheQuarter = sent.Count == 1 && synthesized.SequenceEqual(new[] { "CTRS time is ten fifteen" }) && sent[0].Targets.Contains(listenA) && sent[0].Targets.Contains(listenB);
             clock = new DateTime(2026, 3, 2, 10, 30, 2, DateTimeKind.Utc);
             listenB.Active = true;
+            listenB.ActiveLast = clock;     // frames keep coming (a busy channel with no frames for 3 s is taken as ended)
             sp.Tick();
             bool waitsForQuiet = sent.Count == 1;
             clock = new DateTime(2026, 3, 2, 10, 31, 30, DateTimeKind.Utc);
@@ -2491,8 +2539,10 @@ zones:
             bool thenSays = sent.Count == 2 && synthesized.Last() == "CTRS time is ten thirty one";
             clock = new DateTime(2026, 3, 2, 10, 45, 1, DateTimeKind.Utc);
             listenA.Active = true;
+            listenA.ActiveLast = clock;
             sp.Tick();
             clock = new DateTime(2026, 3, 2, 10, 48, 30, DateTimeKind.Utc);
+            listenA.ActiveLast = clock;     // a long call: still sending frames
             sp.Tick();
             listenA.Active = false;
             clock = new DateTime(2026, 3, 2, 10, 49, 0, DateTimeKind.Utc);

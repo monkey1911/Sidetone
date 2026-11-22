@@ -69,6 +69,7 @@ namespace Sidetone.Core
         private DateTime callStarted;
         private int callFrames;
         private int callMuted;
+        private DateTime lastFrame;
 
         private byte algId;
         private ushort keyId;
@@ -126,6 +127,9 @@ namespace Sidetone.Core
         /// <summary>Raised when a call starts (source radio ID).</summary>
         public event Action<uint> CallStarted;
 
+        /// <summary>The clock for <see cref="EndIfIdle"/> (UTC); the console's, so tests can step it.</summary>
+        public Func<DateTime> Clock { get; set; } = () => DateTime.UtcNow;
+
         /// <summary>Names a radio ID in status messages (aliases); the bare number by default.</summary>
         public Func<uint, string> DescribeSource { get; set; }
 
@@ -176,6 +180,7 @@ namespace Sidetone.Core
                         EndCall();
                     StartCall(srcId, streamId);
                 }
+                lastFrame = Clock();
 
                 // HDU parameters ride along with an LDU1 at the start of a call
                 if (duid == P25DUID.LDU1 && frame.Length >= HduFrameLength && frame[HduFlagOffset] == P25Defines.P25_FT_HDU_VALID)
@@ -329,6 +334,23 @@ namespace Sidetone.Core
             }
         }
 
+        /// <summary>
+        /// Ends the call in progress when nothing has arrived for it for <paramref name="after"/>: its end (a TDU) was
+        /// lost on the way, which happens over UDP. The call's length leaves out the wait. Returns true if it ended one.
+        /// </summary>
+        public bool EndIfIdle(TimeSpan after)
+        {
+            lock (sync)
+            {
+                TimeSpan quiet = Clock() - lastFrame;
+                if (streamId == 0 || quiet <= after)
+                    return false;
+                Status?.Invoke($"call from {Src(sourceId)}: its end didn't arrive (lost on the way), so it was ended after {quiet.TotalSeconds:F0} s without frames");
+                EndCall(quiet);
+                return true;
+            }
+        }
+
         private void StartCall(uint srcId, uint newStreamId)
         {
             streamId = newStreamId;
@@ -353,9 +375,9 @@ namespace Sidetone.Core
             CallStarted?.Invoke(srcId);
         }
 
-        private void EndCall()
+        private void EndCall(TimeSpan quiet = default)
         {
-            double secs = (DateTime.Now - callStarted).TotalSeconds;
+            double secs = Math.Max(0, (DateTime.Now - callStarted - quiet).TotalSeconds);
             string crypt = algId == 0 || algId == P25Defines.P25_ALGO_UNENCRYPT ? "clear" : $"{KeyStore.AlgorithmName(algId)} key 0x{keyId:X4}";
             string muted = callMuted > 0 ? $", {callMuted} muted" : string.Empty;
             Status?.Invoke($"CALL END    src {Src(sourceId)}  tg {talkgroup}  {secs:F1} s, {crypt}, {callFrames} voice frames played{muted}");

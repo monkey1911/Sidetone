@@ -34,6 +34,7 @@ namespace Sidetone.Gui
         private readonly GuiOptions opt;
         private readonly string settingsPath;
         private AppSettings appSettings;
+        private string settingsError;      // why the settings file couldn't be read at start-up, for the first console's log
         private string currentPath, currentSystem;     // the open codeplug and system
         private readonly DispatcherTimer timer;
         private readonly FontFamily mono = new FontFamily("JetBrainsMono Nerd Font,JetBrains Mono,DejaVu Sans Mono,Liberation Mono,monospace");
@@ -144,7 +145,7 @@ namespace Sidetone.Gui
 
             offline = opt.Demo || opt.Screenshot != null;
             settingsPath = opt.NoSettings || offline ? null : opt.SettingsFile ?? AppSettings.DefaultPath;
-            appSettings = AppSettings.Load(settingsPath, out _);
+            appSettings = AppSettings.Load(settingsPath, out settingsError);
             themeSetting = Normalize(opt.Theme ?? appSettings.Theme);
             if (Application.Current != null)
                 Application.Current.RequestedThemeVariant = App.VariantFor(themeSetting);
@@ -604,6 +605,9 @@ namespace Sidetone.Gui
                 }
                 foreach (string line in notes)
                     c.AddLog(line);
+                if (settingsError != null)
+                    c.AddLog($"warning: {settingsError}");
+                settingsError = null;       // said once, by the first console
 
                 if (offline)
                     DemoCodeplug.Populate(c);
@@ -882,7 +886,8 @@ namespace Sidetone.Gui
                 HardwarePttKey = appSettings.HardwarePttKey,
                 HardwarePttKeyName = appSettings.HardwarePttKeyName,
                 KeepScreenOn = appSettings.KeepScreenOn == true,
-                WakeOnCall = appSettings.WakeOnCall != false
+                WakeOnCall = appSettings.WakeOnCall != false,
+                PttFromBroadcasts = appSettings.PttFromBroadcasts == true
             }, audio, inputs, opt.Demo ? "The demo system (no codeplug file)." : currentPath, CommandLineOverrides(),
                !offline && AppLauncher.IsInstalled(AppLauncher.DataHome), KeyFileSummary(out bool locked), locked,
                appSettings.KeyFile != null && opt.KeyFile == null,
@@ -938,6 +943,7 @@ namespace Sidetone.Gui
                 s.HardwarePttKeyName = v.HardwarePttKey == null ? null : v.HardwarePttKeyName;
                 s.KeepScreenOn = v.KeepScreenOn ? true : null;
                 s.WakeOnCall = v.WakeOnCall ? null : false;
+                s.PttFromBroadcasts = v.PttFromBroadcasts ? true : null;
             });
             GuiPlatform.Current?.Apply(appSettings, offline ? null : console);
             if (historyChanged && !offline)

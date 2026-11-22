@@ -228,7 +228,7 @@ namespace Sidetone.Cli
             else if (channel != null)
             {
                 if (channel.GetChannelMode() != Codeplug.ChannelMode.P25)
-                    throw new ArgumentException($"channel '{channel.Name}' is {channel.Mode}; this proof of concept only supports P25");
+                    throw new ArgumentException($"channel '{channel.Name}' is {channel.Mode}; Sidetone only supports P25 so far");
                 if (!uint.TryParse(channel.Tgid, out tg))
                     throw new ArgumentException($"channel '{channel.Name}' has an invalid tgid '{channel.Tgid}'");
             }
@@ -350,8 +350,11 @@ namespace Sidetone.Cli
             // the command line wins; otherwise what the graphical console's Settings saved; otherwise the defaults.
             // Resolved before the TUI takes over the terminal, so a bad --output / --input is a plain error.
             string settingsPath = opt.NoSettings ? null : opt.SettingsFile ?? AppSettings.DefaultPath;
-            AppSettings saved = settingsPath == null ? new AppSettings() : AppSettings.Load(settingsPath, out _);
+            string settingsError = null;
+            AppSettings saved = settingsPath == null ? new AppSettings() : AppSettings.Load(settingsPath, out settingsError);
             List<string> notes = new List<string>();
+            if (settingsError != null)
+                notes.Add($"warning: {settingsError}");
             AudioSelection audio = StartupChoices.Audio(opt.Output, opt.Input, saved, notes);
             (string Device, string Button, string Mute)? ptt = StartupChoices.PttDevice(opt.PttDevice, opt.PttButton, opt.MuteButton, saved, notes);
 

@@ -41,8 +41,13 @@ namespace Sidetone.Core
         /// </summary>
         public event Action<byte, uint, uint, byte[]> P25Control;
 
-        /// <summary>True once the master has accepted our login.</summary>
-        public bool Connected { get; private set; }
+        /// <summary>
+        /// True while the master has us logged in. fnecore logs in again by itself when the connection is lost (no
+        /// pongs, the master closing, a network change), and its state says so; a flag set at login wouldn't.
+        /// </summary>
+        public bool Connected => fne.Information?.State == ConnectionState.RUNNING;
+
+        internal FnePeer PeerForTest => fne;
 
         /// <summary>The console RID from the codeplug (0 if missing); used as the source of key requests and transmissions.</summary>
         public uint ConsoleRid => consoleRid;
@@ -186,7 +191,6 @@ namespace Sidetone.Core
         /// <inheritdoc/>
         protected override void PeerConnected(object sender, PeerConnectedEvent e)
         {
-            Connected = true;
             Status?.Invoke($"connected to FNE as peer {e.PeerId}");
 
             // send any key requests made before the login completed
@@ -430,7 +434,7 @@ namespace Sidetone.Core
         }
 
         /*
-        ** Not used by the proof of concept
+        ** DMR and NXDN: ignored (P25 only so far)
         */
 
         /// <inheritdoc/>

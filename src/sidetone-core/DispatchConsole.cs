@@ -74,6 +74,7 @@ namespace Sidetone.Core
         public bool Active;
         public uint ActiveSrc;
         public uint ActiveStream;
+        public DateTime ActiveLast;     // UTC, the last frame seen
         public string LastCall = string.Empty;
     } // public sealed class ConsoleChannel
 
@@ -450,19 +451,42 @@ namespace Sidetone.Core
                     if (terminator)
                     {
                         if (c.Active && e.StreamId == c.ActiveStream)
-                        {
-                            c.Active = false;
-                            c.LastCall = $"{aliases.Label(c.ActiveSrc)} at {DateTime.Now:HH:mm}";
-                            AddRecent(c.Cfg.Name, aliases.Label(c.ActiveSrc), "not listening", tx: false);
-                        }
+                            EndBusy(c);
                     }
                     else if (e.DUID == P25DUID.LDU1 || e.DUID == P25DUID.LDU2 || e.DUID == P25DUID.HDU)
                     {
                         c.Active = true;
                         c.ActiveSrc = e.SrcId;
                         c.ActiveStream = e.StreamId;
+                        c.ActiveLast = UtcNow;
                     }
                 }
+            }
+        }
+
+        /// <summary>A channel that isn't listened to stops showing busy (caller holds uiLock).</summary>
+        private void EndBusy(Chan c)
+        {
+            c.Active = false;
+            c.LastCall = $"{aliases.Label(c.ActiveSrc)} at {DateTime.Now:HH:mm}";
+            AddRecent(c.Cfg.Name, aliases.Label(c.ActiveSrc), "not listening", tx: false);
+        }
+
+        /// <summary>How long a call may go without frames before its end is taken as lost (as recall does).</summary>
+        internal static readonly TimeSpan CallStale = TimeSpan.FromSeconds(3);
+
+        /// <summary>Ends calls whose end (a TDU) never arrived, so a lost packet doesn't leave a channel receiving or busy.</summary>
+        internal void CallHousekeeping()
+        {
+            List<Chan> all;
+            lock (uiLock)
+                all = chans.ToList();
+            foreach (Chan c in all)
+                c.Rx?.EndIfIdle(CallStale);     // not under uiLock: ending a call takes the patch and recall locks
+            lock (uiLock)
+            {
+                foreach (Chan c in all.Where(c => c.Active && UtcNow - c.ActiveLast > CallStale))
+                    EndBusy(c);
             }
         }
 
@@ -485,7 +509,7 @@ namespace Sidetone.Core
                 return;
             }
 
-            P25VoiceReceiver rx = new P25VoiceReceiver(c.Tg, keys);
+            P25VoiceReceiver rx = new P25VoiceReceiver(c.Tg, keys) { Clock = () => UtcNow };
             rx.Status += s => { if (!s.StartsWith("CALL ")) AddLog($"{c.Cfg.Name}: {s}"); };
             rx.KeyNeeded += (alg, kid) => peer?.RequestKey(alg, kid);
             rx.DescribeSource = aliases.Describe;
@@ -1172,6 +1196,7 @@ namespace Sidetone.Core
 
         public void Housekeeping()
         {
+            CallHousekeeping();
             PatchHousekeeping();
             RecallHousekeeping();
             RecordingHousekeeping();

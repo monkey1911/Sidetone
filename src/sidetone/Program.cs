@@ -30,11 +30,11 @@ namespace Sidetone.Gui
         public Action<int, string> Learning;
         public int? AppliedKey;
         public string AppliedName;
-        public bool? AppliedWake;
+        public bool? AppliedWake, AppliedBroadcasts;
 
         public void LearnPttKey(Action<int, string> learned) => Learning = learned;
         public void CancelLearn() => Learning = null;
-        public void Apply(AppSettings settings, DispatchConsole console) { AppliedKey = settings.HardwarePttKey; AppliedName = settings.HardwarePttKeyName; AppliedWake = settings.WakeOnCall != false; }
+        public void Apply(AppSettings settings, DispatchConsole console) { AppliedKey = settings.HardwarePttKey; AppliedName = settings.HardwarePttKeyName; AppliedWake = settings.WakeOnCall != false; AppliedBroadcasts = settings.PttFromBroadcasts == true; }
         public void ConsoleStarted(DispatchConsole console) { }
         public void ConsoleStopped() { }
         public void OpenBatterySettings() { }
@@ -672,9 +672,13 @@ namespace Sidetone.Gui
                 fakeDevice.Learning(25, "KEYCODE_VOLUME_DOWN");
                 bool learned = !ds.Learning && ds.PttKey == 25;
                 bool wakeByDefault = ds.WakeOnCall;
+                bool lockedOffByDefault = !ds.PttFromBroadcasts;
                 ds.PressWake(false);
+                ds.PressLocked(true);
                 ds.PressSave();
                 Dispatcher.UIThread.RunJobs();
+                Check(lockedOffByDefault && fakeDevice.AppliedBroadcasts == true,
+                      "device: PTT key broadcasts (PTT when locked) are off until Settings allows them, and the platform is told");
                 Check(wakeByDefault && fakeDevice.AppliedWake == false,
                       "device: waking the screen for incoming calls is on until Settings turns it off, and the platform is told");
                 Check(waiting && learned && !ds.IsOpen && fakeDevice.AppliedKey == 25 && fakeDevice.AppliedName == "KEYCODE_VOLUME_DOWN" &&

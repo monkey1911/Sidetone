@@ -40,6 +40,8 @@ namespace Sidetone.Gui
             public bool KeepScreenOn;
             /// <summary>Android: wake the screen when a call comes in while it's off.</summary>
             public bool WakeOnCall = true;
+            /// <summary>Android: take PTT from key broadcasts (with the screen off); any app can send them.</summary>
+            public bool PttFromBroadcasts;
         }
 
         /// <summary>One line in a drop-down list.</summary>

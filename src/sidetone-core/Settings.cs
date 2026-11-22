@@ -100,6 +100,11 @@ namespace Sidetone.Core
         public bool? KeepScreenOn { get; set; }
         /// <summary>Android: wake the screen when a call comes in while it's off (null: on).</summary>
         public bool? WakeOnCall { get; set; }
+        /// <summary>
+        /// Android: take PTT from key broadcasts (the device's PTT key service, Sonim's and Zebra's, and key programmers),
+        /// which work with the screen off; any app can send them, so they're taken only when this is true (null: off).
+        /// </summary>
+        public bool? PttFromBroadcasts { get; set; }
         /// <summary>Microphone processing stages; null means the default (on for all but the noise gate).</summary>
         public bool? MicLowCut { get; set; }
         public bool? MicAutoLevel { get; set; }
@@ -225,7 +230,12 @@ namespace Sidetone.Core
             }
             catch (Exception ex)
             {
-                error = $"settings file {path} unreadable, using defaults ({ex.Message})";
+                // kept, since the next save writes over it: a typo in a hand edit, or a newer version's file
+                string kept = path + ".bad";
+                try { File.Copy(path, kept, overwrite: true); }
+                catch (Exception copyEx) when (copyEx is IOException || copyEx is UnauthorizedAccessException) { kept = null; }
+                error = $"settings file {path} unreadable, using defaults ({ex.Message})" + (kept != null ? $"; the file was kept as {kept}" : string.Empty);
+                DebugLog.Write("settings", error);
                 return new AppSettings();
             }
         }

@@ -119,11 +119,15 @@ namespace Sidetone.Droid
         /// <summary>The learned PTT key's code, or null (the service's media buttons use it).</summary>
         public int? PttKeyCode => pttKey;
 
+        /// <summary>Settings' "PTT when locked": key broadcasts are taken (any app can send one, so it's off until allowed).</summary>
+        public bool PttFromBroadcasts { get; private set; }
+
         public void Apply(AppSettings settings, DispatchConsole console)
         {
             pttKey = settings?.HardwarePttKey;
             keepScreenOn = settings?.KeepScreenOn == true;
             wakeOnCall = settings?.WakeOnCall != false;
+            PttFromBroadcasts = settings?.PttFromBroadcasts == true;
             ApplyScreen();
         }
 
