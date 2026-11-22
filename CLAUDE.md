@@ -60,7 +60,9 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
   text to speech, instant recall, tones, and receive with the screen off for several minutes (the
   foreground service keeps it connected; the screen stays off, by design), and (0.31.5) the hardware
   PTT key on a Zebra TC57x (Android 13) with the screen locked, through Zebra's key broadcasts with
-  PTT when locked allowed.
+  PTT when locked allowed, and receiving with the screen locked (showing over the lock screen, the
+  phone layout once undocked; in Zebra's desktop dock mode Android reports a wide, low-scale display,
+  so the tablet layout there is expected, not a bug).
 - The owner tests every release on the air and on their hardware after publishing it. The list
   below is only what the earlier sessions never heard results for, not what is known to be
   untested. Ask the owner before calling something untested, and move items up once confirmed.
