@@ -22,7 +22,7 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
   accepts asynchronously and cancels before closing: on macOS a blocked `Accept` hung `Close` (it
   would have hung the app closing). CI jobs `macos` (macos-15: build, both suites, `devices`, .app)
   and `macos-intel` (macos-15-intel: the Intel half through the launcher); runners have a virtual
-  sound device only. Nothing tested on a real Mac yet.
+  sound device only. The owner reported the 0.34.0 build working on their Intel MacBook (macOS 15).
   0.33.0: several FNE systems at
   once. `FneLink` (one per system: peer, `KeyStore`, `RadioAliasBook`, and `SinkForTest`/`RidForTest`
   for the self-test); `ConsoleChannel.Link`. The console's `system`, `peer`, `keys`, `aliases`,
@@ -121,8 +121,8 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
   tab and channel, the call history between runs; from 0.29: announcements, `listen --key-file`; from 0.30: the scheduled time announcement, the new announcement level (0.30.3); from 0.31:
   on Android, hardware PTT keys on Sonim and the LEX L11; from 0.32: web streams (a real feed, and
   one with a password); from 0.33: two FNEs at once (CTRS's P25 FNE and its DMR FNE, for the
-  connection side until DMR itself is done); from 0.34: all of macOS on real hardware (Open Anyway, the
-  microphone prompt, audio in and out, `say`, the Keychain, notifications, the TUI in Terminal); and the
+  connection side until DMR itself is done); from 0.34: macOS on Apple silicon (only CI so far), and on the
+  owner's Intel Mac whatever their "it worked" didn't cover (ask before listing parts as tested); and the
   desktop's phone layout
   (Piper is installed on the owner's Surface, through `uv tool install piper-tts`, with the
   en_US-lessac-medium voice).
