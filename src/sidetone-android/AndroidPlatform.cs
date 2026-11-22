@@ -131,13 +131,19 @@ namespace Sidetone.Droid
         public void ApplyScreen()
         {
             Activity a = Activity;
-            Window w = a?.Window;
-            if (w == null)
+            if (a == null)
                 return;
-            if (keepScreenOn && running != null)
-                w.AddFlags(WindowManagerFlags.KeepScreenOn);
-            else
-                w.ClearFlags(WindowManagerFlags.KeepScreenOn);
+            bool on = keepScreenOn && running != null;
+            a.RunOnUiThread(() =>       // a window's flags may only be changed on the main thread
+            {
+                Window w = a.Window;
+                if (w == null)
+                    return;
+                if (on)
+                    w.AddFlags(WindowManagerFlags.KeepScreenOn);
+                else
+                    w.ClearFlags(WindowManagerFlags.KeepScreenOn);
+            });
         }
 
         /*
