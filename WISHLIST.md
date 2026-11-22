@@ -14,8 +14,11 @@ Roughly in the order that makes sense to do them.
    - The CI script writes the FNE's config, talkgroup rules, peer list, RID list, key container and both codeplugs each run, with made-up passwords and a test key; nothing is committed. The RID list must allow both consoles' radio IDs to request keys, or the FNE silently ignores their key requests.
    - An FNE alone would not have caught the missing grant encrypt flag fixed in 0.24.2: the dvmhost site denied that grant, not the FNE. Catching that would need a dvmhost in the test too (not yet checked whether one runs without a modem).
 
-2. **NXDN and DMR.** libvocoder already has the codec both use, and the cards already show modes that aren't supported yet, so the work is a receiver and a transmitter per mode. Needs live traffic to test against.
-   - **Analog** too, once we've confirmed how DVM carries it. It may be the simplest of the three.
+2. **DMR, and more than one FNE system at a time.** libvocoder already has the codec, the cards already show modes that aren't supported yet, and the Windows console in the submodule handles DMR (`MainWindow.DMR.cs`, `FneSystemBase.DMR.cs`, `DMR/DmrTxCall.cs`) to follow, so the work is a receiver and a transmitter. CTRS can carry DMR, but on a second FNE of its own (what setting it up last time required), so for a dispatcher DMR goes with connecting to several FNEs at once, as the Windows console can: one console with the P25 and DMR channels together.
+   - Until then, a second Sidetone with a codeplug for the DMR FNE works, in its own window.
+   - Testing without radios: two Sidetones through the network test's FNE (item 1). On the air needs someone on CTRS with a DMR radio; until then the release notes say DMR is untested on the air.
+   - Ask the FNE's maintainers whether the `r05a06_dev` merge (DMR grant work on 2026-11-10) still needs a separate FNE for DMR.
+   - **Analog** too, once we've confirmed how DVM carries it (the Windows console has `MainWindow.Analog.cs`). It may be the simplest.
 
 3. **Windows 10/11 and macOS.** Avalonia and most of the core are already cross-platform, and audio goes through one backend interface (0.23). The Linux-only parts are the audio backend (PipeWire), PTT devices (evdev) and the control socket, so each platform needs its own version of those.
    - macOS is new ground. Windows already has the upstream console, so the gain there is smaller.
@@ -24,11 +27,12 @@ Roughly in the order that makes sense to do them.
    - **macOS signing:** a free Apple ID only signs apps for your own Macs; signing for others (a Developer ID certificate) and notarization need the Apple Developer Program ($99 a year). Start without it: builds get the free ad-hoc signature (needed on Apple silicon anyway), and the README explains letting the app in once: on macOS 15 open it, then **System Settings → Privacy & Security → Open Anyway** (right-click → Open no longer works there), or `xattr -dr com.apple.quarantine /Applications/Sidetone.app`. Pay for the program only if the warning becomes a real obstacle; a Developer ID signature can be added to the same `.app` later.
    - **Windows signing:** unsigned programs still run, after SmartScreen's "More info → Run anyway", but on Windows 11 PCs with Smart App Control on they are blocked outright. Options, cheapest first: **SignPath Foundation** (free code signing for open-source projects built in public CI; apply first, they review each project), **Microsoft Trusted Signing** (about $10 a month; check country and identity eligibility), a traditional OV certificate (a few hundred dollars a year, on a hardware token or cloud service, awkward from CI; EV no longer skips SmartScreen's reputation building), or the **Microsoft Store** (MSIX; the Store signs what it distributes). Fallback: unsigned builds with the SmartScreen steps in the README, noting that Smart App Control needs a signed build.
 
-4. **Smaller gaps compared with the Windows console:**
-   - more than one FNE system at a time
+4. **NXDN**, for networks that carry it (CTRS doesn't). The same work as DMR (libvocoder has the codec; the Windows console's `MainWindow.NXDN.cs` and `FneSystemBase.NXDN.cs` show the framing), but with nobody to test it against a radio.
+
+5. **Smaller gaps compared with the Windows console:**
    - web streams
 
-5. **TMS (text messaging).** Waiting on others: it depends on data support on the FNE side. The question for the FNE's maintainers is what a console peer will be sent and allowed to send, so the GUI can get a messages panel that fits.
+6. **TMS (text messaging).** Waiting on others: it depends on data support on the FNE side. The question for the FNE's maintainers is what a console peer will be sent and allowed to send, so the GUI can get a messages panel that fits.
 
 ## Partially implemented
 

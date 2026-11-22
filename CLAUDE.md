@@ -86,8 +86,10 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
   desktop's phone layout
   (Piper is installed on the owner's Surface, through `uv tool install piper-tts`, with the
   en_US-lessac-medium voice).
-- Next on the wishlist ("To be implemented"): a CI test against a real dvmfne, then NXDN/DMR
-  (needs live traffic); the TUI's only remaining gap is audio over SSH.
+- Next on the wishlist ("To be implemented"): a CI test against a real dvmfne (waiting for dvmhost's
+  `r05a06_dev` to merge into `master`), then DMR together with several FNEs at once (CTRS carries
+  DMR on a second FNE); NXDN is further down (CTRS doesn't carry it, and there's no hardware to test
+  it). The TUI's only remaining gap is audio over SSH.
 
 ## Layout
 
