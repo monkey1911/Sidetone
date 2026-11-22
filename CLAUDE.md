@@ -11,7 +11,7 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
 - Version **0.31.6** on `main` (set once, in `src/Directory.Build.props`): the peer tells the FNE
   its version and platform, `SIDETONE_R00A31_LNX` (`CliPeer.SoftwareId`; R major, A minor, as the
   Windows console's `CONSOLE_R01A02`; then `LNX`, `AND`, `WIN` or `MAC`, the owner's choice); it was a
-  fixed `SIDETONE_R00A01`. 0.31.5, fixes from an audit:
+  fixed `SIDETONE_R00A01`. Confirmed: the FNE shows `SIDETONE_R00A31_AND` for a phone. 0.31.5, fixes from an audit:
   `CliPeer.Connected` reads fnecore's state (`Information.State == RUNNING`; it was a flag set at
   login and never cleared, so a lost connection still showed connected); a call whose TDU is lost
   ends after 3 s without frames (`P25VoiceReceiver.EndIfIdle`, `DispatchConsole.CallHousekeeping`,
