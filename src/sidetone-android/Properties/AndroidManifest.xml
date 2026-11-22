@@ -14,6 +14,8 @@
 	<uses-permission android:name="android.permission.WAKE_LOCK" />
 	<!-- the connection's notification, and notifications when the console is paged (Android 13+) -->
 	<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+	<!-- Zebra devices broadcast their PTT and side keys (Remote KeyEvent Service) only to apps holding this -->
+	<uses-permission android:name="zebra.permission.KEY_EVENT_SERVICE" />
 	<!-- Bluetooth headsets and PTT buttons -->
 	<uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
 	<uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />

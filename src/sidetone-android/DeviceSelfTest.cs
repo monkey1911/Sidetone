@@ -144,7 +144,7 @@ namespace Sidetone.Droid
                 return DebugLog.Folder.StartsWith(files, StringComparison.Ordinal) && text.Contains("start: Sidetone") && text.Contains("app: activity created (self-test)");
             });
 
-            Try("hardware PTT: Zebra's key broadcasts and Sidetone's PTT_DOWN/UP key the console (screen off or locked)", () =>
+            Try("hardware PTT: Zebra's key broadcasts, Sonim's and Kodiak's PTT intents and Sidetone's PTT_DOWN/UP key the console (screen off or locked)", () =>
             {
                 AndroidPlatform p = AndroidPlatform.Instance;
                 p.Apply(new AppSettings { HardwarePttKey = (int)Android.Views.Keycode.ButtonL2 }, null);
@@ -161,9 +161,18 @@ namespace Sidetone.Droid
                     r.OnReceive(p.AppContext, Zebra(Android.Views.KeyEventActions.Up));
                     r.OnReceive(p.AppContext, new Android.Content.Intent("org.sidetone.app.PTT_DOWN"));
                     r.OnReceive(p.AppContext, new Android.Content.Intent("org.sidetone.app.PTT_UP"));
+                    // Sonim's firmware sends to the declared receiver; Kodiak-style carries the direction in the key event
+                    PttKeyReceiver declared = new PttKeyReceiver();
+                    declared.OnReceive(p.AppContext, new Android.Content.Intent(PttIntents.SonimDown));
+                    declared.OnReceive(p.AppContext, new Android.Content.Intent(PttIntents.SonimUp));
+                    Android.Content.Intent kodiak = new Android.Content.Intent(PttIntents.Kodiak);
+                    kodiak.PutExtra(Android.Content.Intent.ExtraKeyEvent, new Android.Views.KeyEvent(Android.Views.KeyEventActions.Down, (Android.Views.Keycode)228));
+                    declared.OnReceive(p.AppContext, kodiak);
                     string log = File.ReadAllText(Directory.GetFiles(DebugLog.Folder, "debug-*.log").OrderBy(f => f).Last());
                     return log.Contains("com.symbol.button.L2: KEYCODE_BUTTON_L2 down") && !log.Contains("KEYCODE_BUTTON_L2 down (not the learned") &&
-                           log.Contains("org.sidetone.app.PTT_DOWN: keyed") && log.Contains("org.sidetone.app.PTT_UP: keyed");
+                           log.Contains("org.sidetone.app.PTT_DOWN down: keyed") && log.Contains("org.sidetone.app.PTT_UP up: keyed") &&
+                           log.Contains("com.sonim.intent.action.PTT_KEY_DOWN down: keyed") && log.Contains("com.sonim.intent.action.PTT_KEY_UP up: keyed") &&
+                           log.Contains("com.kodiak.intent.action.PTT_BUTTON KEYCODE_12 down: keyed");
                 }
                 finally { p.Apply(new AppSettings(), null); }
             });

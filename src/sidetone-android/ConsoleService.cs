@@ -45,11 +45,7 @@ namespace Sidetone.Droid
         /// Sidetone's own PTT_DOWN / PTT_UP, for devices whose key programmer can send an intent (Zebra's Key
         /// Programmer and StageNow, Samsung's XCover key, Sonim and others).
         /// </summary>
-        public static readonly string[] PttActions =
-        {
-            "com.symbol.button.L1", "com.symbol.button.L2", "com.symbol.button.R1", "com.symbol.button.R2",
-            "org.sidetone.app.PTT_DOWN", "org.sidetone.app.PTT_UP"
-        };
+        public static string[] PttActions => PttIntents.Actions;
 
         /// <summary>Starts the service, or updates it (the system name, and whether the microphone may be used now).</summary>
         public static void Start(Context context, string system, bool microphone)
@@ -176,29 +172,10 @@ namespace Sidetone.Droid
             DebugLog.Write("ptt", "listening for PTT key broadcasts (Zebra keys, org.sidetone.app.PTT_DOWN/UP)");
         }
 
+        /// <summary>The receiver registered while connected (for broadcasts sent to anyone, like Zebra's): see PttIntents.</summary>
         internal sealed class PttBroadcasts : BroadcastReceiver
         {
-            public override void OnReceive(Context context, Intent intent)
-            {
-                string action = intent?.Action;
-                AndroidPlatform p = AndroidPlatform.Instance;
-                if (action == "org.sidetone.app.PTT_DOWN" || action == "org.sidetone.app.PTT_UP")
-                {
-                    bool down = action.EndsWith("DOWN", StringComparison.Ordinal);
-                    DebugLog.Write("ptt", $"{action}: {(p.PttKey(down) ? "keyed" : "no console to key")}");
-                    return;
-                }
-#pragma warning disable CA1422, CS0618 // the typed overload is Android 13+
-                KeyEvent e = intent?.GetParcelableExtra(Intent.ExtraKeyEvent) as KeyEvent;
-#pragma warning restore CA1422, CS0618
-                if (e == null || (e.Action != KeyEventActions.Down && e.Action != KeyEventActions.Up))
-                    return;
-                bool learned = p.PttKeyCode == (int)e.KeyCode;
-                if (e.RepeatCount == 0)
-                    DebugLog.Write("ptt", $"{action}: {KeyEvent.KeyCodeToString(e.KeyCode)} {(e.Action == KeyEventActions.Down ? "down" : "up")}{(learned ? string.Empty : " (not the learned PTT key)")}");
-                if (learned)
-                    p.PttKey(e.Action == KeyEventActions.Down, e.RepeatCount);
-            }
+            public override void OnReceive(Context context, Intent intent) => PttIntents.Handle(intent);
         }
 
         private sealed class MediaButtons : MediaSession.Callback

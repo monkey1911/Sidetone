@@ -14,7 +14,10 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
   while its microphone is used (tester: "no microphone audio on Bluetooth"); the service listens for
   PTT key broadcasts with the screen off or locked (Zebra RKES `com.symbol.button.L1/L2/R1/R2` with
   the KeyEvent, and `org.sidetone.app.PTT_DOWN`/`PTT_UP`), after a Zebra TC57x (Android 13) tester's PTT
-  key only worked in the foreground. 0.31.3: an FNE address that can't be
+  key only worked in the foreground; `PttKeyReceiver` (declared in the manifest) takes Sonim's
+  `PTT_KEY_DOWN/UP`, Kodiak's and MCPTT's key intents (Sonim's firmware lists apps declaring them for
+  its PTT key). Target PTT devices: Zebra TC57/TC58, Motorola LEX L11 (no public interface known),
+  Sonim XP10 and XP Pro. `PttIntents.cs` handles them all. 0.31.3: an FNE address that can't be
   looked up (`CliPeer.ResolveAddress`, `FneAddressException`) gets a plain reason instead of a crash
   (0.31.0) or a raw SocketException (0.31.1); found from an Android tester's debug logs. 0.31.2: Go offline / Go online
   (`ConsoleView.GoOffline`: closes the console, keeps the codeplug, remembered as
