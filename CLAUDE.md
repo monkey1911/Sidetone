@@ -11,7 +11,10 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
 - Version **0.31.4** on `main` (set once, in `src/Directory.Build.props`): touch taps act on lift
   (`TouchTap` in Controls.cs: cards and buttons ignore a finger that scrolled; hold-to-talk still
   acts on press), and Android opens a Bluetooth headset's call link (SCO, `BluetoothCallLink`)
-  while its microphone is used (tester: "no microphone audio on Bluetooth"). 0.31.3: an FNE address that can't be
+  while its microphone is used (tester: "no microphone audio on Bluetooth"); the service listens for
+  PTT key broadcasts with the screen off or locked (Zebra RKES `com.symbol.button.L1/L2/R1/R2` with
+  the KeyEvent, and `org.sidetone.app.PTT_DOWN`/`PTT_UP`), after a Zebra TC57x (Android 13) tester's PTT
+  key only worked in the foreground. 0.31.3: an FNE address that can't be
   looked up (`CliPeer.ResolveAddress`, `FneAddressException`) gets a plain reason instead of a crash
   (0.31.0) or a raw SocketException (0.31.1); found from an Android tester's debug logs. 0.31.2: Go offline / Go online
   (`ConsoleView.GoOffline`: closes the console, keeps the codeplug, remembered as

@@ -144,6 +144,30 @@ namespace Sidetone.Droid
                 return DebugLog.Folder.StartsWith(files, StringComparison.Ordinal) && text.Contains("start: Sidetone") && text.Contains("app: activity created (self-test)");
             });
 
+            Try("hardware PTT: Zebra's key broadcasts and Sidetone's PTT_DOWN/UP key the console (screen off or locked)", () =>
+            {
+                AndroidPlatform p = AndroidPlatform.Instance;
+                p.Apply(new AppSettings { HardwarePttKey = (int)Android.Views.Keycode.ButtonL2 }, null);
+                try
+                {
+                    ConsoleService.PttBroadcasts r = new ConsoleService.PttBroadcasts();
+                    Android.Content.Intent Zebra(Android.Views.KeyEventActions a)
+                    {
+                        Android.Content.Intent i = new Android.Content.Intent("com.symbol.button.L2");
+                        i.PutExtra(Android.Content.Intent.ExtraKeyEvent, new Android.Views.KeyEvent(a, Android.Views.Keycode.ButtonL2));
+                        return i;
+                    }
+                    r.OnReceive(p.AppContext, Zebra(Android.Views.KeyEventActions.Down));
+                    r.OnReceive(p.AppContext, Zebra(Android.Views.KeyEventActions.Up));
+                    r.OnReceive(p.AppContext, new Android.Content.Intent("org.sidetone.app.PTT_DOWN"));
+                    r.OnReceive(p.AppContext, new Android.Content.Intent("org.sidetone.app.PTT_UP"));
+                    string log = File.ReadAllText(Directory.GetFiles(DebugLog.Folder, "debug-*.log").OrderBy(f => f).Last());
+                    return log.Contains("com.symbol.button.L2: KEYCODE_BUTTON_L2 down") && !log.Contains("KEYCODE_BUTTON_L2 down (not the learned") &&
+                           log.Contains("org.sidetone.app.PTT_DOWN: keyed") && log.Contains("org.sidetone.app.PTT_UP: keyed");
+                }
+                finally { p.Apply(new AppSettings(), null); }
+            });
+
             Try("hardware PTT: a learned key is named the way Settings shows it", () =>
                 SettingsOverlay.KeyLabel(Android.Views.KeyEvent.KeyCodeToString(Android.Views.Keycode.VolumeDown), 25) == "Volume down");
 

@@ -89,6 +89,7 @@ namespace Sidetone.Droid
                 learning = null;
                 int number = (int)code;
                 string name = KeyEvent.KeyCodeToString(code);
+                DebugLog.Write("ptt", $"learned key {name} ({number}) from {e.Device?.Name ?? "an unknown device"}");
                 Dispatcher.UIThread.Post(() => { done(number, name); App.SingleView?.RefreshNow(); });
                 return true;
             }

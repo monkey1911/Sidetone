@@ -37,6 +37,19 @@ namespace Sidetone.Droid
         private PowerManager.WakeLock wakeLock;
         private WifiManager.WifiLock wifiLock;
         private MediaSession media;
+        private PttBroadcasts pttBroadcasts;
+
+        /// <summary>
+        /// Broadcasts that carry a PTT key from other apps or the device, which reach Sidetone with the screen off
+        /// or locked: Zebra's Remote KeyEvent Service (the PTT and side keys, with the key event attached), and
+        /// Sidetone's own PTT_DOWN / PTT_UP, for devices whose key programmer can send an intent (Zebra's Key
+        /// Programmer and StageNow, Samsung's XCover key, Sonim and others).
+        /// </summary>
+        public static readonly string[] PttActions =
+        {
+            "com.symbol.button.L1", "com.symbol.button.L2", "com.symbol.button.R1", "com.symbol.button.R2",
+            "org.sidetone.app.PTT_DOWN", "org.sidetone.app.PTT_UP"
+        };
 
         /// <summary>Starts the service, or updates it (the system name, and whether the microphone may be used now).</summary>
         public static void Start(Context context, string system, bool microphone)
@@ -112,6 +125,7 @@ namespace Sidetone.Droid
 
             HoldLocks();
             StartMediaSession();
+            ListenForPttBroadcasts();
             return StartCommandResult.Sticky;
         }
 
@@ -147,6 +161,46 @@ namespace Sidetone.Droid
             media.Active = true;
         }
 
+        private void ListenForPttBroadcasts()
+        {
+            if (pttBroadcasts != null)
+                return;
+            pttBroadcasts = new PttBroadcasts();
+            IntentFilter filter = new IntentFilter();
+            foreach (string action in PttActions)
+                filter.AddAction(action);
+            if (OperatingSystem.IsAndroidVersionAtLeast(33))
+                RegisterReceiver(pttBroadcasts, filter, ReceiverFlags.Exported);     // they come from other apps and the system
+            else
+                RegisterReceiver(pttBroadcasts, filter);
+            DebugLog.Write("ptt", "listening for PTT key broadcasts (Zebra keys, org.sidetone.app.PTT_DOWN/UP)");
+        }
+
+        internal sealed class PttBroadcasts : BroadcastReceiver
+        {
+            public override void OnReceive(Context context, Intent intent)
+            {
+                string action = intent?.Action;
+                AndroidPlatform p = AndroidPlatform.Instance;
+                if (action == "org.sidetone.app.PTT_DOWN" || action == "org.sidetone.app.PTT_UP")
+                {
+                    bool down = action.EndsWith("DOWN", StringComparison.Ordinal);
+                    DebugLog.Write("ptt", $"{action}: {(p.PttKey(down) ? "keyed" : "no console to key")}");
+                    return;
+                }
+#pragma warning disable CA1422, CS0618 // the typed overload is Android 13+
+                KeyEvent e = intent?.GetParcelableExtra(Intent.ExtraKeyEvent) as KeyEvent;
+#pragma warning restore CA1422, CS0618
+                if (e == null || (e.Action != KeyEventActions.Down && e.Action != KeyEventActions.Up))
+                    return;
+                bool learned = p.PttKeyCode == (int)e.KeyCode;
+                if (e.RepeatCount == 0)
+                    DebugLog.Write("ptt", $"{action}: {KeyEvent.KeyCodeToString(e.KeyCode)} {(e.Action == KeyEventActions.Down ? "down" : "up")}{(learned ? string.Empty : " (not the learned PTT key)")}");
+                if (learned)
+                    p.PttKey(e.Action == KeyEventActions.Down, e.RepeatCount);
+            }
+        }
+
         private sealed class MediaButtons : MediaSession.Callback
         {
             public override bool OnMediaButtonEvent(Intent mediaButtonIntent)
@@ -161,6 +215,11 @@ namespace Sidetone.Droid
 
         public override void OnDestroy()
         {
+            if (pttBroadcasts != null)
+            {
+                try { UnregisterReceiver(pttBroadcasts); } catch (Java.Lang.IllegalArgumentException) { }
+                pttBroadcasts = null;
+            }
             media?.Release();
             media = null;
             if (wakeLock?.IsHeld == true)

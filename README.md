@@ -139,7 +139,13 @@ When a call comes in on a listening channel while the screen is off, Sidetone tu
 
 Phones and radios with a PTT key (rugged phones, PoC radios), Bluetooth PTT buttons, a headset button, or a volume key can be the PTT. In **Settings, PTT key**, tap **Learn…** and press the key. Sidetone shows its name, and after **Save** it is hold-to-talk on the focused channel. **None** removes it. Back, Home and the power key can't be used.
 
-The key works while Sidetone is on screen. Bluetooth PTT buttons and headset buttons that act as media buttons also work with the screen off. Some rugged phones send their PTT key only to apps that know that maker's own signal; if Learn… doesn't see your phone's PTT key, please open an issue with the phone's make and model.
+The learned key works while Sidetone is on screen. While a console is connected, these also work with the screen off or locked:
+
+- **Bluetooth PTT buttons and headset buttons** that act as media buttons.
+- **Zebra devices** (TC5x, TC2x and others). Zebra's Remote KeyEvent Service sends the PTT and side keys to apps in the background, as `com.symbol.button.L1`, `L2`, `R1` and `R2`. Learn the key while Sidetone is on screen; the TC5x's PTT key is *Button L2*. If nothing happens with the screen off, make sure the key isn't assigned to another app, such as PTT Express, in Zebra's Key Programmer.
+- **Any device whose key programmer can send an intent** (Zebra's Key Programmer or StageNow, Samsung's XCover key on Knox-managed phones, Sonim and others). Set the key to send the broadcast `org.sidetone.app.PTT_DOWN` when it's pressed and `org.sidetone.app.PTT_UP` when it's let go. These work without learning a key.
+
+Whether a key reaches Sidetone is written in the debug log (`ptt:` lines). If none of this works on your device, please open an issue with its make and model and the saved debug logs.
 
 ### The phone layout
 
