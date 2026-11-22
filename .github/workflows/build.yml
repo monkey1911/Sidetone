@@ -404,9 +404,11 @@ jobs:
           file out/osx-arm64/sidetone out/osx-x64/sidetone out/osx-arm64/libportaudio.dylib out/osx-x64/libportaudio.dylib
 
       - name: Self-test (Apple silicon)
+        timeout-minutes: 15
         run: out/osx-arm64/sidetone-cli selftest
 
       - name: GUI self-check (Apple silicon)
+        timeout-minutes: 15
         run: |
           out/osx-arm64/sidetone --version
           out/osx-arm64/sidetone --selfcheck
@@ -452,6 +454,7 @@ jobs:
           name: sidetone-macos
 
       - name: Self-test and GUI self-check through the launcher
+        timeout-minutes: 20
         run: |
           ditto -x -k Sidetone-*-macos.zip .
           codesign --verify --deep --strict Sidetone.app

@@ -70,6 +70,9 @@ namespace Sidetone.Core
         private readonly List<ControlSession> sessions = new List<ControlSession>();
         private Socket listener;
         private volatile bool stopping;
+        // accepting is asynchronous and cancelled before the socket closes: on macOS, closing a socket doesn't wake a
+        // blocked Accept, and .NET then waits for it in Close (the self-test hung there)
+        private readonly CancellationTokenSource acceptStop = new CancellationTokenSource();
 
         /// <summary>
         /// The default socket: $XDG_RUNTIME_DIR/sidetone.sock (a folder only the user can open),
@@ -140,7 +143,7 @@ namespace Sidetone.Core
             while (!stopping)
             {
                 Socket client;
-                try { client = listener.Accept(); }
+                try { client = listener.AcceptAsync(acceptStop.Token).AsTask().GetAwaiter().GetResult(); }
                 catch { if (stopping) return; Thread.Sleep(100); continue; }
 
                 ControlSession session = new ControlSession(client);
@@ -210,6 +213,7 @@ namespace Sidetone.Core
         public void Dispose()
         {
             stopping = true;
+            acceptStop.Cancel();
             try { listener?.Close(); } catch { /* ignore */ }
             List<ControlSession> open;
             lock (sessions)
