@@ -10,7 +10,7 @@ There are two front ends over the same console:
 - **`sidetone`**: a graphical console (Avalonia), with light and dark themes. See [Graphical console (sidetone)](#graphical-console-sidetone).
 - **Sidetone for Android**: the same graphical console as an Android app, with a phone layout. See [Android](#android).
 
-**What works:** FNE login, P25 receive and transmit (clear, AES-256, DES, ADP/ARC4 with keys from the FNE or a KFDtool key file), PipeWire audio, channel cards in tabs for the codeplug's zones, push-to-talk from the keyboard, a hotkey or a PTT device, alert tones, pages, radio commands, the channel marker, radio aliases, patching (two-way and one-way), instant recall with a call history kept between runs, audio outputs per tab and channel, recording to Opus or WAV, announcements (WAV files, or text spoken by Piper or espeak-ng, played onto talkgroups), a time announcement that can play by itself on the clock, and log files.
+**What works:** FNE login, P25 receive and transmit (clear, AES-256, DES, ADP/ARC4 with keys from the FNE or a KFDtool key file), PipeWire audio, channel cards in tabs for the codeplug's zones, push-to-talk from the keyboard, a hotkey or a PTT device, alert tones, pages, radio commands, the channel marker, radio aliases, patching (two-way and one-way), instant recall with a call history kept between runs, audio outputs per tab and channel, recording to Opus or WAV, announcements (WAV files, or text spoken by Piper or espeak-ng, played onto talkgroups), a time announcement that can play by itself on the clock, web streams (MP3 feeds on a tab), and log files.
 
 **Not yet:** DMR/NXDN/analog. What we'd like to add next is in [WISHLIST.md](WISHLIST.md).
 
@@ -47,6 +47,7 @@ There are two front ends over the same console:
   - [Time announcement](#time-announcement)
 - [Desktop notifications](#desktop-notifications)
 - [Tabs (zones)](#tabs-zones)
+- [Web streams](#web-streams)
 - [Log files](#log-files)
   - [Debug logs](#debug-logs)
 - [Patching](#patching)
@@ -246,6 +247,7 @@ Channels are shown as cards, up to four across. The mouse works in any terminal 
 | [ / ] | Previous / next tab |
 | z | Zones box: ↑/↓ pick a zone, Space or Enter hides or shows it, Esc closes |
 | o | Outputs box: ↑/↓ pick a tab or channel, ←/→ choose its audio output, Esc closes |
+| s | Web streams box for the tab on show: ↑/↓ pick a stream, Enter plays or stops it, +/- volume, Esc closes (see [Web streams](#web-streams)) |
 | Enter | Start or stop listening on the focused card |
 | Space | Toggle transmit on the focused card (press again to stop) |
 | Esc | Stop transmitting or stop a tone |
@@ -654,6 +656,32 @@ Each zone in the codeplug is a tab, as in the Windows console, in the same order
 - **Remembered** per system: hidden zones, and the tab on show (with the focused card). A zone that comes back is shown but not listening; start listening as usual.
 
 Zones with the same name share one tab, a zone without a name is called "Zone N", and zones with no channels for the system you're connected to aren't shown.
+
+## Web streams
+
+A tab can carry web streams, as in the Windows console: audio feeds such as a Broadcastify or Icecast scanner feed, played beside the channels. They come from the codeplug's `web_streams` list under a zone:
+
+```yaml
+zones:
+  - name: "Dispatch"
+    channels:
+      # ...
+    web_streams:
+      - name: "County scanner"
+        url: "https://example.com/stream.mp3"
+        # optional, for feeds that need them (HTTP Basic auth); they're kept in the codeplug, so protect the file
+        #authUsername: "user"
+        #authPassword: "password"
+        # optional: the card's colour while the stream is idle
+        idleColor: "#150282"
+```
+
+- Each stream is a small card after its tab's channels (graphical console and Android), or a row in the **Streams** box (`s` in the TUI). Every stream starts off; **Play** starts it and **Stop** stops it (Enter in the TUI).
+- **What it's doing:** Connecting (amber; Retry 2/3 and 3/3 if the first attempt fails), Idle, **RX** (green, while there's audio, held 1.4 s), or **Failed** (red), with the reason. As the Windows console does, Sidetone tries 3 times, 5 s apart. A stream that drops while playing connects again by itself. A refusal (wrong or missing user name and password, not found, or not MP3) fails at once, since trying again can't help; **Try again** starts it once more.
+- **MP3 only.** Most scanner feeds are MP3. An AAC, Ogg or HLS stream is refused with a plain reason. The audio is played as 8 kHz mono, like the radio audio.
+- A stream plays to its **tab's output** (see [Outputs per tab and channel](#outputs-per-tab-and-channel)), follows **Mute all**, and stops when its tab is hidden. Its volume (− and +) is remembered by stream name.
+- The log names a stream and its host only, never the rest of its address (feed addresses often carry a token), its user name or its password.
+- A zone with web streams but no channels for the system isn't a tab, so its streams aren't shown; give it a channel.
 
 ## Log files
 

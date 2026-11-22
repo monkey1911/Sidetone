@@ -443,4 +443,120 @@ namespace Sidetone.Gui
 
         private bool wasNarrow;
     } // public sealed class ChannelCard
+
+    /// <summary>
+    /// The card for one web stream (after its tab's channels): name, host, what it's doing, Play / Stop and
+    /// its volume. As the Windows console's chips: amber while connecting, green with audio, red when it
+    /// failed, otherwise the codeplug's idle colour.
+    /// </summary>
+    public sealed class StreamCard
+    {
+        public readonly Border Root;
+        public readonly ConsoleStream Stream;
+        /// <summary>The phone layout: the card's width, or null for the usual card.</summary>
+        public double? NarrowWidth;
+
+        private readonly TextBlock name, host, status, reason, vol;
+        private readonly Border statusPill;
+        private readonly Tap play, quieter, louder;
+        private readonly IBrush idle;
+
+        /// <summary>Play / Stop (self-check hook).</summary>
+        internal Tap PlayTap => play;
+
+        public StreamCard(DispatchConsole console, ConsoleStream stream, Action changed)
+        {
+            Stream = stream;
+            idle = stream.IdleColor != null && Color.TryParse(stream.IdleColor, out Color ic) ? new SolidColorBrush(ic) : null;
+
+            name = new TextBlock { FontSize = 15, FontWeight = FontWeight.Bold, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
+            status = new TextBlock { FontSize = 12, FontWeight = FontWeight.SemiBold };
+            statusPill = new Border { Child = status, Padding = new Thickness(8, 2), CornerRadius = new CornerRadius(5) };
+            host = new TextBlock { FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
+            play = new Tap("Play", () => { console.ToggleStream(stream); changed(); }, fontSize: 12, padX: 10, padY: 3);
+            reason = new TextBlock { FontSize = 12, TextWrapping = TextWrapping.Wrap };
+            vol = new TextBlock { FontSize = 12, VerticalAlignment = VerticalAlignment.Center, MinWidth = 50 };
+            quieter = new Tap("-", () => { console.StreamQuieter(stream); changed(); }, fontSize: 13, minWidth: 26, padX: 6, padY: 1);
+            louder = new Tap("+", () => { console.StreamLouder(stream); changed(); }, fontSize: 13, minWidth: 26, padX: 6, padY: 1);
+            StackPanel volRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 5 };
+            volRow.Children.Add(vol);
+            volRow.Children.Add(quieter.Root);
+            volRow.Children.Add(louder.Root);
+
+            StackPanel stack = new StackPanel { Spacing = 4 };
+            stack.Children.Add(Row(name, statusPill));
+            stack.Children.Add(Row(host, play.Root));
+            stack.Children.Add(reason);
+            stack.Children.Add(volRow);
+            Root = new Border
+            {
+                Width = ChannelCard.CardWidth,
+                Margin = new Thickness(6),
+                Padding = new Thickness(13, 9, 13, 10),
+                CornerRadius = new CornerRadius(9),
+                BorderThickness = new Thickness(2),
+                Child = stack
+            };
+        }
+
+        private static Grid Row(Control left, Control right)
+        {
+            Grid g = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+            Grid.SetColumn(left, 0);
+            Grid.SetColumn(right, 1);
+            right.HorizontalAlignment = HorizontalAlignment.Right;
+            right.VerticalAlignment = VerticalAlignment.Center;
+            g.Children.Add(left);
+            g.Children.Add(right);
+            return g;
+        }
+
+        private static void Set(TextBlock t, string text)
+        {
+            if (t.Text != text)
+                t.Text = text;
+        }
+
+        public void Refresh(Palette p)
+        {
+            StreamState st = Stream.State;
+            Root.Background = p.Card;
+            Root.Width = NarrowWidth ?? ChannelCard.CardWidth;
+            Root.Margin = new Thickness(NarrowWidth != null ? 4 : 6);
+            Set(name, Stream.Name);
+            name.Foreground = p.Text;
+            Set(host, "web stream · " + Stream.Host);
+            host.Foreground = p.Dim;
+            Set(status, Stream.StateText);
+            (IBrush back, IBrush fore, IBrush edge) = st switch
+            {
+                StreamState.Receiving => (p.Rx, p.OnStrong, p.Rx),
+                StreamState.Connecting => (p.Warn, p.OnStrong, p.Edge),
+                StreamState.Failed => (p.Tx, p.OnStrong, p.Tx),
+                StreamState.Idle => (idle ?? p.Track, idle != null ? Brushes.White : p.Rx, p.Edge),
+                _ => (p.Track, p.Dim, p.Edge)
+            };
+            statusPill.Background = back;
+            status.Foreground = fore;
+            Root.BorderBrush = edge;
+
+            Set(reason, Stream.Reason ?? string.Empty);
+            reason.IsVisible = Stream.Reason != null;
+            reason.Foreground = p.Tx;
+
+            play.Text = Stream.On ? "Stop" : st == StreamState.Failed ? "Try again" : "Play";
+            if (Stream.On)
+                play.Paint(p.Rx, p.OnStrong);
+            else
+                play.Paint(Brushes.Transparent, p.Text, p.Edge);
+            play.Root.Padding = new Thickness(NarrowWidth != null ? 16 : 10, NarrowWidth != null ? 9 : 3);
+            foreach (Tap t in new[] { quieter, louder })
+                t.Root.Padding = new Thickness(NarrowWidth != null ? 14 : 6, NarrowWidth != null ? 9 : 1);
+
+            Set(vol, $"vol {Stream.Volume:0.##}x");
+            vol.Foreground = Stream.On ? p.Text : p.Dim;
+            quieter.Paint(Brushes.Transparent, p.Text, p.Edge);
+            louder.Paint(Brushes.Transparent, p.Text, p.Edge);
+        }
+    } // public sealed class StreamCard
 }

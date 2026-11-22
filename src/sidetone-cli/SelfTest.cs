@@ -240,6 +240,9 @@ namespace Sidetone.Cli
                 // 19. audio outputs per tab and per channel
                 OutputTests(tmp);
 
+                // 19b. web streams (MP3 over HTTP, from a local server)
+                StreamTests(tmp);
+
                 // 20. call history kept between runs
                 HistoryTests(tmp, cp, sys);
 
@@ -2799,6 +2802,285 @@ zones:
             {
                 AudioBackend.Current = outReal;
             }
+        }
+
+        private const string StreamCodeplug = @"
+systems:
+  - name: ""Test FNE""
+    identity: ""TEST CLI""
+    address: ""127.0.0.1""
+    port: 62031
+    peerId: 9000001
+    rid: ""9000001""
+    password: ""PASSWORD""
+zones:
+  - name: ""Alpha""
+    channels:
+      - { name: ""A1"", system: ""Test FNE"", tgid: ""601"", mode: ""p25"" }
+    web_streams:
+      - { name: ""Live"", url: ""http://127.0.0.1:PORT/live?token=feedtoken"", authUsername: ""streamuser"", authPassword: ""streampass"", idleColor: ""#150282"" }
+      - { name: ""NoAuth"", url: ""http://127.0.0.1:PORT/live"" }
+      - { name: ""Aac"", url: ""http://127.0.0.1:PORT/aac"" }
+      - { name: ""Page"", url: ""http://127.0.0.1:PORT/page"" }
+      - { name: ""Zeros"", url: ""http://127.0.0.1:PORT/zeros"" }
+      - { name: ""Down"", url: ""http://127.0.0.1:DOWN/live"" }
+  - name: ""Bravo""
+    channels:
+      - { name: ""B1"", system: ""Test FNE"", tgid: ""621"", mode: ""p25"" }
+    web_streams:
+      - { name: ""Bravo feed"", url: ""http://127.0.0.1:PORT/live"", authUsername: ""streamuser"", authPassword: ""streampass"" }
+  - name: ""Streams only""
+    web_streams:
+      - { name: ""Orphan"", url: ""http://127.0.0.1:PORT/live"" }
+";
+
+        /// <summary>Collects what a web stream plays, with the stream's state at each block.</summary>
+        private sealed class StreamSink : IAudioOutput
+        {
+            public readonly List<short> Samples = new List<short>();
+            public readonly HashSet<StreamState> States = new HashSet<StreamState>();
+            public Func<StreamState> State;
+            public event Action<string> Failed { add { } remove { } }
+            public void Write(short[] samples)
+            {
+                lock (Samples)
+                {
+                    Samples.AddRange(samples);
+                    if (State != null)
+                        States.Add(State());
+                }
+            }
+            public int Count { get { lock (Samples) return Samples.Count; } }
+            public void Dispose() { }
+        }
+
+        private static int FreePort()
+        {
+            System.Net.Sockets.TcpListener l = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+            l.Start();
+            int port = ((System.Net.IPEndPoint)l.LocalEndpoint).Port;
+            l.Stop();
+            return port;
+        }
+
+        private static bool WaitFor(Func<bool> done, double seconds = 10)
+        {
+            DateTime until = DateTime.UtcNow.AddSeconds(seconds);
+            while (!done())
+            {
+                if (DateTime.UtcNow > until)
+                    return false;
+                Thread.Sleep(10);
+            }
+            return true;
+        }
+
+        private static void StreamTests(string tmp)
+        {
+            byte[] mp3;
+            using (Stream res = typeof(SelfTest).Assembly.GetManifestResourceStream("voice.mp3"))
+            using (MemoryStream ms = new MemoryStream())
+            {
+                res.CopyTo(ms);
+                mp3 = ms.ToArray();
+            }
+
+            // the local server: /live wants Basic auth and sends the file 3 times, then closes
+            int port = FreePort(), down = FreePort();
+            string expectedAuth = "Basic " + Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("streamuser:streampass"));
+            List<string> auths = new List<string>();
+            int liveConnections = 0;
+            System.Net.HttpListener server = new System.Net.HttpListener();
+            server.Prefixes.Add($"http://127.0.0.1:{port}/");
+            server.Start();
+            Thread serving = new Thread(() =>
+            {
+                while (server.IsListening)
+                {
+                    System.Net.HttpListenerContext ctx;
+                    try { ctx = server.GetContext(); }
+                    catch { return; }
+                    ThreadPool.QueueUserWorkItem(_ =>
+                    {
+                        try
+                        {
+                            System.Net.HttpListenerResponse r = ctx.Response;
+                            string path = ctx.Request.Url.AbsolutePath;
+                            if (path == "/live")
+                            {
+                                string auth = ctx.Request.Headers["Authorization"];
+                                lock (auths)
+                                    auths.Add(auth);
+                                if (auth != expectedAuth)
+                                {
+                                    r.StatusCode = 401;
+                                    r.Close();
+                                    return;
+                                }
+                                Interlocked.Increment(ref liveConnections);
+                                r.ContentType = "audio/mpeg";
+                                r.SendChunked = true;
+                                for (int i = 0; i < 3; i++)
+                                    r.OutputStream.Write(mp3, 0, mp3.Length);
+                            }
+                            else if (path == "/aac")
+                            {
+                                r.ContentType = "audio/aac";
+                                r.OutputStream.Write(new byte[100]);
+                            }
+                            else if (path == "/page")
+                            {
+                                r.ContentType = "text/html";
+                                r.OutputStream.Write(System.Text.Encoding.UTF8.GetBytes("<html>sign in</html>"));
+                            }
+                            else if (path == "/zeros")
+                            {
+                                r.ContentType = "audio/mpeg";
+                                r.OutputStream.Write(new byte[WebStreamPlayer.SyncLimit * 2]);
+                            }
+                            else
+                                r.StatusCode = 404;
+                            r.Close();
+                        }
+                        catch { /* the player hung up */ }
+                    });
+                }
+            }) { IsBackground = true };
+            serving.Start();
+
+            TimeSpan retryWas = WebStreamPlayer.RetryDelay;
+            WebStreamPlayer.RetryDelay = TimeSpan.FromMilliseconds(50);
+            string cpPath = Path.Combine(tmp, "streams.yml");
+            File.WriteAllText(cpPath, StreamCodeplug.Replace("PORT", port.ToString()).Replace("DOWN", down.ToString()));
+            string stSettings = Path.Combine(tmp, "stream-settings.json");
+            try
+            {
+                Codeplug scp = Program.LoadCodeplug(cpPath);
+                Dictionary<string, StreamSink> sinks = new Dictionary<string, StreamSink>();
+                DispatchConsole sc = new DispatchConsole(scp, scp.Systems[0], TimeSpan.FromSeconds(120), null, null, stSettings) { NoAudio = true };
+                sc.streamOutputForTest = s =>
+                {
+                    StreamSink k = new StreamSink { State = () => s.Player?.State ?? StreamState.Off };
+                    lock (sinks)
+                        sinks[s.Name] = k;
+                    return k;
+                };
+                ConsoleStream S(string name) => sc.Streams.First(x => x.Name == name);
+                StreamSink Sink(string name) { lock (sinks) return sinks.TryGetValue(name, out StreamSink k) ? k : null; }
+
+                Check(string.Join(",", sc.Streams.Select(x => x.Name)) == "Live,NoAuth,Aac,Page,Zeros,Down,Bravo feed" &&
+                      sc.StreamsIn(sc.Zones[0]).Count == 6 && sc.StreamsIn(sc.Zones[1]).Single().Name == "Bravo feed" &&
+                      sc.Streams.All(x => x.State == StreamState.Off && !x.On && x.StateText == "Off") &&
+                      S("Live").IdleColor == "#150282" && S("Live").Host == "127.0.0.1",
+                      "web streams: read per tab from the codeplug, all off at start; a zone with no channels (no tab) is left out");
+
+                // playing: decoded, mixed to mono and resampled to 8 kHz, with the activity shown
+                ConsoleStream live = S("Live");
+                sc.ToggleStream(live);
+                bool playedLoop = WaitFor(() => Sink("Live")?.Count >= 3 * 32000 - 4000);
+                StreamSink ls = Sink("Live");
+                short[] got;
+                lock (ls.Samples)
+                    got = ls.Samples.Take(32000).ToArray();
+                double Rms(IEnumerable<short> xs) { double sum = 0; int n = 0; foreach (short x in xs) { sum += (double)x * x; n++; } return n == 0 ? 0 : Math.Sqrt(sum / n); }
+                double toneRms = Rms(got.Skip(4000).Take(8000)), quietRms = Rms(got.Skip(20000).Take(8000));
+                Check(playedLoop && toneRms > 3000 && quietRms < 50,
+                      $"web streams: an MP3 stream is played as 8 kHz mono (tone {toneRms:F0} rms, then silence {quietRms:F0}; {ls.Count} samples)");
+                Check(ls.States.Contains(StreamState.Receiving) && ls.States.Contains(StreamState.Idle),
+                      "web streams: RX while there's audio, Idle again after 1.4 s of silence (audio time)");
+                bool authOk;
+                lock (auths)
+                    authOk = auths.Count > 0 && auths.All(a => a == expectedAuth);
+                Check(authOk, "web streams: the codeplug's user name and password are sent as HTTP Basic auth");
+
+                // the server closing a stream that was playing: it connects again
+                bool again = WaitFor(() => Volatile.Read(ref liveConnections) >= 2);
+                Check(again && live.On && string.Join("\n", sc.SnapshotLog(40)).Contains("the stream ended; trying again"),
+                      "web streams: a stream that drops while playing connects again by itself");
+
+                // Mute all silences it (it keeps playing)
+                sc.ToggleGlobalMute();
+                int mutedFrom = ls.Count + 1600;
+                bool mutedRan = WaitFor(() => ls.Count > mutedFrom + 16000);
+                short[] after;
+                lock (ls.Samples)
+                    after = ls.Samples.Skip(mutedFrom).ToArray();
+                Check(mutedRan && after.All(x => x == 0) && live.On, "web streams: Mute all silences them");
+                sc.ToggleGlobalMute();
+
+                // volume, saved by name
+                sc.StreamLouder(live);
+                sc.StreamLouder(live);
+                double louder = live.Volume;
+                sc.SaveSettings();
+
+                // hiding its tab stops it; turning it off stops it
+                ConsoleStream bravo = S("Bravo feed");
+                sc.ToggleStream(bravo);
+                WaitFor(() => Sink("Bravo feed")?.Count > 8000);
+                sc.SetZoneHidden(sc.Zones[1], true);
+                bool hiddenOff = !bravo.On && bravo.State == StreamState.Off;
+                sc.ToggleStream(bravo);
+                Check(hiddenOff && !bravo.On && string.Join("\n", sc.SnapshotLog(10)).Contains("zone Bravo is hidden"),
+                      "web streams: hiding a tab stops its streams, and they can't start while it's hidden");
+                sc.SetZoneHidden(sc.Zones[1], false);
+                sc.ToggleStream(live);
+                Check(!live.On && live.State == StreamState.Off, "web streams: tapping a playing stream stops it");
+
+                // refusals fail at once with a plain reason; a server that isn't there gets 3 attempts
+                foreach (string n in new[] { "NoAuth", "Aac", "Page", "Zeros", "Down" })
+                    sc.ToggleStream(S(n));
+                bool allFailed = WaitFor(() => new[] { "NoAuth", "Aac", "Page", "Zeros", "Down" }.All(n => S(n).State == StreamState.Failed));
+                string Why(string n) => S(n).Reason ?? "(none)";
+                Check(allFailed && Why("NoAuth").Contains("needs a user name and password (401)") && Why("Aac").Contains("sends audio/aac; Sidetone plays MP3 streams only") &&
+                      Why("Page").Contains("web page") && Why("Zeros").Contains("isn't MP3") && Why("Down").Contains("(3 attempts)") &&
+                      S("Down").StateText == "Failed" && !S("Down").On,
+                      $"web streams: refused streams fail with a plain reason, an unreachable one after 3 attempts ({Why("NoAuth")}; {Why("Aac")}; {Why("Page")}; {Why("Zeros")}; {Why("Down")})");
+                string streamLog = string.Join("\n", sc.SnapshotLog(200));
+                Check(streamLog.Contains("stream Live (127.0.0.1)") && !streamLog.Contains("streampass") && !streamLog.Contains("streamuser") &&
+                      !streamLog.Contains("feedtoken") && !streamLog.Contains("/live"),
+                      "web streams: the log names a stream and its host only, never its path, token, user name or password");
+                sc.Shutdown();
+
+                // the terminal console's box (s): Enter starts the stream, + raises its volume, Esc closes it
+                Tui stui = new Tui(scp, scp.Systems[0], TimeSpan.FromSeconds(120), null) { NoAudio = true };
+                stui.HandleInput(new InputEvent(InputKind.Key, InputKey.Char, 's'));
+                bool boxOpen = stui.StreamsDialogOpen;
+                string boxText = string.Join("\n", Enumerable.Range(0, 40).Select(y => stui.Render(120, 40).RowText(y)));
+                stui.HandleInput(new InputEvent(InputKind.Key, InputKey.Char, '+'));
+                stui.HandleInput(new InputEvent(InputKind.Key, InputKey.Enter));
+                bool tuiOn = stui.Streams[0].On;
+                string titleText = stui.Render(200, 40).RowText(1);
+                stui.HandleInput(new InputEvent(InputKind.Key, InputKey.Enter));
+                stui.HandleInput(new InputEvent(InputKind.Key, InputKey.Escape));
+                Check(boxOpen && boxText.Contains("Web streams: Alpha") && boxText.Contains("Live") && boxText.Contains("127.0.0.1") &&
+                      tuiOn && titleText.Contains("streams: 1 on") && stui.Streams[0].Volume > 1.2 && !stui.Streams[0].On && !stui.StreamsDialogOpen,
+                      $"web streams: the TUI's s box lists the tab's streams; Enter plays and stops, + is louder, Esc closes (box {boxOpen}, listed {boxText.Contains("Live")}, played {tuiOn}, title {titleText.Contains("streams: 1 on")}: {titleText.Trim()})");
+                stui.Shutdown();
+
+                DispatchConsole sc2 = new DispatchConsole(scp, scp.Systems[0], TimeSpan.FromSeconds(120), null, null, stSettings) { NoAudio = true };
+                sc2.RestoreSettings();
+                Check(Math.Abs(sc2.Streams.First(x => x.Name == "Live").Volume - louder) < 0.001 && louder > 1.5 &&
+                      sc2.Streams.First(x => x.Name == "Bravo feed").Volume == 1.0 && !sc2.Streams.Any(x => x.On),
+                      "web streams: volumes are saved by stream name; streams start off again next time");
+            }
+            finally
+            {
+                WebStreamPlayer.RetryDelay = retryWas;
+                server.Stop();
+            }
+
+            // resampling in pieces matches resampling in one go (no clicks at the edges)
+            float[] sweep = Enumerable.Range(0, 22050).Select(i => (float)Math.Sin(2 * Math.PI * (100 + i / 40.0) * i / 22050.0) * 0.5f).ToArray();
+            float[] whole = WavFile.Resample(sweep, 22050, 8000);
+            WavFile.StreamResampler rs = new WavFile.StreamResampler(22050, 8000);
+            List<float> pieces = new List<float>();
+            for (int i = 0; i < sweep.Length; i += 1000)
+                pieces.AddRange(rs.Push(sweep.AsSpan(i, Math.Min(1000, sweep.Length - i))));
+            double worst = 0;
+            for (int i = 200; i < Math.Min(pieces.Count, whole.Length) - 200; i++)
+                worst = Math.Max(worst, Math.Abs(pieces[i] - whole[i]));
+            Check(pieces.Count > whole.Length - 100 && worst < 1e-4, $"web streams: resampling in pieces matches resampling in one go (worst {worst:E1})");
         }
 
         private static void OneWayPatchTests(Codeplug cp, Codeplug.System sys)

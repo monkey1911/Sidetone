@@ -380,23 +380,73 @@ namespace Sidetone.Core
             int outLength = (int)((long)input.Length * toRate / fromRate);
             float[] output = new float[outLength];
             for (int o = 0; o < outLength; o++)
-            {
-                double centre = o * ratio;
-                int first = (int)Math.Floor(centre) - span, last = (int)Math.Floor(centre) + span;
-                double sum = 0, weights = 0;
-                for (int i = Math.Max(0, first); i <= Math.Min(input.Length - 1, last); i++)
-                {
-                    double x = i - centre;
-                    double sinc = Math.Abs(x) < 1e-9 ? 2 * cutoff : Math.Sin(2 * Math.PI * cutoff * x) / (Math.PI * x);
-                    double window = 0.42 + 0.5 * Math.Cos(Math.PI * x / (span + 1)) + 0.08 * Math.Cos(2 * Math.PI * x / (span + 1));   // Blackman
-                    double w = sinc * window;
-                    sum += input[i] * w;
-                    weights += w;
-                }
-                output[o] = (float)(weights > 1e-9 ? sum / weights : 0);
-            }
+                output[o] = Interpolate(input, input.Length, o * ratio, span, cutoff);
             return output;
         }
+
+        /// <summary>One output sample of <see cref="Resample"/>: the low-passed input at a fractional position.</summary>
+        internal static float Interpolate(IReadOnlyList<float> input, int count, double centre, int span, double cutoff)
+        {
+            int lo = Math.Max(0, (int)Math.Floor(centre) - span), hi = Math.Min(count - 1, (int)Math.Floor(centre) + span);
+            // taps are one sample apart, so the sinc's and the window's angles are stepped by rotation, not
+            // recomputed: two sin/cos pairs per output sample instead of three per tap (a web stream at 44.1 kHz
+            // has about 355 taps)
+            double a = 2 * Math.PI * cutoff, b = Math.PI / (span + 1), x0 = lo - centre;
+            double sa = Math.Sin(a * x0), ca = Math.Cos(a * x0), da = Math.Sin(a), ea = Math.Cos(a);
+            double sb = Math.Sin(b * x0), cb = Math.Cos(b * x0), db = Math.Sin(b), eb = Math.Cos(b);
+            double sum = 0, weights = 0;
+            for (int i = lo; i <= hi; i++)
+            {
+                double x = i - centre;
+                double sinc = Math.Abs(x) < 1e-9 ? 2 * cutoff : sa / (Math.PI * x);
+                double window = 0.42 + 0.5 * cb + 0.08 * (2 * cb * cb - 1);     // Blackman (cos 2θ = 2cos²θ - 1)
+                double w = sinc * window;
+                sum += input[i] * w;
+                weights += w;
+                (sa, ca) = (sa * ea + ca * da, ca * ea - sa * da);
+                (sb, cb) = (sb * eb + cb * db, cb * eb - sb * db);
+            }
+            return (float)(weights > 1e-9 ? sum / weights : 0);
+        }
+
+        /// <summary>
+        /// <see cref="Resample"/> for audio that arrives in pieces (a web stream): the same filter, with
+        /// the input kept across pieces so their edges don't click.
+        /// </summary>
+        internal sealed class StreamResampler
+        {
+            private readonly double ratio, cutoff;
+            private readonly int span;
+            private readonly List<float> held = new List<float>();
+            private double next;        // the next output's position, in held's samples
+
+            public StreamResampler(int fromRate, int toRate)
+            {
+                ratio = (double)fromRate / toRate;
+                cutoff = Math.Min(3400.0, 0.45 * Math.Min(fromRate, toRate)) / fromRate;
+                span = (int)Math.Ceiling(32 * Math.Max(1.0, ratio));
+            }
+
+            /// <summary>Adds input; returns the output it completes.</summary>
+            public float[] Push(ReadOnlySpan<float> input)
+            {
+                foreach (float f in input)
+                    held.Add(f);
+                List<float> output = new List<float>();
+                while (next + span < held.Count)
+                {
+                    output.Add(Interpolate(held, held.Count, next, span, cutoff));
+                    next += ratio;
+                }
+                int drop = Math.Max(0, (int)Math.Floor(next) - span);   // input no later output can reach
+                if (drop > 0)
+                {
+                    held.RemoveRange(0, drop);
+                    next -= drop;
+                }
+                return output.ToArray();
+            }
+        } // internal sealed class StreamResampler
 
         /// <summary>Peak, and the RMS level of the louder 20 ms blocks (roughly, the speech), in dBFS.</summary>
         public static string Describe(short[] samples)

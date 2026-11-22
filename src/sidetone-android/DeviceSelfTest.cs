@@ -110,6 +110,60 @@ namespace Sidetone.Droid
                 return blocks > 5;
             });
 
+            Try("web streams: an MP3 stream from a local server plays through Android's audio (and its activity shows)", () =>
+            {
+                byte[] mp3;
+                using (Stream res = typeof(DeviceSelfTest).Assembly.GetManifestResourceStream("voice.mp3"))
+                using (MemoryStream ms = new MemoryStream())
+                {
+                    res.CopyTo(ms);
+                    mp3 = ms.ToArray();
+                }
+                System.Net.Sockets.TcpListener server = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+                server.Start();
+                int port = ((System.Net.IPEndPoint)server.LocalEndpoint).Port;
+                Task serving = Task.Run(() =>
+                {
+                    try
+                    {
+                        using System.Net.Sockets.TcpClient client = server.AcceptTcpClient();
+                        using System.Net.Sockets.NetworkStream ns = client.GetStream();
+                        byte[] request = new byte[4096];
+                        ns.Read(request, 0, request.Length);
+                        byte[] head = System.Text.Encoding.ASCII.GetBytes("HTTP/1.0 200 OK\r\nContent-Type: audio/mpeg\r\n\r\n");
+                        ns.Write(head);
+                        for (int i = 0; i < 2; i++)
+                            ns.Write(mp3);
+                    }
+                    catch (Exception) { /* the player hung up */ }
+                });
+                string cpPath = Path.Combine(Path.GetTempPath(), "sidetone-stream-selftest.yml");
+                File.WriteAllText(cpPath, "systems:\n  - { name: \"Test\", identity: \"T\", address: \"127.0.0.1\", port: 62031, peerId: 9000001, rid: \"9000001\", password: \"x\" }\n" +
+                                          "zones:\n  - name: \"A\"\n    channels:\n      - { name: \"A1\", system: \"Test\", tgid: \"601\", mode: \"p25\" }\n" +
+                                          $"    web_streams:\n      - {{ name: \"Feed\", url: \"http://127.0.0.1:{port}/feed\" }}\n");
+                try
+                {
+                    Codeplug cp = CodeplugLoader.Load(cpPath);
+                    DispatchConsole c = new DispatchConsole(cp, cp.Systems[0], TimeSpan.FromSeconds(120), null);
+                    ConsoleStream feed = c.Streams.Single();
+                    c.ToggleStream(feed);
+                    bool heard = false;
+                    for (int i = 0; i < 300 && !heard; i++)
+                    {
+                        heard = feed.State == StreamState.Receiving;
+                        Thread.Sleep(10);
+                    }
+                    bool played = heard && feed.On;
+                    c.ToggleStream(feed);
+                    return played && !feed.On && feed.State == StreamState.Off;
+                }
+                finally
+                {
+                    server.Stop();
+                    File.Delete(cpPath);
+                }
+            });
+
             Try("text to speech: Android's engine is used and says a sentence, levelled like any announcement", () =>
             {
                 SpeechEngine e = Speech.Choose(null, null, out string why);

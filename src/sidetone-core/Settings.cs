@@ -41,6 +41,8 @@ namespace Sidetone.Core
         public Dictionary<string, string> ZoneOutputs { get; set; }
         /// <summary>Zones (tabs) hidden in this system: their channels are switched off. Null for none.</summary>
         public List<string> HiddenZones { get; set; }
+        /// <summary>Web stream volumes (stream name to gain, 1 is as sent). Null for none.</summary>
+        public Dictionary<string, double> StreamVolumes { get; set; }
         public bool GlobalMute { get; set; }
         public string PageA { get; set; } = string.Empty;
         public string PageB { get; set; } = string.Empty;

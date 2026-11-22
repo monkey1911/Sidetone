@@ -37,6 +37,7 @@ namespace Sidetone.Cli
             radioDialog = null;
             keyDialog = null;
             outputsDialog = null;
+            streamsDialog = null;
             announceDialog = null;
             zoneDialog = new ZoneDialog { Row = CurrentZone.Index };
         }

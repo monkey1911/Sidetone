@@ -44,6 +44,7 @@ namespace Sidetone.Gui
         private DispatchConsole console;
         private bool offline;               // demo or screenshot: nothing is connected or saved
         private readonly List<ChannelCard> cards = new List<ChannelCard>();
+        private readonly List<StreamCard> streamCards = new List<StreamCard>();
         private long shownLog = -1, shownRecent = -1;
         private Palette shownLogPalette, shownRecentPalette;
 
@@ -84,6 +85,9 @@ namespace Sidetone.Gui
 
         /// <summary>Whether a channel's card is on show (self-check hook).</summary>
         internal bool CardShown(int index) => index >= 0 && index < cards.Count && cards[index].Root.IsVisible;
+
+        /// <summary>The web stream cards (self-check hook).</summary>
+        internal IReadOnlyList<StreamCard> StreamCards => streamCards;
         private readonly Border toolBar = new Border { Padding = new Thickness(16, 7), BorderThickness = new Thickness(0, 0, 0, 1) };
         private readonly TextBlock alertLabel = new TextBlock { Text = "Alert tones", FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 4, 0) };
         private readonly List<Tap> alertTaps = new List<Tap>();
@@ -637,6 +641,13 @@ namespace Sidetone.Gui
                     ChannelCard card = new ChannelCard(c, i, RefreshNow, PttPressed, PttReleased);
                     cards.Add(card);
                     cardPanel.Children.Add(card.Root);
+                }
+                streamCards.Clear();
+                foreach (ConsoleStream s in c.Streams)
+                {
+                    StreamCard sc = new StreamCard(c, s, RefreshNow);
+                    streamCards.Add(sc);
+                    cardPanel.Children.Add(sc.Root);
                 }
                 zoneTabs.Build(c, ShowTab, ShowZones);
                 shownLog = shownRecent = -1;
@@ -1363,6 +1374,12 @@ namespace Sidetone.Gui
                 if (shown)
                     cards[i].Refresh(p);
             }
+            foreach (StreamCard sc in streamCards)
+            {
+                sc.Root.IsVisible = sc.Stream.Zone == onShow;
+                if (sc.Root.IsVisible)
+                    sc.Refresh(p);
+            }
             zoneTabs.Refresh(c, p);
             zoneBox.Refresh(p);
             routingBox.Refresh(p);
@@ -1911,6 +1928,9 @@ zones:
         system: ""Demo System""
         tgid: ""104""
         mode: ""p25""
+    web_streams:
+      - name: ""County scanner""
+        url: ""http://127.0.0.1:9/demo""
   - name: ""Regional""
     tabColor: ""#2DA44E""
     channels:

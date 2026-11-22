@@ -58,6 +58,7 @@ namespace Sidetone.Core
             AddLog($"tab {z.Name}: plays to {device ?? "the main output"}{(z.chans.Any(c => c.Output != null) ? " (channels with their own output keep it)" : string.Empty)}");
             foreach (Chan c in z.chans)
                 MoveToOutput(c);
+            MoveStreamsToOutput(z);
             MarkDirty();
         }
 

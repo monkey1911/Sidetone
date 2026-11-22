@@ -189,6 +189,7 @@ namespace Sidetone.Core
                 StopReplay();
             foreach (Chan c in z.chans)
                 Deselect(c, quiet: true);       // ends its patch and recording too
+            StopStreamsIn(z);
             lock (uiLock)
             {
                 z.hidden = true;

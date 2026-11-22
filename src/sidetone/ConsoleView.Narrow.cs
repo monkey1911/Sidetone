@@ -294,6 +294,8 @@ namespace Sidetone.Gui
             double cardWidth = Math.Max(240, cardScroll.Bounds.Width - cardPanel.Margin.Left - cardPanel.Margin.Right - 8 - 2);
             foreach (ChannelCard card in cards)
                 card.NarrowWidth = narrow ? cardWidth : null;
+            foreach (StreamCard sc in streamCards)
+                sc.NarrowWidth = narrow ? cardWidth : null;
             if (!narrow)
                 return;
 

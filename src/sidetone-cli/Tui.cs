@@ -122,6 +122,7 @@ namespace Sidetone.Cli
             zoneDialog = null;
             keyDialog = null;
             outputsDialog = null;
+            streamsDialog = null;
             announceDialog = null;
             radioDialog = new RadioDialog { Rid = lastPageRid };
         }
@@ -278,6 +279,7 @@ namespace Sidetone.Cli
             zoneDialog = null;
             keyDialog = null;
             outputsDialog = null;
+            streamsDialog = null;
             announceDialog = null;
             pageDialog = new PageDialog { Digital = digital, A = lastPageA, B = lastPageB, Rid = lastPageRid };
         }
@@ -458,6 +460,11 @@ namespace Sidetone.Cli
                 OutputsInput(e);
                 return;
             }
+            if (streamsDialog != null && e.Kind == InputKind.Key)
+            {
+                StreamsInput(e);
+                return;
+            }
             if (announceDialog != null && e.Kind == InputKind.Key)
             {
                 AnnounceInput(e);
@@ -530,6 +537,7 @@ namespace Sidetone.Cli
                         case 'k': RequestKey(c); break;
                         case 'K': OpenKeyFile(); break;
                         case 'o': case 'O': OpenOutputs(); break;
+                        case 's': case 'S': OpenStreams(); break;
                         case 'n': case 'N': OpenAnnouncements(); break;
                         case 'e': case 'E': ToggleTxSecure(c); break;
                         case 'x': CyclePatch(c); break;
@@ -656,6 +664,7 @@ namespace Sidetone.Cli
             DrawZoneDialog(width, height);
             DrawKeyFileDialog(width, height);
             DrawOutputsDialog(width, height);
+            DrawStreamsDialog(width, height);
             DrawAnnounceDialog(width, height);
             return screen;
         }
@@ -717,6 +726,9 @@ namespace Sidetone.Cli
             int used = screen.Text(tx0, 1, system.Name, Style.Of(Ansi.BrightWhite, bold: true), inner);
             used += screen.Text(tx0 + used, 1, connected ? "  ● connected" : "  ○ connecting…",
                                 connected ? Style.Of(Ansi.BrightGreen) : Style.Of(Ansi.Yellow), inner - used);
+            int streamsOn = Streams.Count(s => s.On);
+            if (streamsOn > 0)
+                used += screen.Text(tx0 + used, 1, $"  streams: {streamsOn} on", Style.Of(Ansi.BrightGreen), inner - used);
             screen.Text(tx0 + used, 1, $"  peer {system.PeerId}  RID {peer?.ConsoleRid ?? 0}  keys {keys.Count}  {aliases.Summary}", Style.Of(Ansi.White), inner - used);
 
             DrawMicMeter(boxW);
@@ -1058,7 +1070,7 @@ namespace Sidetone.Cli
                     screen.Text(1 + used, y, "   MIC MUTED (u to unmute)", Style.Of(Ansi.BrightRed, bold: true), right - 1 - used);
             }
 
-            screen.Text(1, y + 1, (TabRows > 0 ? "[ ]: tab  z: zones  " : string.Empty) + "click card: listen  [●]: stop  Space: PTT  1-6: alert  p/d: page  r: radio cmd  c: marker  t: talk permit  v: mic meter  u: mic mute  a: aliases  m/M: mute card/all  +/-: vol  k: key  K: key file  o: outputs  n: announcements  e: secure/clear  x/X: patch/direction  l/L: replay  w: rec  q: quit",
+            screen.Text(1, y + 1, (TabRows > 0 ? "[ ]: tab  z: zones  " : string.Empty) + "click card: listen  [●]: stop  Space: PTT  1-6: alert  p/d: page  r: radio cmd  c: marker  t: talk permit  v: mic meter  u: mic mute  a: aliases  m/M: mute card/all  +/-: vol  k: key  K: key file  o: outputs  s: streams  n: announcements  e: secure/clear  x/X: patch/direction  l/L: replay  w: rec  q: quit",
                         Style.Of(Ansi.Grey), width - 2);
         }
     } // public sealed class Tui

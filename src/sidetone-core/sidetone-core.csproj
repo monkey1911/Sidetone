@@ -33,6 +33,7 @@
   <ItemGroup>
     <PackageReference Include="Concentus" Version="2.2.2" />
     <PackageReference Include="Concentus.Oggfile" Version="1.0.7" />
+    <PackageReference Include="NLayer" Version="3.0.1" />
     <ProjectReference Include="..\..\extern\dvmconsole\fnecore\fnecore.csproj" />
     <PackageReference Include="YamlDotNet" Version="16.2.0" />
     <!-- only needed for a [JsonIgnore] attribute in Codeplug.cs; same version as dvmconsole -->

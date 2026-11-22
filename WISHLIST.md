@@ -29,10 +29,7 @@ Roughly in the order that makes sense to do them.
 
 4. **NXDN**, for networks that carry it (CTRS doesn't). The same work as DMR (libvocoder has the codec; the Windows console's `MainWindow.NXDN.cs` and `FneSystemBase.NXDN.cs` show the framing), but with nobody to test it against a radio.
 
-5. **Smaller gaps compared with the Windows console:**
-   - web streams
-
-6. **TMS (text messaging).** Waiting on others: it depends on data support on the FNE side. The question for the FNE's maintainers is what a console peer will be sent and allowed to send, so the GUI can get a messages panel that fits.
+5. **TMS (text messaging).** Waiting on others: it depends on data support on the FNE side. The question for the FNE's maintainers is what a console peer will be sent and allowed to send, so the GUI can get a messages panel that fits.
 
 ## Partially implemented
 
@@ -73,6 +70,8 @@ Roughly in the order that makes sense to do them.
   - Still to do: sending audio to another machine's sound system, for when the TUI is run over SSH (today audio stays on the machine Sidetone runs on).
 
 ## Fully implemented
+
+- ~~**Web streams.**~~ Done in 0.32: the codeplug's `web_streams` per zone, as cards after the tab's channels (a Streams box in the TUI), MP3 decoded by NLayer on every platform, played to the tab's output; the Windows console's 3 attempts and RX hold. AAC, Ogg and HLS streams are refused with a reason.
 
 - ~~**Rename the project.**~~ Done in 0.17: the project is now **Sidetone**, "an IP dispatch console for DVMProject FNE networks". The programs are `sidetone` and `sidetone-cli`, settings carry over, and the old `dvmcli` and `dvmgui` commands kept working for a while.
   - ~~Remove the old command wrappers after a release or two.~~ Done in 0.29.

@@ -598,6 +598,29 @@ namespace Sidetone.Gui
                   "tabs: Z opens the Tabs box; arrows and Space hide and show zones (hiding the tab on show moves to another); Esc closes it");
             c.SetFocus(1);
 
+            // web streams: the demo's one is a card after the Dispatch tab's channels, off until Play
+            c.ShowZone(c.Zones[0]);
+            w.View.RefreshNow();
+            StreamCard scard = w.View.StreamCards.Single();
+            bool streamOnTab = scard.Root.IsVisible && scard.Stream.Name == "County scanner" && scard.PlayTap.Text == "Play" && !scard.Stream.On;
+            Point onPlay = scard.PlayTap.Root.TranslatePoint(new Point(5, 5), w) ?? new Point(-1, -1);
+            w.MouseDown(onPlay, MouseButton.Left);
+            w.MouseUp(onPlay, MouseButton.Left);
+            Dispatcher.UIThread.RunJobs();
+            w.View.RefreshNow();
+            bool streamStarted = scard.Stream.On && scard.PlayTap.Text == "Stop" && (scard.Stream.State == StreamState.Connecting || scard.Stream.State == StreamState.Failed);
+            c.ShowZone(c.Zones[1]);
+            w.View.RefreshNow();
+            bool streamHiddenOnOtherTab = !scard.Root.IsVisible;
+            c.ShowZone(c.Zones[0]);
+            w.View.RefreshNow();
+            w.MouseDown(onPlay, MouseButton.Left);
+            w.MouseUp(onPlay, MouseButton.Left);
+            Dispatcher.UIThread.RunJobs();
+            Check(streamOnTab && streamStarted && streamHiddenOnOtherTab && !scard.Stream.On && scard.Stream.State == StreamState.Off,
+                  "web streams: a stream card shows on its own tab only; Play starts it, Stop stops it");
+            c.SetFocus(1);
+
             // the phone layout: narrower than ConsoleView.NarrowWidth
             ConsoleView v = w.View;
             void Resize(double width, double height)
@@ -612,6 +635,9 @@ namespace Sidetone.Gui
             Resize(412, 915);
             Check(v.Narrow && v.PageShown == ConsoleView.NarrowPage.Channels && v.BigPtt.Root.IsEffectivelyVisible && v.CardsOnShow && !v.PttTap.Root.IsEffectivelyVisible,
                   "phone layout: a narrow window shows the cards in one column with a big PTT at the bottom (the header's PTT hidden)");
+            v.RefreshNow();
+            Check(v.StreamCards.Single().NarrowWidth is double sw && sw > 300 && Math.Abs(v.StreamCards.Single().Root.Width - sw) < 0.5,
+                  "phone layout: stream cards fill the width like the channel cards");
 
             int pressesBefore = v.PointerPresses, releasesBefore = v.PointerReleases, refusedBefore = c.SnapshotLog(200).Count(l => l.Contains("not connected to the FNE yet"));
             Point onBig = v.BigPtt.Root.TranslatePoint(new Point(20, 20), w) ?? new Point(-1, -1);

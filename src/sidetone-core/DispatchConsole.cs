@@ -203,6 +203,7 @@ namespace Sidetone.Core
 
             if (chans.Count == 0)
                 throw new ArgumentException($"no channels for system '{system.Name}' in the codeplug");
+            SetUpStreams(codeplug);
         }
 
         /*
@@ -272,6 +273,7 @@ namespace Sidetone.Core
             SaveHistory();
             StopTx("console closed");
             StopReplay();
+            StopAllStreams();
             ClearPatches(quiet: true);
             keys.SetLocal(null, 0);
             localKeys?.Dispose();   // wipes the key file's keys from memory
@@ -1278,6 +1280,7 @@ namespace Sidetone.Core
             lastPageB = ss.PageB ?? string.Empty;
             lastPageRid = ss.PageRid ?? string.Empty;
             RestoreHiddenZones(ss);
+            RestoreStreamVolumes(ss);
             foreach (ConsoleZone z in zones)
                 z.Output = ss.ZoneOutputs != null && ss.ZoneOutputs.TryGetValue(z.Name, out string zoneOut) && !string.IsNullOrWhiteSpace(zoneOut) ? zoneOut : null;
             foreach (Chan c in chans)
@@ -1333,6 +1336,7 @@ namespace Sidetone.Core
             foreach (Chan c in chans)
                 ss.Channels[ChanKey(c)] = new ChannelSettings { Listening = c.Selected, Muted = c.Muted, Gain = Math.Round(c.Gain, 3), TxClear = c.Selectable && c.TxClear, Record = c.Record, Output = c.Output };
             ss.ZoneOutputs = zones.Any(z => z.Output != null) ? zones.Where(z => z.Output != null).ToDictionary(z => z.Name, z => z.Output) : null;
+            SaveStreamVolumes(ss);
 
             try { settings.Save(settingsPath); }
             catch (Exception ex) { AddLog($"could not save settings to {settingsPath}: {ex.Message}"); }

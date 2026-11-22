@@ -8,7 +8,16 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
 
 ## State at hand-off (2026-11-16)
 
-- Version **0.31.6** on `main` (set once, in `src/Directory.Build.props`): the peer tells the FNE
+- Version **0.32.0** on `main` (set once, in `src/Directory.Build.props`): web streams, the codeplug's
+  `web_streams` per zone (`WebStreamPlayer.cs`, `DispatchConsole.Streams.cs`; cards after the tab's
+  channels, `StreamCard`; the TUI's `s` box, `Tui.Streams.cs`). MP3 only, decoded by NLayer 3.0.1 (it
+  reads `Position` even on a stream that can't seek, so the body is wrapped in a byte counter), mixed to
+  mono and resampled to 8 kHz by `WavFile.StreamResampler` (the announcement filter, in pieces). The
+  Windows console's behaviour: off at start, 3 attempts 5 s apart, RX held 1.4 s (measured in audio
+  played, since a feed arrives in bursts), Basic auth. Refusals (401/403/404, not MP3) fail at once. The
+  log shows a stream's name and host only. Tested by the self-test against a local server
+  (`TestData/voice.mp3`, also embedded in the Android app for its on-device check).
+  0.31.6: the peer tells the FNE
   its version and platform, `SIDETONE_R00A31_LNX` (`CliPeer.SoftwareId`; R major, A minor, as the
   Windows console's `CONSOLE_R01A02`; then `LNX`, `AND`, `WIN` or `MAC`, the owner's choice); it was a
   fixed `SIDETONE_R00A01`. Confirmed: the FNE shows `SIDETONE_R00A31_AND` for a phone. 0.31.5, fixes from an audit:
@@ -45,8 +54,8 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
   announcement; 0.29 brought WAV
   announcements, `listen --key-file`, the dvmcli/dvmgui wrappers removed. Check
   `gh release list` for what was last published.
-- 371 checks (299 in `sidetone-cli selftest`, one of which runs only when a speech engine is
-  installed; 72 in the GUI's `--selfcheck`) plus screenshots, and the Android job's on-device
+- 386 checks (312 in `sidetone-cli selftest`, one of which runs only when a speech engine is
+  installed; 74 in the GUI's `--selfcheck`) plus screenshots, and the Android job's on-device
   self-test (`DeviceSelfTest.cs`, on an API 30 emulator).
 - **Tested on the air by the owner:** RX/TX clear and AES, key delivery from the FNE, alias sync,
   alert tones, channel marker, QCII and digital pages, radio check (the radio answers; see the FNE
@@ -82,7 +91,8 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
   log files and Copy log, the TUI using the GUI's saved settings, the TUI's card buttons and key
   file box; from 0.26: Opus recordings and Delete after; from 0.28: one-way patches, outputs per
   tab and channel, the call history between runs; from 0.29: announcements, `listen --key-file`; from 0.30: the scheduled time announcement, the new announcement level (0.30.3); from 0.31:
-  on Android, hardware PTT keys on Sonim and the LEX L11; and the
+  on Android, hardware PTT keys on Sonim and the LEX L11; from 0.32: web streams (a real feed, and
+  one with a password); and the
   desktop's phone layout
   (Piper is installed on the owner's Surface, through `uv tool install piper-tts`, with the
   en_US-lessac-medium voice).

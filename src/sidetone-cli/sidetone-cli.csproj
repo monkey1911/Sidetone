@@ -25,4 +25,9 @@
     </None>
   </ItemGroup>
 
+  <!-- the web stream self-test's MP3 (2 s of a voiced tone, 2 s of silence; stereo 22.05 kHz) -->
+  <ItemGroup>
+    <EmbeddedResource Include="TestData\voice.mp3" LogicalName="voice.mp3" />
+  </ItemGroup>
+
 </Project>
