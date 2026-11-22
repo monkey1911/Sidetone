@@ -8,7 +8,20 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
 
 ## State at hand-off (2026-11-16)
 
-- Version **0.32.0** on `main` (set once, in `src/Directory.Build.props`): web streams, the codeplug's
+- Version **0.33.0** on `main` (set once, in `src/Directory.Build.props`): several FNE systems at
+  once. `FneLink` (one per system: peer, `KeyStore`, `RadioAliasBook`, and `SinkForTest`/`RidForTest`
+  for the self-test); `ConsoleChannel.Link`. The console's `system`, `peer`, `keys`, `aliases`,
+  `sinkForTest` and `consoleRidForTest` now forward to the **primary** (first) link, which also holds
+  the codeplug-wide settings (hidden tabs, tab outputs, time announcement, history); a channel's own
+  settings are under its system (`SystemSettings.FocusedSystem` says which system the focus is on).
+  Frames are matched by system and TG (`OnFrame(link, e)`), so the same TG on two FNEs is two channels.
+  Radio commands and digital pages go to `CommandLink` (the focused channel's system). A cross-system
+  patch sends as the console's RID on the target's system. `CodeplugLoader.SystemsToConnect`: every
+  system with channels, minus `SystemSettings.Off` (Settings, Systems row, `SettingsOverlay.Systems.cs`),
+  at least one; `--system NAME` still picks one. `LastSystem` is now only the offline view's label.
+  Screenshot mode fills any codeplug with the demo's activity (`DemoCodeplug.Populate`), so a codeplug
+  rendered there needs 4 tabs and 4 channels.
+  0.32.0: web streams, the codeplug's
   `web_streams` per zone (`WebStreamPlayer.cs`, `DispatchConsole.Streams.cs`; cards after the tab's
   channels, `StreamCard`; the TUI's `s` box, `Tui.Streams.cs`). MP3 only, decoded by NLayer 3.0.1 (it
   reads `Position` even on a stream that can't seek, so the body is wrapped in a byte counter), mixed to
@@ -54,8 +67,8 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
   announcement; 0.29 brought WAV
   announcements, `listen --key-file`, the dvmcli/dvmgui wrappers removed. Check
   `gh release list` for what was last published.
-- 386 checks (312 in `sidetone-cli selftest`, one of which runs only when a speech engine is
-  installed; 74 in the GUI's `--selfcheck`) plus screenshots, and the Android job's on-device
+- 399 checks (324 in `sidetone-cli selftest`, one of which runs only when a speech engine is
+  installed; 75 in the GUI's `--selfcheck`) plus screenshots, and the Android job's on-device
   self-test (`DeviceSelfTest.cs`, on an API 30 emulator).
 - **Tested on the air by the owner:** RX/TX clear and AES, key delivery from the FNE, alias sync,
   alert tones, channel marker, QCII and digital pages, radio check (the radio answers; see the FNE
@@ -92,13 +105,14 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
   file box; from 0.26: Opus recordings and Delete after; from 0.28: one-way patches, outputs per
   tab and channel, the call history between runs; from 0.29: announcements, `listen --key-file`; from 0.30: the scheduled time announcement, the new announcement level (0.30.3); from 0.31:
   on Android, hardware PTT keys on Sonim and the LEX L11; from 0.32: web streams (a real feed, and
-  one with a password); and the
+  one with a password); from 0.33: two FNEs at once (CTRS's P25 FNE and its DMR FNE, for the
+  connection side until DMR itself is done); and the
   desktop's phone layout
   (Piper is installed on the owner's Surface, through `uv tool install piper-tts`, with the
   en_US-lessac-medium voice).
 - Next on the wishlist ("To be implemented"): a CI test against a real dvmfne (waiting for dvmhost's
-  `r05a06_dev` to merge into `master`), then DMR together with several FNEs at once (CTRS carries
-  DMR on a second FNE); NXDN is further down (CTRS doesn't carry it, and there's no hardware to test
+  `r05a06_dev` to merge into `master`), then DMR (several FNEs at once is done in 0.33; CTRS
+  carries DMR on a second FNE); NXDN is further down (CTRS doesn't carry it, and there's no hardware to test
   it). The TUI's only remaining gap is audio over SSH.
 
 ## Layout

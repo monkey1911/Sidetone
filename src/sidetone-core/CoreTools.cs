@@ -55,6 +55,36 @@ namespace Sidetone.Core
                 ? codeplug.Systems[0]
                 : codeplug.Systems.FirstOrDefault(s => string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase))
                     ?? throw new ArgumentException($"no system named '{name}'");
+
+        /// <summary>The systems that have channels in the codeplug (a channel with no system is on the first one).</summary>
+        public static List<Codeplug.System> SystemsWithChannels(Codeplug codeplug)
+        {
+            List<Codeplug.Channel> all = (codeplug.Zones ?? new List<Codeplug.Zone>()).Where(z => z?.Channels != null).SelectMany(z => z.Channels).Where(c => c != null).ToList();
+            return codeplug.Systems.Where((s, i) => all.Any(c => string.IsNullOrWhiteSpace(c.System) ? i == 0 : string.Equals(c.System.Trim(), s.Name, StringComparison.OrdinalIgnoreCase))).ToList();
+        }
+
+        /// <summary>
+        /// The systems a console connects to: only <paramref name="only"/> when given (--system), otherwise every
+        /// system with channels that isn't turned off in Settings. When all of them are off, the first still
+        /// connects (a console needs one), with a note saying so.
+        /// </summary>
+        public static List<Codeplug.System> SystemsToConnect(Codeplug codeplug, AppSettings settings, string only, List<string> notes = null)
+        {
+            if (only != null)
+                return new List<Codeplug.System> { FindSystem(codeplug, only) };
+            List<Codeplug.System> with = SystemsWithChannels(codeplug);
+            if (with.Count == 0)
+                return new List<Codeplug.System> { codeplug.Systems[0] };    // the console says there are no channels
+            List<Codeplug.System> on = with.Where(s => !(settings != null && settings.Systems.TryGetValue(s.Name, out SystemSettings ss) && ss.Off == true)).ToList();
+            if (on.Count == 0)
+            {
+                notes?.Add($"every system is turned off in Settings, so {with[0].Name} connects anyway");
+                on.Add(with[0]);
+            }
+            else if (on.Count < with.Count)
+                notes?.Add($"turned off in Settings: {string.Join(", ", with.Except(on).Select(s => s.Name))}");
+            return on;
+        }
     } // public static class CodeplugLoader
 
     /// <summary>

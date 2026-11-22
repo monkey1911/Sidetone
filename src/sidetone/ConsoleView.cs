@@ -35,7 +35,8 @@ namespace Sidetone.Gui
         private readonly string settingsPath;
         private AppSettings appSettings;
         private string settingsError;      // why the settings file couldn't be read at start-up, for the first console's log
-        private string currentPath, currentSystem;     // the open codeplug and system
+        private string currentPath, currentSystem;     // the open codeplug, and its system (or systems) in words
+        private Codeplug currentCodeplug;
         private readonly DispatcherTimer timer;
         private readonly FontFamily mono = new FontFamily("JetBrainsMono Nerd Font,JetBrains Mono,DejaVu Sans Mono,Liberation Mono,monospace");
 
@@ -164,7 +165,7 @@ namespace Sidetone.Gui
             if (path != null && opt.Codeplug == null && !opt.Demo && appSettings.Offline == true)
                 ShowOffline(path, appSettings.LastSystem);       // left offline last time: stay so until Go online
             else if (path != null)
-                OpenCodeplug(path, opt.SystemName ?? (opt.Codeplug == null && !opt.Demo ? appSettings.LastSystem : null));
+                OpenCodeplug(path, opt.SystemName);     // every system with channels, unless --system names one
             else
                 ShowWelcome(null);
             ApplyTheme();
@@ -560,25 +561,24 @@ namespace Sidetone.Gui
                 DebugLog.Mark("codeplug", $"loading {Path.GetFileName(path)} ({size} bytes)");
                 Codeplug cp = CodeplugLoader.Load(path);
                 DebugLog.Mark("codeplug", $"loaded: {cp.Systems?.Count ?? 0} system(s), {cp.Zones?.Count ?? 0} zone(s)");
-                Codeplug.System system;
-                try { system = CodeplugLoader.FindSystem(cp, wantedSystem); }
-                catch (ArgumentException) when (wantedSystem != null && opt.SystemName == null) { system = cp.Systems[0]; }   // a remembered system that's gone
 
                 // the command line wins; otherwise what Settings saved; otherwise the defaults
                 List<string> notes = new List<string>();
+                List<Codeplug.System> systems = CodeplugLoader.SystemsToConnect(cp, appSettings, wantedSystem, notes);
+                string systemsText = string.Join(" + ", systems.Select(s => s.Name));
                 (string Device, string Button, string Mute)? pttDevice = StartupChoices.PttDevice(opt.PttDevice, opt.PttButton, opt.MuteButton, appSettings, notes);
                 AudioSelection audio = offline ? null : StartupChoices.Audio(opt.Output, opt.Input, appSettings, notes);
 
                 if (settingsPath != null)
                 {
                     appSettings.LastCodeplug = Path.GetFullPath(path);
-                    appSettings.LastSystem = system.Name;
+                    appSettings.LastSystem = systemsText;     // the offline view's name for it
                     appSettings.Offline = null;     // opening a codeplug is going online
                     appSettings.Theme = themeSetting;
                     try { appSettings.Save(settingsPath); } catch { /* not worth stopping for */ }
                 }
 
-                DispatchConsole c = new DispatchConsole(cp, system, TimeSpan.FromSeconds(TxLimitSeconds),
+                DispatchConsole c = new DispatchConsole(cp, systems, TimeSpan.FromSeconds(TxLimitSeconds),
                                                         string.IsNullOrWhiteSpace(opt.LogFile) ? null : Path.GetFullPath(opt.LogFile),
                                                         null, settingsPath)
                 {
@@ -632,7 +632,8 @@ namespace Sidetone.Gui
                 console = c;
                 GuiPlatform.Current?.Apply(appSettings, offline ? null : c);
                 currentPath = Path.GetFullPath(path);
-                currentSystem = system.Name;
+                currentSystem = systemsText;
+                currentCodeplug = cp;
 
                 cards.Clear();
                 cardPanel.Children.Clear();
@@ -655,7 +656,7 @@ namespace Sidetone.Gui
                 welcome.IsVisible = false;
                 consoleView.IsVisible = true;
                 UpdateLayoutMode();
-                SetTitle($"Sidetone: {system.Name}");
+                SetTitle($"Sidetone: {systemsText}");
                 if (askForPassword)
                     ShowKeyBox();
             }
@@ -826,7 +827,7 @@ namespace Sidetone.Gui
         {
             if (console == null || offline || currentPath == null)
                 return;
-            OpenCodeplug(currentPath, currentSystem);
+            OpenCodeplug(currentPath, opt.SystemName);
             ApplyTheme();
         }
 
@@ -898,7 +899,10 @@ namespace Sidetone.Gui
                 HardwarePttKeyName = appSettings.HardwarePttKeyName,
                 KeepScreenOn = appSettings.KeepScreenOn == true,
                 WakeOnCall = appSettings.WakeOnCall != false,
-                PttFromBroadcasts = appSettings.PttFromBroadcasts == true
+                PttFromBroadcasts = appSettings.PttFromBroadcasts == true,
+                // --system picks one for this run, so the row isn't offered then
+                Systems = currentCodeplug == null || opt.SystemName != null || offline ? null
+                        : CodeplugLoader.SystemsWithChannels(currentCodeplug).Select(s => (s.Name, !(appSettings.Systems.TryGetValue(s.Name, out SystemSettings ss) && ss.Off == true))).ToList()
             }, audio, inputs, opt.Demo ? "The demo system (no codeplug file)." : currentPath, CommandLineOverrides(),
                !offline && AppLauncher.IsInstalled(AppLauncher.DataHome), KeyFileSummary(out bool locked), locked,
                appSettings.KeyFile != null && opt.KeyFile == null,
@@ -926,6 +930,8 @@ namespace Sidetone.Gui
                              !Same(appSettings.PttDeviceName, v.PttDevice) || !Same(appSettings.PttButton, v.PttButton) ||
                              !Same(appSettings.MuteButton, v.MuteButton) || StartupChoices.TxLimit(null, appSettings) != v.TxLimit;
 
+            bool systemsChanged = v.Systems != null && v.Systems.Any(x => (appSettings.Systems.TryGetValue(x.Name, out SystemSettings was) && was.Off == true) == x.On);
+            reconnect |= systemsChanged;
             bool rescaled = appSettings.UiScale != v.Scale;
             bool pruneNow = appSettings.RecordingKeepDays != v.KeepDays;
             bool historyChanged = (appSettings.KeepHistory != false) != v.KeepHistory || appSettings.HistoryKeepSecure != v.HistorySecure;
@@ -955,6 +961,8 @@ namespace Sidetone.Gui
                 s.KeepScreenOn = v.KeepScreenOn ? true : null;
                 s.WakeOnCall = v.WakeOnCall ? null : false;
                 s.PttFromBroadcasts = v.PttFromBroadcasts ? true : null;
+                foreach ((string name, bool on) in v.Systems ?? new List<(string, bool)>())
+                    s.For(name).Off = on ? null : true;
             });
             GuiPlatform.Current?.Apply(appSettings, offline ? null : console);
             if (historyChanged && !offline)
@@ -1164,7 +1172,7 @@ namespace Sidetone.Gui
             }
             offlinePath = offlineSystem = null;
             goOnlineTap.Root.IsVisible = false;
-            OpenCodeplug(path, system);
+            OpenCodeplug(path, opt.SystemName);
             ApplyTheme();
         }
 
@@ -1304,11 +1312,21 @@ namespace Sidetone.Gui
                 return;
 
             // header
-            systemName.Text = c.SystemConfig.Name;
             bool connected = c.Connected;
-            connection.Text = offline ? "● demo (not connected)" : connected ? "● connected" : "○ connecting…";
+            if (c.MultiSystem)
+            {
+                // several systems: how many are connected, then each one's name with its own dot (peers and RIDs are in the log)
+                systemName.Text = $"{c.Links.Count} systems";
+                connection.Text = offline ? "● demo (not connected)" : connected ? "● all connected" : $"○ {c.ConnectedCount} of {c.Links.Count} connected";
+                details.Text = string.Join("   ", c.Links.Select(l => $"{(l.Connected ? "●" : "○")} {l.Name}"));
+            }
+            else
+            {
+                systemName.Text = c.SystemConfig.Name;
+                connection.Text = offline ? "● demo (not connected)" : connected ? "● connected" : "○ connecting…";
+                details.Text = $"peer {c.SystemConfig.PeerId}   RID {c.ConsoleRid}   keys {c.Keys.Count}   {c.Aliases.Summary}";
+            }
             connection.Foreground = offline ? p.Dim : connected ? p.Rx : p.Warn;
-            details.Text = $"peer {c.SystemConfig.PeerId}   RID {c.ConsoleRid}   keys {c.Keys.Count}   {c.Aliases.Summary}";
 
             bool tx = c.Transmitting;
             ToneJob tone = c.ActiveTone;

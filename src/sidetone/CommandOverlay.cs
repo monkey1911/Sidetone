@@ -210,6 +210,9 @@ namespace Sidetone.Gui
         {
             bool page = Open == Kind.Page;
             title.Text = page ? "Page" : "Radio command";
+            DispatchConsole c = console();
+            if (c != null && c.MultiSystem && (!page || Digital))
+                title.Text += $" on {c.CommandLink.Name}";     // digital pages and radio commands go to the focused channel's system
             modeRow.IsVisible = page;
             tonePanel.IsVisible = page && !Digital;
             pageRidPanel.IsVisible = page && Digital;

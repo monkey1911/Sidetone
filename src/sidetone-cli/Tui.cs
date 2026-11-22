@@ -52,6 +52,13 @@ namespace Sidetone.Cli
         {
         }
 
+        /// <summary>The terminal console for several systems at once (the first is the primary one).</summary>
+        public Tui(Codeplug codeplug, IReadOnlyList<Codeplug.System> systems, TimeSpan txLimit, string logFile, TimeSpan? markerInterval = null,
+                   string settingsPath = null)
+            : base(codeplug, systems, txLimit, logFile, markerInterval, settingsPath)
+        {
+        }
+
         /// <summary>
         /// Runs until the user quits.
         /// </summary>
@@ -722,14 +729,28 @@ namespace Sidetone.Cli
             screen.Text(2, 0, " Sidetone ", Style.Of(Ansi.BrightCyan, bold: true));
 
             int tx0 = 2, inner = boxW - 4;
-            bool connected = peer?.Connected == true;
-            int used = screen.Text(tx0, 1, system.Name, Style.Of(Ansi.BrightWhite, bold: true), inner);
-            used += screen.Text(tx0 + used, 1, connected ? "  ● connected" : "  ○ connecting…",
-                                connected ? Style.Of(Ansi.BrightGreen) : Style.Of(Ansi.Yellow), inner - used);
+            int used = 0;
+            if (MultiSystem)
+            {
+                // each system with its own dot: ● connected, ○ connecting
+                foreach (FneLink link in Links)
+                {
+                    used += screen.Text(tx0 + used, 1, (used > 0 ? "  " : string.Empty) + link.Name, Style.Of(Ansi.BrightWhite, bold: true), inner - used);
+                    used += screen.Text(tx0 + used, 1, link.Connected ? " ●" : " ○", link.Connected ? Style.Of(Ansi.BrightGreen) : Style.Of(Ansi.Yellow), inner - used);
+                }
+            }
+            else
+            {
+                bool connected = peer?.Connected == true;
+                used = screen.Text(tx0, 1, system.Name, Style.Of(Ansi.BrightWhite, bold: true), inner);
+                used += screen.Text(tx0 + used, 1, connected ? "  ● connected" : "  ○ connecting…",
+                                    connected ? Style.Of(Ansi.BrightGreen) : Style.Of(Ansi.Yellow), inner - used);
+            }
             int streamsOn = Streams.Count(s => s.On);
             if (streamsOn > 0)
                 used += screen.Text(tx0 + used, 1, $"  streams: {streamsOn} on", Style.Of(Ansi.BrightGreen), inner - used);
-            screen.Text(tx0 + used, 1, $"  peer {system.PeerId}  RID {peer?.ConsoleRid ?? 0}  keys {keys.Count}  {aliases.Summary}", Style.Of(Ansi.White), inner - used);
+            if (!MultiSystem)       // each system has its own peer ID and RID; the log says which is which
+                screen.Text(tx0 + used, 1, $"  peer {system.PeerId}  RID {peer?.ConsoleRid ?? 0}  keys {keys.Count}  {aliases.Summary}", Style.Of(Ansi.White), inner - used);
 
             DrawMicMeter(boxW);
         }

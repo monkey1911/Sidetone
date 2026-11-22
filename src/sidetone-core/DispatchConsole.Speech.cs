@@ -38,7 +38,7 @@ namespace Sidetone.Core
         /// <summary>The time now (UTC), or the self-test's.</summary>
         internal DateTime UtcNow => clockForTest?.Invoke() ?? DateTime.UtcNow;
 
-        private bool CanSendAnnouncement => sendAnnouncementForTest != null || (peer != null && peer.Connected);
+        private bool CanSendAnnouncement => sendAnnouncementForTest != null || links.Any(l => l.Connected);
 
         private void SendAnnouncement(TonePlan plan, List<Chan> targets)
         {

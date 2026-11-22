@@ -307,7 +307,8 @@ namespace Sidetone.Gui
             name.Foreground = chan.IsP25 ? p.Text : p.Dim;
 
             string patch = console.PatchName(chan);
-            Set(tg, (chan.Tg != 0 ? $"TG {chan.Tg}" : $"TG {chan.Cfg.Tgid}") + (patch != null ? $"   {DispatchConsole.PatchMark(chan)} {patch}" : string.Empty));
+            Set(tg, (chan.Tg != 0 ? $"TG {chan.Tg}" : $"TG {chan.Cfg.Tgid}") + (console.MultiSystem ? $" · {chan.Link.Name}" : string.Empty) +
+                    (patch != null ? $"   {DispatchConsole.PatchMark(chan)} {patch}" : string.Empty));
             tg.Foreground = patch != null ? p.Accent : p.Text;
 
             if (!chan.IsP25)

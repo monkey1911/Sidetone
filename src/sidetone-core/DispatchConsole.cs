@@ -27,6 +27,8 @@ namespace Sidetone.Core
     public sealed class ConsoleChannel
     {
         public Codeplug.Channel Cfg;
+        /// <summary>The FNE system this channel is on.</summary>
+        public FneLink Link;
         /// <summary>The codeplug zone's name, as written there (part of the remembered settings key).</summary>
         public string Zone;
         /// <summary>The zone (tab) this channel is on.</summary>
@@ -92,16 +94,19 @@ namespace Sidetone.Core
         public const int MaxLogLines = 500;
         internal const int MaxRecentCalls = 100;
 
+        /// <summary>Every FNE system connected; the first is the primary one (see FneLink).</summary>
+        internal readonly List<FneLink> links = new List<FneLink>();
+        /// <summary>The primary system (codeplug-wide settings and history are kept under its name).</summary>
         internal readonly Codeplug.System system;
         internal readonly TimeSpan txLimit;
         internal readonly string logFile;
-        internal readonly KeyStore keys = new KeyStore();
+        internal KeyStore keys => links[0].Keys;
         internal readonly List<Chan> chans = new List<Chan>();
         internal readonly object uiLock = new object();
         internal readonly LinkedList<string> log = new LinkedList<string>();
         internal readonly LinkedList<(DateTime When, string Chan, string Who, string Detail, bool Tx)> recent = new();
 
-        internal CliPeer peer;
+        internal CliPeer peer => links[0].Peer;
         internal int cursor;
         internal volatile bool globalMute;
 
@@ -148,23 +153,48 @@ namespace Sidetone.Core
         public bool MicMonitor => micMonitor;
         public RadioAliasBook Aliases => aliases;
 
-        internal readonly RadioAliasBook aliases;
+        internal RadioAliasBook aliases => links[0].Aliases;
         public LevelMeter MicLevel => micLevel;
+
+        /// <summary>Every FNE system connected, the primary one first.</summary>
+        public IReadOnlyList<FneLink> Links => links;
+        /// <summary>More than one system: names and log lines say which.</summary>
+        public bool MultiSystem => links.Count > 1;
+        /// <summary>How many systems are connected now.</summary>
+        public int ConnectedCount => links.Count(l => l.Connected);
 
         /// <summary>
         /// Creates the console for one system of a codeplug.
         /// </summary>
         public DispatchConsole(Codeplug codeplug, Codeplug.System system, TimeSpan txLimit, string logFile, TimeSpan? markerInterval = null,
                    string settingsPath = null)
+            : this(codeplug, new[] { system }, txLimit, logFile, markerInterval, settingsPath)
         {
+        }
+
+        /// <summary>
+        /// Creates the console for several systems of a codeplug at once (the first is the primary one).
+        /// </summary>
+        public DispatchConsole(Codeplug codeplug, IReadOnlyList<Codeplug.System> systems, TimeSpan txLimit, string logFile, TimeSpan? markerInterval = null,
+                   string settingsPath = null)
+        {
+            if (systems == null || systems.Count == 0)
+                throw new ArgumentException("no systems to connect to");
+            Codeplug.System system = systems[0];
             this.settingsPath = settingsPath;
             settings = AppSettings.Load(settingsPath, out settingsError);
             talkPermit = settings.TalkPermitTone;
             this.markerInterval = markerInterval ?? TimeSpan.FromSeconds(10);   // the Windows console's hold timer
             this.system = system;
             this.txLimit = txLimit;
-            aliases = new RadioAliasBook(codeplug, system, Path.GetDirectoryName(settingsPath ?? AppSettings.DefaultPath));
-            aliases.Status += AddLog;
+            foreach (Codeplug.System sys in systems)
+            {
+                if (links.Any(l => string.Equals(l.Name, sys.Name, StringComparison.OrdinalIgnoreCase)))
+                    continue;
+                FneLink link = new FneLink(sys) { Aliases = new RadioAliasBook(codeplug, sys, Path.GetDirectoryName(settingsPath ?? AppSettings.DefaultPath)) };
+                link.Aliases.Status += m => AddLog(Tagged(link, m));
+                links.Add(link);
+            }
             this.logFile = logFile;
             SetUpPatches(codeplug);
 
@@ -176,7 +206,12 @@ namespace Sidetone.Core
                     continue;
                 foreach (Codeplug.Channel c in zone.Channels ?? new List<Codeplug.Channel>())
                 {
-                    if (c == null || (!string.IsNullOrWhiteSpace(c.System) && !string.Equals(c.System, system.Name, StringComparison.OrdinalIgnoreCase)))
+                    if (c == null)
+                        continue;
+                    // a channel without a system is on the primary one, as before
+                    FneLink on = string.IsNullOrWhiteSpace(c.System) ? links[0]
+                               : links.FirstOrDefault(l => string.Equals(l.Name, c.System.Trim(), StringComparison.OrdinalIgnoreCase));
+                    if (on == null)
                         continue;
 
                     bool p25 = c.GetChannelMode() == Codeplug.ChannelMode.P25;
@@ -186,6 +221,7 @@ namespace Sidetone.Core
                     Chan made = new Chan
                     {
                         Cfg = c,
+                        Link = on,
                         Zone = zone.Name,
                         InZone = inZone,
                         Tg = tg,
@@ -202,7 +238,8 @@ namespace Sidetone.Core
             }
 
             if (chans.Count == 0)
-                throw new ArgumentException($"no channels for system '{system.Name}' in the codeplug");
+                throw new ArgumentException(links.Count == 1 ? $"no channels for system '{system.Name}' in the codeplug"
+                                                             : $"no channels for systems {string.Join(", ", links.Select(l => $"'{l.Name}'"))} in the codeplug");
             SetUpStreams(codeplug);
         }
 
@@ -220,16 +257,22 @@ namespace Sidetone.Core
             if (LogFolder != null && logFile == null)
                 LogFiles.Prune(LogFolder, DateTime.Now);
             AddLog($"Sidetone {Version} started{(LogFilePath != null ? $"; log file {LogFilePath}" : string.Empty)}");
-            try { peer = new CliPeer(system, keys, verbose: false); }
-            catch (FneAddressException ex)
+            foreach (FneLink link in links)
             {
-                AddLog($"error: {ex.Message} (address \"{ex.Host}\")");
-                throw;
+                try { link.Peer = new CliPeer(link.Cfg, link.Keys, verbose: false); }
+                catch (FneAddressException ex)
+                {
+                    AddLog(Tagged(link, $"error: {ex.Message} (address \"{ex.Host}\")"));
+                    if (links.Count == 1)
+                        throw;
+                    continue;   // the other systems still connect
+                }
+                FneLink l = link;
+                link.Peer.Status += m => AddLog(Tagged(l, m));
+                link.Peer.P25Frame += e => OnFrame(l, e);
+                link.Peer.P25Control += (lco, src, dst, tsbk) => OnP25Control(l, lco, src, dst, tsbk);
+                link.Peer.Aliases = link.Aliases;
             }
-            peer.Status += AddLog;
-            peer.P25Frame += OnFrame;
-            peer.P25Control += OnP25Control;
-            peer.Aliases = aliases;
 
             if (Audio != null)
             {
@@ -237,16 +280,19 @@ namespace Sidetone.Core
                 AddLog(Audio.InputReport);
             }
             ReloadAudioProcessing(log: true);
-            AddLog($"connecting to {system.Name} ({system.Address}:{system.Port}) as peer {system.PeerId}");
+            foreach (FneLink link in links)
+                AddLog($"connecting to {link.Name} ({link.Cfg.Address}:{link.Cfg.Port}) as peer {link.Cfg.PeerId}");
             if (settingsError != null)
                 AddLog(settingsError);
-            aliases.Load();
+            foreach (FneLink link in links)
+                link.Aliases.Load();
             RestoreSettings();
             LoadHistory();
             PruneRecordingsSoon();
             StartControl();
             StartPttDevice();
-            peer.Start();
+            foreach (FneLink link in links)
+                link.Peer?.Start();
             ClaimUiThread();
         }
 
@@ -275,14 +321,16 @@ namespace Sidetone.Core
             StopReplay();
             StopAllStreams();
             ClearPatches(quiet: true);
-            keys.SetLocal(null, 0);
+            foreach (FneLink link in links)
+                link.Keys.SetLocal(null, 0);
             localKeys?.Dispose();   // wipes the key file's keys from memory
             localKeys = null;
             micMonitor = false;
             CloseMicIfUnused();
             foreach (Chan c in chans)
                 Deselect(c, quiet: true);
-            peer?.Stop();
+            foreach (FneLink link in links)
+                link.Peer?.Stop();
         }
 
         /*
@@ -305,16 +353,19 @@ namespace Sidetone.Core
         public Codeplug.System SystemConfig => system;
         /// <summary>Longest transmission allowed.</summary>
         public TimeSpan TxLimit => txLimit;
-        /// <summary>Logged in to the FNE.</summary>
-        public bool Connected => peer?.Connected == true;
-        /// <summary>This console's radio ID (0 until connected).</summary>
-        public uint ConsoleRid => peer?.ConsoleRid ?? consoleRidForTest;
+        /// <summary>Logged in to every FNE system.</summary>
+        public bool Connected => links.All(l => l.Connected);
+        /// <summary>This console's radio ID on the primary system (0 until connected).</summary>
+        public uint ConsoleRid => links[0].ConsoleRid;
         /// <summary>Encryption keys received so far.</summary>
         public KeyStore Keys => keys;
         /// <summary>Whether the key for an encrypted channel has arrived.</summary>
-        public bool HasKey(ConsoleChannel c) => c.Encrypted && keys.TryGet(c.KeyRequestAlg, c.KeyId, out _);
+        public bool HasKey(ConsoleChannel c) => c.Encrypted && c.Link.Keys.TryGet(c.KeyRequestAlg, c.KeyId, out _);
         /// <summary>The channel's key comes from the local key file rather than the FNE.</summary>
-        public bool KeyIsLocal(ConsoleChannel c) => c.Encrypted && keys.IsLocal(c.KeyRequestAlg, c.KeyId);
+        public bool KeyIsLocal(ConsoleChannel c) => c.Encrypted && c.Link.Keys.IsLocal(c.KeyRequestAlg, c.KeyId);
+
+        /// <summary>A log line from one system: named when there are several.</summary>
+        internal string Tagged(FneLink link, string message) => links.Count > 1 && link != null ? $"{link.Name}: {message}" : message;
 
         /// <summary>The local key file (.ekc) to use, or null. Set it before unlocking with <see cref="LoadKeyFile"/>.</summary>
         public string KeyFilePath { get; set; }
@@ -344,11 +395,12 @@ namespace Sidetone.Core
 
             localKeys?.Dispose();
             localKeys = opened;
-            keys.SetLocal(opened.Lookup, opened.Count);
-            int used = chans.Count(c => c.Encrypted && keys.IsLocal(c.KeyRequestAlg, c.KeyId));
+            foreach (FneLink link in links)
+                link.Keys.SetLocal(opened.Lookup, opened.Count);
+            int used = chans.Count(c => c.Encrypted && c.Link.Keys.IsLocal(c.KeyRequestAlg, c.KeyId));
             AddLog($"keys: {opened.Count} from {Path.GetFileName(KeyFilePath)}" +
                    (opened.Skipped > 0 ? $" ({opened.Skipped} skipped: not traffic keys, or an algorithm that isn't supported)" : string.Empty) +
-                   $"; {used} of this system's channels use one");
+                   $"; {used} of {(links.Count > 1 ? "the" : "this system's")} channels use one");
             return null;
         }
         /// <summary>The channel being transmitted on, or null.</summary>
@@ -415,13 +467,13 @@ namespace Sidetone.Core
             {
                 byte alg = rx.CurrentAlgorithm;
                 bool enc = alg != 0 && alg != P25Defines.P25_ALGO_UNENCRYPT;
-                bool noKey = enc && rx.CallHasMuted && !keys.TryGet(alg, rx.CurrentKeyId, out _);
+                bool noKey = enc && rx.CallHasMuted && !c.Link.Keys.TryGet(alg, rx.CurrentKeyId, out _);
                 return new ChannelStatus(noKey ? ChannelActivity.ReceivingNoKey : ChannelActivity.Receiving,
-                                         $"RX {aliases.Label(rx.CurrentSource)}{(noKey ? " (no key)" : string.Empty)}", muted);
+                                         $"RX {c.Link.Aliases.Label(rx.CurrentSource)}{(noKey ? " (no key)" : string.Empty)}", muted);
             }
 
             if (!c.Selected && c.Active)
-                return new ChannelStatus(ChannelActivity.Busy, $"busy: {aliases.Label(c.ActiveSrc)}", muted);
+                return new ChannelStatus(ChannelActivity.Busy, $"busy: {c.Link.Aliases.Label(c.ActiveSrc)}", muted);
             if (c.Selected)
                 return new ChannelStatus(ChannelActivity.Listening, muted ? "listening (muted)" : "listening", muted);
             return new ChannelStatus(ChannelActivity.Idle, "not listening", muted);
@@ -431,11 +483,14 @@ namespace Sidetone.Core
         ** Network
         */
 
-        internal void OnFrame(P25DataReceivedEvent e)
+        internal void OnFrame(P25DataReceivedEvent e) => OnFrame(links[0], e);
+
+        /// <summary>A voice frame from one system: only that system's channels on its talkgroup take it.</summary>
+        internal void OnFrame(FneLink link, P25DataReceivedEvent e)
         {
             List<Chan> matching;
             lock (uiLock)
-                matching = chans.Where(c => c.IsP25 && c.Tg == e.DstId && !c.Hidden).ToList();     // a hidden zone's channels are off
+                matching = chans.Where(c => c.Link == link && c.IsP25 && c.Tg == e.DstId && !c.Hidden).ToList();     // a hidden zone's channels are off
 
             bool terminator = e.DUID == P25DUID.TDU || e.DUID == P25DUID.TDULC;
             foreach (Chan c in matching)
@@ -470,8 +525,8 @@ namespace Sidetone.Core
         private void EndBusy(Chan c)
         {
             c.Active = false;
-            c.LastCall = $"{aliases.Label(c.ActiveSrc)} at {DateTime.Now:HH:mm}";
-            AddRecent(c.Cfg.Name, aliases.Label(c.ActiveSrc), "not listening", tx: false);
+            c.LastCall = $"{c.Link.Aliases.Label(c.ActiveSrc)} at {DateTime.Now:HH:mm}";
+            AddRecent(c.Cfg.Name, c.Link.Aliases.Label(c.ActiveSrc), "not listening", tx: false);
         }
 
         /// <summary>How long a call may go without frames before its end is taken as lost (as recall does).</summary>
@@ -511,9 +566,11 @@ namespace Sidetone.Core
                 return;
             }
 
-            P25VoiceReceiver rx = new P25VoiceReceiver(c.Tg, keys) { Clock = () => UtcNow };
+            FneLink link = c.Link;
+            RadioAliasBook aliases = link.Aliases;
+            P25VoiceReceiver rx = new P25VoiceReceiver(c.Tg, link.Keys) { Clock = () => UtcNow };
             rx.Status += s => { if (!s.StartsWith("CALL ")) AddLog($"{c.Cfg.Name}: {s}"); };
-            rx.KeyNeeded += (alg, kid) => peer?.RequestKey(alg, kid);
+            rx.KeyNeeded += (alg, kid) => link.Peer?.RequestKey(alg, kid);
             rx.DescribeSource = aliases.Describe;
             rx.CallStarted += src =>
             {
@@ -560,8 +617,8 @@ namespace Sidetone.Core
             AddLog($"{c.Cfg.Name}: listening (tg {c.Tg})");
             MarkDirty();
 
-            if (c.Encrypted && KeyStore.IsSupported(c.KeyRequestAlg) && !keys.TryGet(c.KeyRequestAlg, c.KeyId, out _))
-                peer?.RequestKey(c.KeyRequestAlg, c.KeyId);
+            if (c.Encrypted && KeyStore.IsSupported(c.KeyRequestAlg) && !c.Link.Keys.TryGet(c.KeyRequestAlg, c.KeyId, out _))
+                c.Link.Peer?.RequestKey(c.KeyRequestAlg, c.KeyId);
         }
 
         public void Deselect(Chan c, bool quiet = false)
@@ -650,10 +707,10 @@ namespace Sidetone.Core
         {
             if (c.Encrypted && KeyStore.IsSupported(c.KeyRequestAlg))
             {
-                if (peer == null || !peer.Connected)
-                    AddLog($"{c.Cfg.Name}: not connected to the FNE yet; its key is asked for once the console has logged in");
+                if (!c.Link.Connected)
+                    AddLog($"{c.Cfg.Name}: not connected to {(links.Count > 1 ? c.Link.Name : "the FNE")} yet; its key is asked for once the console has logged in");
                 else
-                    peer.RequestKey(c.KeyRequestAlg, c.KeyId);
+                    c.Link.Peer.RequestKey(c.KeyRequestAlg, c.KeyId);
             }
             else
                 AddLog($"{c.Cfg.Name}: clear channel, no key needed");
@@ -696,18 +753,18 @@ namespace Sidetone.Core
                 return Refuse($"{c.Cfg.Name}: can't transmit on a {c.Cfg.Mode} channel");
             if (c.Cfg.RxOnly)
                 return Refuse($"{c.Cfg.Name}: receive-only channel");
-            if (peer == null || !peer.Connected)
-                return Refuse("not connected to the FNE yet");
+            if (!c.Link.Connected)
+                return Refuse(links.Count > 1 ? $"not connected to {c.Link.Name} yet" : "not connected to the FNE yet");
             if (PatchTransmitText(c) != null)
                 return Refuse($"{c.Cfg.Name}: a patch is transmitting here");
 
             Select(c);
 
-            P25Transmitter t = new P25Transmitter(peer, keys, peer.ConsoleRid, c.Tg, c.ActiveTxAlg, c.ActiveKeyId);
+            P25Transmitter t = new P25Transmitter(c.Link.Peer, c.Link.Keys, c.Link.ConsoleRid, c.Tg, c.ActiveTxAlg, c.ActiveKeyId);
             if (!t.Start(out string error))
             {
                 if (c.TxSecure && KeyStore.IsSupported(c.KeyRequestAlg))
-                    peer.RequestKey(c.KeyRequestAlg, c.KeyId);
+                    c.Link.Peer.RequestKey(c.KeyRequestAlg, c.KeyId);
                 return Refuse($"{c.Cfg.Name}: not transmitting: {error}");
             }
 
@@ -724,7 +781,7 @@ namespace Sidetone.Core
             txFeed = t;
             if (talkPermit)
                 c.Sink?.Write(TalkPermitPcm());     // played locally once the call has started, as the Windows console does
-            AddLog($"{c.Cfg.Name}: TX start as {peer.ConsoleRid}{(t.Encrypted ? $" ({KeyStore.AlgorithmName(t.AlgorithmId)} key 0x{t.KeyId:X4})" : " (clear)")}");
+            AddLog($"{c.Cfg.Name}: TX start as {c.Link.ConsoleRid}{(t.Encrypted ? $" ({KeyStore.AlgorithmName(t.AlgorithmId)} key 0x{t.KeyId:X4})" : " (clear)")}");
             return null;
         }
 
@@ -809,7 +866,7 @@ namespace Sidetone.Core
             if (was)
             {
                 AddLog($"{txChan?.Cfg.Name}: TX end, {secs:F1} s, {t.FramesSent} frames{(reason != null ? $" ({reason})" : string.Empty)}");
-                AddRecent(txChan?.Cfg.Name, aliases.Label(t.SourceId), $"{secs:F0} s, {(t.Encrypted ? KeyStore.AlgorithmName(t.AlgorithmId) : "clear")}", tx: true);
+                AddRecent(txChan?.Cfg.Name, (txChan?.Link.Aliases ?? aliases).Label(t.SourceId), $"{secs:F0} s, {(t.Encrypted ? KeyStore.AlgorithmName(t.AlgorithmId) : "clear")}", tx: true);
             }
 
             tx = null;
@@ -1026,7 +1083,7 @@ namespace Sidetone.Core
             if (Transmitting)
                 return $"ok: transmitting on {txChan?.Cfg.Name} (tg {tx.Talkgroup}) for {(DateTime.Now - tx.StartedAt).TotalSeconds:F0} s";
             Chan c = chans[cursor];
-            string conn = peer?.Connected == true ? "connected" : "not connected";
+            string conn = Connected ? "connected" : links.Count > 1 && ConnectedCount > 0 ? $"{ConnectedCount} of {links.Count} systems connected" : "not connected";
             return $"ok: idle, {conn}, PTT would transmit on {c.Cfg.Name}{(c.IsP25 ? $" (tg {c.Tg})" : $" ({c.Cfg.Mode}, no transmit)")}";
         }
 
@@ -1171,9 +1228,12 @@ namespace Sidetone.Core
         /// <summary>Reloads the local alias file and, when FNE sync is on, downloads the list again.</summary>
         public void RefreshAliases()
         {
-            aliases.LoadLocal();
-            if (aliases.SyncEnabled)
-                peer?.SyncAliases();
+            foreach (FneLink link in links)
+            {
+                link.Aliases.LoadLocal();
+                if (link.Aliases.SyncEnabled)
+                    link.Peer?.SyncAliases();
+            }
         }
 
         public void ToggleMicMonitor()
@@ -1247,7 +1307,7 @@ namespace Sidetone.Core
             if (markerOn && DateTime.Now >= nextMarker)
             {
                 nextMarker = DateTime.Now + markerInterval;
-                if (toneJob == null && !Transmitting && peer?.Connected == true)
+                if (toneJob == null && !Transmitting && links.Any(l => l.CanSend))
                 {
                     List<Chan> idle = TxCapableListening().Where(c => !(c.Rx?.InCall ?? false) && !c.Active).ToList();
                     if (idle.Count > 0)
@@ -1259,6 +1319,9 @@ namespace Sidetone.Core
         /*
         ** Remembered settings
         */
+
+        /// <summary>A channel's remembered settings, kept under its own system.</summary>
+        private bool ChannelSaved(Chan c, out ChannelSettings saved) => settings.For(c.Link.Name).Channels.TryGetValue(ChanKey(c), out saved);
 
         internal static string ChanKey(Chan c) => $"{c.Zone}/{c.Cfg.Name}/{(c.Tg != 0 ? c.Tg.ToString() : c.Cfg.Tgid)}";
 
@@ -1284,7 +1347,7 @@ namespace Sidetone.Core
             foreach (ConsoleZone z in zones)
                 z.Output = ss.ZoneOutputs != null && ss.ZoneOutputs.TryGetValue(z.Name, out string zoneOut) && !string.IsNullOrWhiteSpace(zoneOut) ? zoneOut : null;
             foreach (Chan c in chans)
-                c.Output = ss.Channels.TryGetValue(ChanKey(c), out ChannelSettings saved) && !string.IsNullOrWhiteSpace(saved.Output) ? saved.Output : null;
+                c.Output = ChannelSaved(c, out ChannelSettings saved) && !string.IsNullOrWhiteSpace(saved.Output) ? saved.Output : null;
             CheckSavedOutputs();
 
             List<string> restored = new List<string>();
@@ -1292,9 +1355,9 @@ namespace Sidetone.Core
             {
                 Chan c = chans[i];
                 string key = ChanKey(c);
-                if (key == ss.Focused)
+                if (key == ss.Focused && (ss.FocusedSystem == null || string.Equals(ss.FocusedSystem, c.Link.Name, StringComparison.OrdinalIgnoreCase)))
                     cursor = i;
-                if (!ss.Channels.TryGetValue(key, out ChannelSettings cs))
+                if (!ChannelSaved(c, out ChannelSettings cs))
                     continue;
                 c.Muted = cs.Muted;
                 c.TxClear = cs.TxClear && c.Selectable;
@@ -1330,11 +1393,12 @@ namespace Sidetone.Core
             ss.PageB = lastPageB;
             ss.PageRid = lastPageRid;
             ss.Focused = ChanKey(chans[cursor]);
+            ss.FocusedSystem = links.Count > 1 ? chans[cursor].Link.Name : null;
             ss.HiddenZones = zones.Where(z => z.Hidden).Select(z => z.Name).ToList();
             if (ss.HiddenZones.Count == 0)
                 ss.HiddenZones = null;
             foreach (Chan c in chans)
-                ss.Channels[ChanKey(c)] = new ChannelSettings { Listening = c.Selected, Muted = c.Muted, Gain = Math.Round(c.Gain, 3), TxClear = c.Selectable && c.TxClear, Record = c.Record, Output = c.Output };
+                settings.For(c.Link.Name).Channels[ChanKey(c)] = new ChannelSettings { Listening = c.Selected, Muted = c.Muted, Gain = Math.Round(c.Gain, 3), TxClear = c.Selectable && c.TxClear, Record = c.Record, Output = c.Output };
             ss.ZoneOutputs = zones.Any(z => z.Output != null) ? zones.Where(z => z.Output != null).ToDictionary(z => z.Name, z => z.Output) : null;
             SaveStreamVolumes(ss);
 
@@ -1353,6 +1417,11 @@ namespace Sidetone.Core
             ("Uninhibit", ExtendedFunction.UNINHIBIT)
         };
 
+        /// <summary>The system radio commands and digital pages go to: the focused channel's.</summary>
+        public FneLink CommandLink => chans[cursor].Link;
+
+        private string NotConnectedText(FneLink link) => links.Count > 1 ? $"not connected to {link.Name} yet" : "not connected to the FNE yet";
+
         /// <summary>
         /// Sends a radio command (an index into <see cref="RadioActions"/>) to one radio.
         /// Returns null when it was sent, or why it wasn't.
@@ -1360,8 +1429,10 @@ namespace Sidetone.Core
         public string SendRadioCommand(int action, uint rid)
         {
             (string label, ExtendedFunction fn) = RadioActions[action];
-            string error = "not connected to the FNE yet";
-            if (peer == null || !peer.SendExtendedFunction(fn, rid, out error))
+            FneLink link = CommandLink;
+            RadioAliasBook aliases = link.Aliases;
+            string error = NotConnectedText(link);
+            if (link.Peer == null || !link.Peer.SendExtendedFunction(fn, rid, out error))
                 return error ?? "the command wasn't sent";
 
             lastPageRid = rid.ToString();
@@ -1377,8 +1448,10 @@ namespace Sidetone.Core
         /// </summary>
         public string SendDigitalPage(uint rid)
         {
-            string error = "not connected to the FNE yet";
-            if (peer == null || !peer.SendCallAlert(rid, out error))
+            FneLink link = CommandLink;
+            RadioAliasBook aliases = link.Aliases;
+            string error = NotConnectedText(link);
+            if (link.Peer == null || !link.Peer.SendCallAlert(rid, out error))
                 return error ?? "the page wasn't sent";
 
             lastPageRid = rid.ToString();
@@ -1393,7 +1466,7 @@ namespace Sidetone.Core
         */
 
         internal List<Chan> TxCapableListening() =>
-            chans.Where(c => c.Selected && c.IsP25 && !c.Cfg.RxOnly).ToList();
+            chans.Where(c => c.Selected && c.IsP25 && !c.Cfg.RxOnly && (links.Count == 1 || c.Link.CanSend)).ToList();
 
         /// <summary>
         /// Sends alert tone 1-5 on every listening channel (internal for the self-test).
@@ -1414,7 +1487,7 @@ namespace Sidetone.Core
                 return $"a tone is already being sent ({toneJob.Plan.Name}); Esc stops it";
             if (Transmitting)
                 return "stop transmitting before sending a tone";
-            if (peer == null || !peer.Connected)
+            if (!links.Any(l => l.CanSend))
                 return "not connected to the FNE yet";
             if (TxCapableListening().Count == 0)
                 return "no listening channels to send the tone on (click a card to listen)";
@@ -1480,9 +1553,12 @@ namespace Sidetone.Core
         /// Reports control messages that concern this console (internal for the self-test). Octets of a TSBK: 0 opcode,
         /// 1 MFID, then the arguments; for an extended function: 2-3 function, 4-6 argument, 7-9 target radio.
         /// </summary>
-        internal void OnP25Control(byte lco, uint src, uint dst, byte[] tsbk)
+        internal void OnP25Control(byte lco, uint src, uint dst, byte[] tsbk) => OnP25Control(links[0], lco, src, dst, tsbk);
+
+        internal void OnP25Control(FneLink link, byte lco, uint src, uint dst, byte[] tsbk)
         {
-            uint me = peer?.ConsoleRid ?? consoleRidForTest;
+            uint me = link.ConsoleRid;
+            RadioAliasBook aliases = link.Aliases;
             switch (lco)
             {
                 case P25Defines.TSBK_IOSP_CALL_ALRT:
@@ -1490,7 +1566,7 @@ namespace Sidetone.Core
                     {
                         AddLog($"call alert (page) from {aliases.Describe(src)}");
                         AddRecent("call alert", aliases.Label(src), "paged this console", tx: false);
-                        NotifyPaged(src);
+                        NotifyPaged(link, src);
                     }
                     break;
 
@@ -1528,8 +1604,8 @@ namespace Sidetone.Core
             }
         }
 
-        /// <summary>Console RID used by the self-test when there is no peer.</summary>
-        internal uint consoleRidForTest;
+        /// <summary>Console RID used by the self-test when there is no peer (the primary system's).</summary>
+        internal uint consoleRidForTest { get => links[0].RidForTest; set => links[0].RidForTest = value; }
 
         internal void SendTone(TonePlan plan, List<Chan> targets, bool quiet)
         {
@@ -1537,7 +1613,7 @@ namespace Sidetone.Core
             HashSet<Chan> sending = new HashSet<Chan>();
             foreach (Chan c in targets)
             {
-                P25Transmitter t = new P25Transmitter(peer, keys, peer.ConsoleRid, c.Tg, c.ActiveTxAlg, c.ActiveKeyId);
+                P25Transmitter t = new P25Transmitter(c.Link.Sink, c.Link.Keys, c.Link.ConsoleRid, c.Tg, c.ActiveTxAlg, c.ActiveKeyId);
                 if (t.Start(out string error))
                 {
                     started.Add((c.Cfg.Name, t));
@@ -1547,7 +1623,7 @@ namespace Sidetone.Core
                 {
                     AddLog($"{c.Cfg.Name}: no {plan.Name}: {error}");
                     if (c.TxSecure && KeyStore.IsSupported(c.KeyRequestAlg))
-                        peer.RequestKey(c.KeyRequestAlg, c.KeyId);
+                        c.Link.Peer?.RequestKey(c.KeyRequestAlg, c.KeyId);
                 }
             }
             if (started.Count == 0)
@@ -1568,7 +1644,7 @@ namespace Sidetone.Core
                     AddLog($"{plan.Name} {(j.Cancelled ? "stopped" : "sent")} on {string.Join(", ", j.Channels)}");
                 if (!quiet)
                     foreach (string name in j.Channels)
-                        AddRecent(name, $"{peer?.ConsoleRid}", plan.Name, tx: true);
+                        AddRecent(name, $"{chans.FirstOrDefault(x => x.Cfg.Name == name)?.Link.ConsoleRid ?? ConsoleRid}", plan.Name, tx: true);
                 toneChans = new HashSet<Chan>();
                 toneJob = null;
             };

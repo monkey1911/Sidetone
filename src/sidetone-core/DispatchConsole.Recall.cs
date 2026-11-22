@@ -23,6 +23,8 @@ namespace Sidetone.Core
     public sealed class RecalledCall
     {
         public string Channel { get; init; }
+        /// <summary>The system it was on (its recordings go in that system's folder); not saved in the history.</summary>
+        internal string SystemName { get; init; }
         public uint Talkgroup { get; init; }
         public uint Source { get; init; }
         /// <summary>Who spoke, as the aliases put it.</summary>
@@ -108,9 +110,10 @@ namespace Sidetone.Core
                     call = new RecalledCall
                     {
                         Channel = c.Cfg.Name,
+                        SystemName = c.Link.Name,
                         Talkgroup = c.Tg,
                         Source = rx.CurrentSource,
-                        Who = aliases.Label(rx.CurrentSource),
+                        Who = c.Link.Aliases.Label(rx.CurrentSource),
                         Started = DateTime.Now,
                         Crypt = alg == 0 || alg == fnecore.P25.P25Defines.P25_ALGO_UNENCRYPT ? "clear" : KeyStore.AlgorithmName(alg),
                         StreamId = stream
@@ -136,9 +139,10 @@ namespace Sidetone.Core
             RecalledCall call = new RecalledCall
             {
                 Channel = c.Cfg.Name,
+                SystemName = c.Link.Name,
                 Talkgroup = c.Tg,
                 Source = t.SourceId,
-                Who = aliases.Label(t.SourceId),
+                Who = c.Link.Aliases.Label(t.SourceId),
                 Started = DateTime.Now,
                 Tx = true,
                 Crypt = t.Encrypted ? KeyStore.AlgorithmName(t.AlgorithmId) : "clear",
@@ -289,7 +293,7 @@ namespace Sidetone.Core
         private void SaveRecording(RecalledCall call)
         {
             string folder = RecordingsFolder;
-            string systemName = system.Name;
+            string systemName = call.SystemName ?? system.Name;
             string format = RecordingFormat;
             void Write()
             {
@@ -381,7 +385,7 @@ namespace Sidetone.Core
 
         private readonly Dictionary<uint, DateTime> lastNotified = new Dictionary<uint, DateTime>();
 
-        private void NotifyPaged(uint src)
+        private void NotifyPaged(FneLink link, uint src)
         {
             if (!Notifications)
                 return;
@@ -392,8 +396,8 @@ namespace Sidetone.Core
                     return;     // radios often repeat a call alert; one notification is enough
                 lastNotified[src] = now;
             }
-            string title = $"Paged by {aliases.Label(src)}";
-            string body = $"{aliases.Describe(src)} sent a call alert to this console ({system.Name}, {DateTime.Now:HH:mm})";
+            string title = $"Paged by {link.Aliases.Label(src)}";
+            string body = $"{link.Aliases.Describe(src)} sent a call alert to this console ({link.Name}, {DateTime.Now:HH:mm})";
             if (notifyForTest != null)
             {
                 notifyForTest(title, body);

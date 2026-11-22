@@ -10,7 +10,7 @@ There are two front ends over the same console:
 - **`sidetone`**: a graphical console (Avalonia), with light and dark themes. See [Graphical console (sidetone)](#graphical-console-sidetone).
 - **Sidetone for Android**: the same graphical console as an Android app, with a phone layout. See [Android](#android).
 
-**What works:** FNE login, P25 receive and transmit (clear, AES-256, DES, ADP/ARC4 with keys from the FNE or a KFDtool key file), PipeWire audio, channel cards in tabs for the codeplug's zones, push-to-talk from the keyboard, a hotkey or a PTT device, alert tones, pages, radio commands, the channel marker, radio aliases, patching (two-way and one-way), instant recall with a call history kept between runs, audio outputs per tab and channel, recording to Opus or WAV, announcements (WAV files, or text spoken by Piper or espeak-ng, played onto talkgroups), a time announcement that can play by itself on the clock, web streams (MP3 feeds on a tab), and log files.
+**What works:** FNE login (several systems at once), P25 receive and transmit (clear, AES-256, DES, ADP/ARC4 with keys from the FNE or a KFDtool key file), PipeWire audio, channel cards in tabs for the codeplug's zones, push-to-talk from the keyboard, a hotkey or a PTT device, alert tones, pages, radio commands, the channel marker, radio aliases, patching (two-way and one-way), instant recall with a call history kept between runs, audio outputs per tab and channel, recording to Opus or WAV, announcements (WAV files, or text spoken by Piper or espeak-ng, played onto talkgroups), a time announcement that can play by itself on the clock, web streams (MP3 feeds on a tab), and log files.
 
 **Not yet:** DMR/NXDN/analog. What we'd like to add next is in [WISHLIST.md](WISHLIST.md).
 
@@ -26,6 +26,7 @@ There are two front ends over the same console:
   - [The phone layout](#the-phone-layout)
   - [When something goes wrong on Android](#when-something-goes-wrong-on-android)
 - [Codeplug](#codeplug)
+  - [Several FNE systems](#several-fne-systems)
 - [Use](#use)
 - [Terminal console (TUI)](#terminal-console-tui)
 - [Graphical console (sidetone)](#graphical-console-sidetone)
@@ -166,6 +167,17 @@ Sidetone reads the same codeplug YAML as the Windows console. Give it a **separa
 
 Keep codeplugs out of git; they contain passwords. This repo's `.gitignore` ignores `*.yml` outside the workflows folder.
 
+### Several FNE systems
+
+A codeplug can list several systems (FNEs) under `systems:`, and each channel names its system. As the Windows console does, Sidetone connects to **every system that has channels**, all at once, in one console (0.33 and later; before, it used only the first system).
+
+- Each system has its own login, keys and radio aliases. A channel uses its own system's: the same talkgroup number on two FNEs is two different channels, and a call on one shows only there. A channel without a `system` is on the first one.
+- Cards say which system they're on (`TG 100 · County P25`), and the header shows each system with its own dot (● connected, ○ connecting). Log lines from a system start with its name.
+- Transmit, tones and announcements go out on each channel's own system, as the console's `rid` there. A **digital page or radio command** goes to the **focused channel's** system (the box's title says which).
+- A **patch** can join channels on different systems. On the other system it's sent as the console's own radio ID there, since a radio ID from one FNE means nothing on another.
+- **Turning a system off:** Settings, **Systems** (shown when the codeplug has more than one system with channels) has a button per system; a system that's off isn't connected the next time the codeplug opens (a change reconnects at once). At least one stays on. `--system NAME` connects to only that system for the run (both consoles).
+- Settings are kept per system as before: each channel's under its own system. What belongs to the whole console (hidden tabs, tab outputs, the time announcement, call history) is kept under the first system, so a codeplug with one system works exactly as before.
+
 ## Use
 
 Change into the extracted folder (the name matches the release and architecture you downloaded):
@@ -210,7 +222,7 @@ Press Ctrl+C to stop.
 
 ## Terminal console (TUI)
 
-Start the terminal console for the codeplug's first system (or pick one with `--system NAME`):
+Start the terminal console for the codeplug's systems (every one with channels; pick one with `--system NAME`, see [Several FNE systems](#several-fne-systems)):
 
 ```bash
 ./sidetone-cli tui --codeplug ~/dvm/codeplug-linux.yml

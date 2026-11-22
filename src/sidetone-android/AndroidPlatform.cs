@@ -159,7 +159,7 @@ namespace Sidetone.Droid
             running = console;
             console.CallStarted += (c, src) => CallCameIn(console, c);
             AskForPermissions();
-            ConsoleService.Start(AppContext, console.SystemConfig.Name, HasMicrophone);
+            ConsoleService.Start(AppContext, ServiceName(console), HasMicrophone);
             ApplyScreen();
         }
 
@@ -239,8 +239,11 @@ namespace Sidetone.Droid
         {
             DispatchConsole c = running;
             if (c != null)
-                ConsoleService.Start(AppContext, c.SystemConfig.Name, HasMicrophone);
+                ConsoleService.Start(AppContext, ServiceName(c), HasMicrophone);
         }
+
+        /// <summary>What the connection's notification says it's connected to.</summary>
+        private static string ServiceName(DispatchConsole c) => c.MultiSystem ? $"{c.Links.Count} systems" : c.SystemConfig.Name;
 
         public string DeviceDescription =>
             $"{Build.Manufacturer} {Build.Model}, Android {Build.VERSION.Release} (API {(int)Build.VERSION.SdkInt})";

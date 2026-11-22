@@ -466,6 +466,20 @@ namespace Sidetone.Gui
             Press(PhysicalKey.Escape);
             Check(!set.IsOpen && w.View.TxLimitSeconds == 120, "Esc closes Settings without saving");
 
+            // the Systems row: only for a codeplug with several systems; each can be turned off, but not the last one on
+            Press(PhysicalKey.Comma, RawInputModifiers.Control);
+            bool noRowForOne = set.IsOpen && !set.SystemsRowShown;
+            set.Show(new SettingsOverlay.Values { Systems = new List<(string, bool)> { ("Main FNE", true), ("DMR FNE", true) } }, null, new List<InputDeviceInfo>(),
+                     "multi.yml", string.Empty, false, "None", false, false, "/tmp", false);
+            bool rowShown = set.SystemsRowShown && set.SystemNames.SequenceEqual(new[] { "Main FNE", "DMR FNE" }) && set.SystemOn("DMR FNE");
+            set.PressSystem("DMR FNE");
+            bool dmrOff = !set.SystemOn("DMR FNE");
+            set.PressSystem("Main FNE");
+            Check(noRowForOne && rowShown && dmrOff && set.SystemOn("Main FNE") && set.Message.Contains("At least one system"),
+                  "Settings: a codeplug with several systems gets a Systems row; each can be turned off, but not the last one on");
+            set.PressSystem("DMR FNE");
+            Press(PhysicalKey.Escape);
+
             Press(PhysicalKey.Comma, RawInputModifiers.Control);
             set.TxLimit.Text = "90";
             set.Save();

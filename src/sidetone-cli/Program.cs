@@ -339,10 +339,6 @@ namespace Sidetone.Cli
         private static int RunTui(Options opt)
         {
             Codeplug cp = LoadCodeplug(opt.Codeplug);
-            Codeplug.System system = opt.SystemName == null
-                ? cp.Systems[0]
-                : cp.Systems.FirstOrDefault(s => string.Equals(s.Name, opt.SystemName, StringComparison.OrdinalIgnoreCase))
-                    ?? throw new ArgumentException($"no system named '{opt.SystemName}'");
 
             foreach (string problem in AudioBackend.Current.Problems())
                 Console.Error.WriteLine($"warning: {problem}");
@@ -357,10 +353,12 @@ namespace Sidetone.Cli
                 notes.Add($"warning: {settingsError}");
             AudioSelection audio = StartupChoices.Audio(opt.Output, opt.Input, saved, notes);
             (string Device, string Button, string Mute)? ptt = StartupChoices.PttDevice(opt.PttDevice, opt.PttButton, opt.MuteButton, saved, notes);
+            // every system with channels, unless --system names one or Settings turned some off
+            List<Codeplug.System> systems = CodeplugLoader.SystemsToConnect(cp, saved, opt.SystemName, notes);
 
             string logFile = string.IsNullOrWhiteSpace(opt.LogFile) ? null : Path.GetFullPath(opt.LogFile);
             string socket = opt.NoSocket ? null : opt.Socket != null ? Path.GetFullPath(opt.Socket) : ControlServer.DefaultPath;
-            Tui tui = new Tui(cp, system, TimeSpan.FromSeconds(StartupChoices.TxLimit(opt.TxLimitSeconds, saved)), logFile,
+            Tui tui = new Tui(cp, systems, TimeSpan.FromSeconds(StartupChoices.TxLimit(opt.TxLimitSeconds, saved)), logFile,
                               TimeSpan.FromSeconds(opt.MarkerSeconds), settingsPath)
             {
                 Audio = audio,

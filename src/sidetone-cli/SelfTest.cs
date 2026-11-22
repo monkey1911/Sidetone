@@ -243,6 +243,9 @@ namespace Sidetone.Cli
                 // 19b. web streams (MP3 over HTTP, from a local server)
                 StreamTests(tmp);
 
+                // 19c. several FNE systems at once
+                MultiSystemTests(tmp);
+
                 // 20. call history kept between runs
                 HistoryTests(tmp, cp, sys);
 
@@ -3081,6 +3084,148 @@ zones:
             for (int i = 200; i < Math.Min(pieces.Count, whole.Length) - 200; i++)
                 worst = Math.Max(worst, Math.Abs(pieces[i] - whole[i]));
             Check(pieces.Count > whole.Length - 100 && worst < 1e-4, $"web streams: resampling in pieces matches resampling in one go (worst {worst:E1})");
+        }
+
+        private const string MultiCodeplug = @"
+systems:
+  - { name: ""Main FNE"", identity: ""MAIN"", address: ""127.0.0.1"", port: 62031, peerId: 9000001, rid: ""9000001"", password: ""PASSWORD"" }
+  - { name: ""DMR FNE"", identity: ""DMR"", address: ""127.0.0.1"", port: 62041, peerId: 9000002, rid: ""9000002"", password: ""PASSWORD"" }
+  - { name: ""Spare FNE"", identity: ""SPARE"", address: ""127.0.0.1"", port: 62051, peerId: 9000003, rid: ""9000003"", password: ""PASSWORD"" }
+zones:
+  - name: ""Alpha""
+    channels:
+      - { name: ""Main 601"", system: ""Main FNE"", tgid: ""601"", mode: ""p25"" }
+      - { name: ""Other 601"", system: ""DMR FNE"", tgid: ""601"", mode: ""p25"" }
+      - { name: ""No system"", tgid: ""602"", mode: ""p25"" }
+  - name: ""Bravo""
+    channels:
+      - { name: ""Other secure"", system: ""DMR FNE"", tgid: ""700"", mode: ""p25"", algo: ""aes"", keyId: ""50"" }
+";
+
+        private static void MultiSystemTests(string tmp)
+        {
+            string mPath = Path.Combine(tmp, "multi.yml");
+            File.WriteAllText(mPath, MultiCodeplug);
+            Codeplug mcp = Program.LoadCodeplug(mPath);
+            string mSettings = Path.Combine(tmp, "multi-settings.json");
+
+            // which systems connect: every one with channels, unless --system names one or Settings turned some off
+            AppSettings none = new AppSettings();
+            List<string> mNotes = new List<string>();
+            string Names(List<Codeplug.System> l) => string.Join(",", l.Select(x => x.Name));
+            string all = Names(CodeplugLoader.SystemsToConnect(mcp, none, null, mNotes));
+            string only = Names(CodeplugLoader.SystemsToConnect(mcp, none, "dmr fne"));
+            AppSettings offOne = new AppSettings();
+            offOne.For("Main FNE").Off = true;
+            List<string> offNotes = new List<string>();
+            string withOff = Names(CodeplugLoader.SystemsToConnect(mcp, offOne, null, offNotes));
+            AppSettings offAll = new AppSettings();
+            offAll.For("Main FNE").Off = true;
+            offAll.For("DMR FNE").Off = true;
+            List<string> allOffNotes = new List<string>();
+            string allOff = Names(CodeplugLoader.SystemsToConnect(mcp, offAll, null, allOffNotes));
+            Check(all == "Main FNE,DMR FNE" && mNotes.Count == 0 && only == "DMR FNE" && withOff == "DMR FNE" && offNotes.Any(n => n.Contains("turned off in Settings: Main FNE")) &&
+                  allOff == "Main FNE" && allOffNotes.Any(n => n.Contains("connects anyway")),
+                  $"systems: every system with channels connects (one without channels doesn't), --system picks one, Settings can turn one off, and one always stays ({all}; {withOff}; {allOff})");
+
+            DispatchConsole mc = new DispatchConsole(mcp, CodeplugLoader.SystemsToConnect(mcp, none, null), TimeSpan.FromSeconds(120), null, null, mSettings) { NoAudio = true };
+            FneLink main = mc.Links[0], other = mc.Links[1];
+            ConsoleChannel m601 = mc.Channels.First(c => c.Cfg.Name == "Main 601"), o601 = mc.Channels.First(c => c.Cfg.Name == "Other 601"),
+                           noSys = mc.Channels.First(c => c.Cfg.Name == "No system"), oSecure = mc.Channels.First(c => c.Cfg.Name == "Other secure");
+            Check(mc.MultiSystem && mc.Links.Count == 2 && m601.Link == main && o601.Link == other && noSys.Link == main && oSecure.Link == other &&
+                  mc.SystemConfig.Name == "Main FNE",
+                  "systems: one console has every system's channels; a channel without a system is on the first one");
+
+            // the same talkgroup on two FNEs is two different channels
+            mc.OnFrame(other, new fnecore.P25DataReceivedEvent(1, 3012, 601, fnecore.CallType.GROUP, P25DUID.LDU1, fnecore.FrameType.VOICE, 0, 91, new byte[300]));
+            bool onlyOther = o601.Active && !m601.Active;
+            mc.OnFrame(other, new fnecore.P25DataReceivedEvent(1, 3012, 601, fnecore.CallType.GROUP, P25DUID.TDU, fnecore.FrameType.TERMINATOR, 0, 91, new byte[300]));
+            mc.OnFrame(new fnecore.P25DataReceivedEvent(1, 3013, 601, fnecore.CallType.GROUP, P25DUID.LDU1, fnecore.FrameType.VOICE, 0, 92, new byte[300]));
+            Check(onlyOther && m601.Active && !o601.Active, "systems: a call on one FNE's TG 601 shows only on that system's channel, not the same TG on another");
+
+            // keys and radio IDs are per system
+            other.Keys.Store(P25Defines.P25_ALGO_AES, 0x50, TestKey);
+            main.RidForTest = 9000001;
+            other.RidForTest = 9000002;
+            Check(mc.HasKey(oSecure) && !main.Keys.TryGet(P25Defines.P25_ALGO_AES, 0x50, out _) && m601.Link.ConsoleRid == 9000001 && o601.Link.ConsoleRid == 9000002,
+                  "systems: each has its own keys and its own console radio ID");
+
+            // radio commands and digital pages go to the focused channel's system
+            mc.SetFocus(mc.chans.IndexOf(o601));
+            string refused = mc.SendRadioCommand(0, 1234);
+            Check(mc.CommandLink == other && refused == "not connected to DMR FNE yet", $"systems: a radio command goes to the focused channel's system ({refused})");
+
+            // a page to this console on one system is named as that system's
+            List<string> pagedBodies = new List<string>();
+            mc.Notifications = true;
+            mc.notifyForTest = (title, body) => pagedBodies.Add(body);
+            mc.OnP25Control(other, P25Defines.TSBK_IOSP_CALL_ALRT, 5555, 9000002, null);
+            mc.OnP25Control(other, P25Defines.TSBK_IOSP_CALL_ALRT, 5556, 9000001, null);     // the other system's RID: not this console here
+            Check(pagedBodies.Count == 1 && pagedBodies[0].Contains("(DMR FNE,"), "systems: a call alert to the console's RID on one system is that system's page");
+
+            // tones go out on each channel's own system, as its own RID
+            CliPeer hdr = new CliPeer(mcp.Systems[0], new KeyStore(), verbose: false);
+            CaptureSink mainOut = new CaptureSink(hdr), otherOut = new CaptureSink(hdr);
+            main.SinkForTest = mainOut;
+            other.SinkForTest = otherOut;
+            mc.Select(m601);
+            mc.Select(o601);
+            mc.SendAlert(1);
+            bool bothSent = WaitFor(() => Volatile.Read(ref mainOut.TduCount) > 0 && Volatile.Read(ref otherOut.TduCount) > 0, 5);
+            mc.CancelTones(wait: true);
+            Check(bothSent && mainOut.Tdus[0].Src == 9000001 && otherOut.Tdus[0].Src == 9000002 && mainOut.Tdus.All(t => t.Dst == 601) && otherOut.Tdus.All(t => t.Dst == 601),
+                  "systems: an alert tone goes out on each listening channel's own FNE, as the console's RID there");
+
+            // a patch across systems: sent on the other FNE as the console's RID there
+            int mainBefore = mainOut.Tdus.Count, otherBefore = otherOut.Tdus.Count;
+            mc.patchManualPump = true;
+            mc.SetPatch(m601, 1);
+            mc.SetPatch(o601, 1);
+            CaptureSink air = new CaptureSink(hdr);
+            P25Transmitter radio = new P25Transmitter(air, new KeyStore(), 4321, 601, P25Defines.P25_ALGO_UNENCRYPT, 0);
+            radio.Start(out _);
+            for (int i = 0; i < 36; i++) radio.PushAudio(VoicedFrame(i));
+            uint radioStream = radio.StreamId;      // (Stop clears it)
+            radio.Stop();
+            foreach (var v in air.Voice)
+                m601.Rx.Handle(601, 4321, (P25DUID)v.Frame[22], v.Stream, v.Frame);
+            m601.Rx.Handle(601, 4321, P25DUID.TDU, radioStream, new byte[24]);
+            for (int ms = 0; ms <= 30000; ms += 10)
+                mc.PatchPump(TimeSpan.FromMilliseconds(ms));     // the frames are stamped by the patch's own clock, seconds in by now
+            List<(uint Src, uint Dst, uint Stream, bool Grant)> patched = otherOut.Tdus.Skip(otherBefore).ToList();
+            Check(patched.Count > 1 && patched[0].Grant && !patched[^1].Grant && patched.All(t => t.Src == 9000002 && t.Dst == 601) && mainOut.Tdus.Count == mainBefore && otherOut.Voice.Count > 0,
+                  $"systems: a patch across systems sends the call on the other FNE, as the console's RID there ({patched.Count} TDUs)");
+            mc.SetPatch(m601, 0);
+            mc.SetPatch(o601, 0);
+
+            // log lines from a system are named when there are several
+            Check(mc.Tagged(other, "logged in") == "DMR FNE: logged in", "systems: a system's log lines are named when there are several");
+
+            // channel settings are kept under their own system
+            mc.Deselect(m601);
+            mc.SaveSettings();
+            AppSettings savedMulti = AppSettings.Load(mSettings, out _);
+            bool underOwn = savedMulti.For("DMR FNE").Channels.Values.Count(x => x.Listening) == 1 && savedMulti.For("Main FNE").Channels.Values.All(x => !x.Listening);
+            DispatchConsole mc2 = new DispatchConsole(mcp, CodeplugLoader.SystemsToConnect(mcp, savedMulti, null), TimeSpan.FromSeconds(120), null, null, mSettings) { NoAudio = true };
+            mc2.RestoreSettings();
+            ConsoleChannel o601Again = mc2.Channels.First(c => c.Cfg.Name == "Other 601");
+            Check(underOwn && o601Again.Selected && !mc2.Channels.First(c => c.Cfg.Name == "Main 601").Selected && mc2.Channels[mc2.FocusIndex] == o601Again,
+                  "systems: each channel's settings are kept under its own system, and the focus comes back to the right one");
+            mc.Shutdown();
+            mc2.Shutdown();
+
+            // the terminal console's title shows each system with its own dot
+            Tui mt = new Tui(mcp, CodeplugLoader.SystemsToConnect(mcp, none, null), TimeSpan.FromSeconds(120), null) { NoAudio = true };
+            string mTitle = mt.Render(200, 40).RowText(1);
+            Check(mTitle.Contains("Main FNE ○") && mTitle.Contains("DMR FNE ○") && !mTitle.Contains("connecting…") && !mTitle.Contains("peer 9000001"),
+                  $"systems: the TUI's title shows each system and whether it's connected ({mTitle.Trim()})");
+            mt.Shutdown();
+
+            // one system: no names added anywhere
+            DispatchConsole single = new DispatchConsole(mcp, mcp.Systems[0], TimeSpan.FromSeconds(120), null) { NoAudio = true };
+            Check(!single.MultiSystem && single.Channels.All(c => c.Link == single.Links[0]) && single.Tagged(single.Links[0], "logged in") == "logged in" &&
+                  single.Channels.Count == 2,
+                  "systems: a console for one system has only its channels, and nothing is named");
         }
 
         private static void OneWayPatchTests(Codeplug cp, Codeplug.System sys)

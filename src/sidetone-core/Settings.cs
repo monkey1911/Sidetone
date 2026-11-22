@@ -37,6 +37,10 @@ namespace Sidetone.Core
         /// <summary>Per channel, keyed by "zone/name/tg".</summary>
         public Dictionary<string, ChannelSettings> Channels { get; set; } = new Dictionary<string, ChannelSettings>();
         public string Focused { get; set; }
+        /// <summary>The focused channel's system, when the console has several (null for the primary's own).</summary>
+        public string FocusedSystem { get; set; }
+        /// <summary>Turned off in Settings: not connected when the codeplug opens (the codeplug's other systems are).</summary>
+        public bool? Off { get; set; }
         /// <summary>Audio outputs for tabs (zone name to device name). Null for none.</summary>
         public Dictionary<string, string> ZoneOutputs { get; set; }
         /// <summary>Zones (tabs) hidden in this system: their channels are switched off. Null for none.</summary>

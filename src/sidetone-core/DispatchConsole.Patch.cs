@@ -100,9 +100,10 @@ namespace Sidetone.Core
         internal bool patchManualPump;
 
         /// <summary>Stands in for the FNE connection in the self-test.</summary>
-        internal IP25TrafficSink sinkForTest;
-        private IP25TrafficSink TrafficSink => peer != null ? peer : sinkForTest;
-        private bool CanSend => peer != null ? peer.Connected : sinkForTest != null;
+        /// <summary>Stands in for the primary system's FNE in the self-test.</summary>
+        internal IP25TrafficSink sinkForTest { get => links[0].SinkForTest; set => links[0].SinkForTest = value; }
+        /// <summary>Any system can be sent to (each target is sent on its own system).</summary>
+        private bool CanSend => links.Any(l => l.CanSend);
 
         /// <summary>The patches' names: the codeplug's patch groups, or Patch 1 to 3.</summary>
         public IReadOnlyList<string> PatchNames => patchNames;
@@ -359,7 +360,7 @@ namespace Sidetone.Core
             string name = patchNames[patch - 1];
             if (!CanSend)
                 return;     // nothing to send on; the run still marks who is talking
-            uint from = patchPassthrough && sourceId != 0 ? sourceId : ConsoleRid;
+            uint from = patchPassthrough && sourceId != 0 ? sourceId : source.Link.ConsoleRid;
             PatchSend send = new PatchSend { Patch = patch, Source = source, SourceId = sourceId, Started = now };
 
             // a previous call on this patch still draining would be a second transmitter on the same talkgroups
@@ -382,12 +383,19 @@ namespace Sidetone.Core
                     continue;
                 }
 
-                P25Transmitter t = new P25Transmitter(TrafficSink, keys, from, m.Tg, m.ActiveTxAlg, m.ActiveKeyId);
+                if (!m.Link.CanSend)
+                {
+                    skipped.Add($"{m.Cfg.Name} (not connected to {m.Link.Name})");
+                    continue;
+                }
+                // a patch across systems sends as the console's own radio ID there (another FNE's source IDs mean nothing to it)
+                uint fromHere = m.Link == source.Link ? from : m.Link.ConsoleRid;
+                P25Transmitter t = new P25Transmitter(m.Link.Sink, m.Link.Keys, fromHere, m.Tg, m.ActiveTxAlg, m.ActiveKeyId);
                 if (!t.Start(out string error))
                 {
                     skipped.Add($"{m.Cfg.Name} ({error})");
                     if (m.TxSecure && KeyStore.IsSupported(m.KeyRequestAlg))
-                        peer?.RequestKey(m.KeyRequestAlg, m.KeyId);
+                        m.Link.Peer?.RequestKey(m.KeyRequestAlg, m.KeyId);
                     continue;
                 }
                 patchStreams[t.StreamId] = DateTime.MaxValue;   // while it lasts
@@ -398,7 +406,7 @@ namespace Sidetone.Core
             {
                 run.Send = send;
                 StartPatchPump();
-                AddLog($"{name}: {source.Cfg.Name} → {string.Join(", ", send.Targets.Select(t => t.Chan.Cfg.Name))} ({aliases.Describe(sourceId)})");
+                AddLog($"{name}: {source.Cfg.Name} → {string.Join(", ", send.Targets.Select(t => t.Chan.Cfg.Name))} ({source.Link.Aliases.Describe(sourceId)})");
             }
             foreach (string s in skipped)
                 AddLog($"{name}: not sent to {s}");
@@ -453,7 +461,7 @@ namespace Sidetone.Core
             string timing = $"{send.FramesOut} of {send.FramesIn} frames sent, longest gap from the source {send.LongestGap.TotalMilliseconds:F0} ms" +
                             (notes.Count > 0 ? $", {string.Join(", ", notes)}" : string.Empty);
             AddLog($"{name}: end {send.Source.Cfg.Name}, {secs:F1} s ({timing}){(reason != null ? $" ({reason})" : string.Empty)}");
-            AddRecent(name, aliases.Label(send.SourceId), $"{secs:F0} s, {send.Source.Cfg.Name} → {string.Join(", ", send.Targets.Select(t => t.Chan.Cfg.Name))}", tx: true);
+            AddRecent(name, send.Source.Link.Aliases.Label(send.SourceId), $"{secs:F0} s, {send.Source.Cfg.Name} → {string.Join(", ", send.Targets.Select(t => t.Chan.Cfg.Name))}", tx: true);
             send.Targets.Clear();
         }
 
@@ -597,7 +605,9 @@ namespace Sidetone.Core
                 {
                     if (m == c || m.Patch != p || !m.Selected || !m.IsP25 || m.Cfg.RxOnly || m.PatchRole == PatchRole.SourceOnly)
                         continue;
-                    P25Transmitter t = new P25Transmitter(TrafficSink, keys, main.SourceId, m.Tg, m.ActiveTxAlg, m.ActiveKeyId);
+                    if (!m.Link.CanSend)
+                        continue;
+                    P25Transmitter t = new P25Transmitter(m.Link.Sink, m.Link.Keys, m.Link == c.Link ? main.SourceId : m.Link.ConsoleRid, m.Tg, m.ActiveTxAlg, m.ActiveKeyId);
                     if (!t.Start(out string error))
                     {
                         AddLog($"{patchNames[p - 1]}: not sent to {m.Cfg.Name} ({error})");

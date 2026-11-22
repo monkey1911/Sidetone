@@ -42,6 +42,8 @@ namespace Sidetone.Gui
             public bool WakeOnCall = true;
             /// <summary>Android: take PTT from key broadcasts (with the screen off); any app can send them.</summary>
             public bool PttFromBroadcasts;
+            /// <summary>The codeplug's systems with channels, and whether each connects (null: no codeplug open).</summary>
+            public List<(string Name, bool On)> Systems;
         }
 
         /// <summary>One line in a drop-down list.</summary>
@@ -324,6 +326,7 @@ namespace Sidetone.Gui
             stack.Children.Add(Field("Time limit", limitRow));
             stack.Children.Add(Heading("Codeplug"));
             stack.Children.Add(codeplugRow);
+            stack.Children.Add(BuildSystemsRow());
             stack.Children.Add(Heading("Recordings and notifications"));
             stack.Children.Add(recordingsText);
             stack.Children.Add(recRow);
@@ -422,6 +425,7 @@ namespace Sidetone.Gui
             (lowCut, autoLevel, gate, limiter, rxLevel) = (current.LowCut, current.AutoLevel, current.NoiseGate, current.Limiter, current.RxLevel);
             keyFileText.Text = keyFile;
             ShowDeviceValues(current);
+            ShowSystems(current);
             filling = true;
             Fill(Scale, current.Scale?.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture), "Automatic",
                  Scales.Select(v => new Choice(v.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture), DisplayScale.Percent(v))), "custom");
@@ -580,6 +584,7 @@ namespace Sidetone.Gui
                 KeepDays = int.TryParse(Selected(KeepDays), out int days) && days > 0 ? days : null
             };
             CollectDeviceValues(v);
+            CollectSystems(v);
             string error = save(v);
             if (error != null)
             {
@@ -658,6 +663,7 @@ namespace Sidetone.Gui
             cancel.Paint(Brushes.Transparent, p.Text, p.Edge);
             saveTap.Paint(p.Accent, p.OnStrong);
             RefreshDevice(p);
+            RefreshSystems(p);
         }
 
         private static void Paint(Tap tap, bool selected, Palette p)
