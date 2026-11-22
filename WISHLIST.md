@@ -9,7 +9,10 @@ is left in it.
 
 Roughly in the order that makes sense to do them.
 
-1. **An automated network test.** Run a real dvmfne in CI with two console instances and check login, voice in both directions and encryption. Today every on-air check is done by hand (the missing grant encrypt flag fixed in 0.24.2 would have shown up here).
+1. **An automated network test.** Run a real dvmfne in CI with two console instances and check login, voice in both directions and encryption (key delivery from the FNE, then an AES call decrypted on the other side). Today every on-air check is done by hand.
+   - **Waiting** for dvmhost's `r05a06_dev` to be merged into `master` (expected soon, per the FNE's maintainers), so the test is pinned to what CTRS will run rather than a moving dev branch.
+   - The CI script writes the FNE's config, talkgroup rules, peer list, RID list, key container and both codeplugs each run, with made-up passwords and a test key; nothing is committed. The RID list must allow both consoles' radio IDs to request keys, or the FNE silently ignores their key requests.
+   - An FNE alone would not have caught the missing grant encrypt flag fixed in 0.24.2: the dvmhost site denied that grant, not the FNE. Catching that would need a dvmhost in the test too (not yet checked whether one runs without a modem).
 
 2. **NXDN and DMR.** libvocoder already has the codec both use, and the cards already show modes that aren't supported yet, so the work is a receiver and a transmitter per mode. Needs live traffic to test against.
    - **Analog** too, once we've confirmed how DVM carries it. It may be the simplest of the three.
