@@ -132,6 +132,8 @@ namespace Sidetone.Core
             List<string> folders = (Environment.GetEnvironmentVariable("PATH") ?? string.Empty)
                 .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries).ToList();
             folders.AddRange(new[] { Path.Combine(Home, ".local", "bin"), "/usr/local/bin", "/usr/bin" });
+            if (OperatingSystem.IsMacOS())
+                folders.Add("/opt/homebrew/bin");   // an app opened from Finder gets a short PATH without Homebrew's
             return folders.Distinct();
         }
 
@@ -144,6 +146,8 @@ namespace Sidetone.Core
                     string path = Path.Combine(folder, name);
                     if (File.Exists(path))
                         return path;
+                    if (OperatingSystem.IsWindows() && File.Exists(path + ".exe"))
+                        return path + ".exe";
                 }
             return null;
         }
@@ -187,7 +191,9 @@ namespace Sidetone.Core
         public static SpeechEngine Choose(string engine, string voice, out string why)
         {
             why = null;
-            if (Platform != null)
+            // the system's own voice (Android's, macOS's say, Windows's SAPI), unless Piper or espeak-ng was chosen and is installed
+            bool chosenThere = engine == PiperSetting ? FindProgram("piper", "piper-tts") != null : engine == EspeakSetting && FindProgram("espeak-ng") != null;
+            if (Platform != null && !chosenThere)
                 return new SpeechEngine { Kind = SpeechEngineKind.Platform, Voice = Platform.VoiceName };
             bool auto = string.IsNullOrEmpty(engine);
             string piper = auto || engine == PiperSetting ? FindProgram("piper", "piper-tts") : null;

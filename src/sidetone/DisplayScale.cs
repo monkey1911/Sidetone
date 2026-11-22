@@ -32,6 +32,11 @@ namespace Sidetone.Gui
         /// <param name="wayland">The native Wayland backend is in use.</param>
         public static void Apply(double? option, double? saved, bool wayland)
         {
+            if (!OperatingSystem.IsLinux())
+            {
+                InEffect = "set by the system";     // macOS and Windows scale apps for themselves
+                return;
+            }
             if (wayland)
             {
                 InEffect = "set by the desktop (native Wayland)";

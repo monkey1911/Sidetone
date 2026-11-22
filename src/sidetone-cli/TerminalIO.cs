@@ -196,6 +196,18 @@ namespace Sidetone.Cli
         {
             get
             {
+                // macOS: .NET's own call (ioctl takes variable arguments, which Apple silicon passes differently
+                // from a plain P/Invoke, and the request number differs from Linux's)
+                if (OperatingSystem.IsMacOS())
+                {
+                    try
+                    {
+                        if (Console.WindowWidth > 0 && Console.WindowHeight > 0)
+                            return (Console.WindowWidth, Console.WindowHeight);
+                    }
+                    catch (IOException) { }
+                    return (100, 30);
+                }
                 WinSize ws = default;
                 if (Ioctl(1, TIOCGWINSZ, ref ws) == 0 && ws.Cols > 0 && ws.Rows > 0)
                     return (ws.Cols, ws.Rows);

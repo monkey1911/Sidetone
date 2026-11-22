@@ -46,6 +46,7 @@ namespace Sidetone.Gui
         [STAThread]
         public static int Main(string[] args)
         {
+            DesktopPlatform.Setup();    // macOS and Windows: their own folders, speech, password store and notifications
             if (args.Length > 0 && (args[0] == "--version" || args[0] == "version"))
             {
                 Console.WriteLine($"sidetone {Assembly.GetExecutingAssembly().GetName().Version}");

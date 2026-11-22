@@ -131,7 +131,7 @@ packaging/                  icons, sidetone.desktop (for packages; the dvmcli/dv
                             appimage/ (AppRun, build-appimage.sh: pinned appimagetool 1.9.1 + runtime 20251108,
                             SHA-256 checked), arch/ (PKGBUILD.in template + make-pkgbuild.sh, sidetone.install)
 tools/                      ci-status.sh, ci-screenshots.sh (see Testing), android-check.sh (the emulator self-test)
-.github/workflows/build.yml the only CI workflow ("Build (Linux)")
+.github/workflows/build.yml the only CI workflow ("Build"; Linux, Android and macOS)
 ```
 
 ### Core (`src/sidetone-core`)

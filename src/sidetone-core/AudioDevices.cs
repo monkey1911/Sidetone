@@ -203,11 +203,18 @@ namespace Sidetone.Core
         internal static string FindOnPath(string name)
         {
             string path = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
+            // Windows programs are found by name plus one of PATHEXT's endings (piper → piper.exe)
+            string[] endings = OperatingSystem.IsWindows() && Path.GetExtension(name).Length == 0
+                ? (Environment.GetEnvironmentVariable("PATHEXT") ?? ".EXE;.CMD;.BAT").Split(';', StringSplitOptions.RemoveEmptyEntries)
+                : new[] { string.Empty };
             foreach (string dir in path.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
             {
-                string candidate = Path.Combine(dir, name);
-                if (File.Exists(candidate))
-                    return candidate;
+                foreach (string ending in endings)
+                {
+                    string candidate = Path.Combine(dir, name + ending);
+                    if (File.Exists(candidate))
+                        return candidate;
+                }
             }
             return null;
         }

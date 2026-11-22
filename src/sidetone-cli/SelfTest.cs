@@ -2248,14 +2248,17 @@ zones:
 
         private static void PlatformHookTests(string tmp)
         {
-            // text to speech: a platform engine wins over Piper and espeak-ng, and its audio is levelled like the rest
+            // text to speech: a platform engine wins over Piper and espeak-ng unless one of them is chosen and installed,
+            // and its audio is levelled like the rest
             FakePlatformSpeech fake = new FakePlatformSpeech();
             Speech.Platform = fake;
+            string[] foldersWere = Speech.programFoldersForTest;
+            Speech.programFoldersForTest = new[] { Path.Combine(tmp, "platform-speech-no-programs") };     // Piper chosen but not installed (Android)
             try
             {
                 SpeechEngine e = Speech.Choose(Speech.PiperSetting, "/nowhere/voice.onnx", out string why);
                 Check(e != null && why == null && e.Kind == SpeechEngineKind.Platform && e.Label == "Test speech, voice test voice",
-                      "platform speech: chosen whatever the engine setting, and named for the platform's engine");
+                      "platform speech: chosen unless the engine chosen is installed, and named for the platform's engine");
                 e.Rate = 0.9;
                 short[] said = Speech.Synthesize(e, "Shift change\nin ten minutes");
                 Check(said.Length >= 7000 && Math.Abs(WavFile.SpeechLevelDb(said) - VoiceProcessor.TargetDb) < 2 && fake.LastText == "Shift change in ten minutes" && fake.LastRate == 0.9,
@@ -2265,7 +2268,11 @@ zones:
                 try { Speech.Synthesize(e, "hello"); } catch (ArgumentException ex) { failed = ex.Message; }
                 Check(failed == "Test speech isn't ready", "platform speech: its failure comes back as the reason");
             }
-            finally { Speech.Platform = null; }
+            finally
+            {
+                Speech.Platform = null;
+                Speech.programFoldersForTest = foldersWere;
+            }
             Check(Speech.Choose(Speech.PiperSetting, null, out _)?.Kind != SpeechEngineKind.Platform, "platform speech: unset, the programs are looked for again");
 
             // key file passwords: the platform's store is used instead of secret-tool

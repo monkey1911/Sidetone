@@ -104,7 +104,12 @@ namespace Sidetone.Core
         {
             string dir = Path.GetDirectoryName(path);
             if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
-                Directory.CreateDirectory(dir, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            {
+                if (OperatingSystem.IsWindows())
+                    Directory.CreateDirectory(dir);     // %LOCALAPPDATA% is the user's own already
+                else
+                    Directory.CreateDirectory(dir, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            }
 
             if (File.Exists(path))
             {
@@ -117,7 +122,8 @@ namespace Sidetone.Core
             try
             {
                 s.Bind(new UnixDomainSocketEndPoint(path));
-                File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+                if (!OperatingSystem.IsWindows())
+                    File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
                 s.Listen(8);
             }
             catch

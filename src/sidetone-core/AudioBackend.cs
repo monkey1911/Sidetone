@@ -58,7 +58,9 @@ namespace Sidetone.Core
         }
 
         private static IAudioBackend ForPlatform() =>
-            OperatingSystem.IsLinux() ? new PipeWireBackend() : new NoAudioBackend($"audio isn't supported on {System.Runtime.InteropServices.RuntimeInformation.OSDescription} yet");
+            OperatingSystem.IsLinux() ? new PipeWireBackend()
+            : OperatingSystem.IsMacOS() ? new PortAudioBackend()
+            : new NoAudioBackend($"audio isn't supported on {System.Runtime.InteropServices.RuntimeInformation.OSDescription} yet");
     } // public static class AudioBackend
 
     /// <summary>PipeWire, through its command-line tools (pw-play, pw-record, pw-dump).</summary>

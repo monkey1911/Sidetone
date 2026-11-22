@@ -441,7 +441,7 @@ namespace Sidetone.Gui
         }
 
         private void UpdateKeyHints() =>
-            keyHints.Text = $"Space: PTT ({(SpaceIsToggle ? "start/stop" : "hold")})    Enter: listen    M: mute    U: mute mic    V: mic check    Ctrl+Q: quit";
+            keyHints.Text = $"Space: PTT ({(SpaceIsToggle ? "start/stop" : "hold")})    Enter: listen    M: mute    U: mute mic    V: mic check    {(OperatingSystem.IsMacOS() ? "⌘Q" : "Ctrl+Q")}: quit";
 
         /// <summary>
         /// An on-screen PTT button was pressed: the header's (the focused channel) or a card's own.
@@ -1476,7 +1476,8 @@ namespace Sidetone.Gui
 
         private void HandleKeyDown(object sender, KeyEventArgs e)
         {
-            bool ctrl = e.KeyModifiers.HasFlag(KeyModifiers.Control);
+            // on macOS, Cmd does what Ctrl does elsewhere (Cmd+Q quits, Cmd+, opens Settings)
+            bool ctrl = e.KeyModifiers.HasFlag(KeyModifiers.Control) || (OperatingSystem.IsMacOS() && e.KeyModifiers.HasFlag(KeyModifiers.Meta));
             if (ctrl && e.Key == Key.Q)
             {
                 e.Handled = true;

@@ -40,6 +40,9 @@
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <!-- XML encryption, for KFDtool key containers (EkcKeyStore.cs); part of the Windows desktop runtime, a package elsewhere -->
     <PackageReference Include="System.Security.Cryptography.Xml" Version="10.0.15" />
+    <!-- macOS audio (PortAudioBackend). shortcut: its small PortAudio library (about 230 KB) also lands in Linux and
+         Windows builds, unused there (they use PipeWire and WASAPI); drop it with a build target if size ever matters -->
+    <PackageReference Include="PortAudioSharp2" Version="1.0.6" />
   </ItemGroup>
 
   <ItemGroup>

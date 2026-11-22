@@ -351,6 +351,11 @@ namespace Sidetone.Gui
             bool device = GuiPlatform.Current != null;
             foreach (Control desktopOnly in new[] { displayHeading, scaleField, launcherHeading, launcherRow, recChoose.Root, recOpen.Root, logOpen.Root }.Concat(pttDeviceFields))
                 desktopOnly.IsVisible = !device;
+            // Linux only: the display scale (macOS and Windows scale for themselves), the app launcher entry (the .app and
+            // the installer do that) and PTT devices (evdev)
+            if (!OperatingSystem.IsLinux())
+                foreach (Control linuxOnly in new[] { displayHeading, scaleField, launcherHeading, launcherRow }.Concat(pttDeviceFields))
+                    linuxOnly.IsVisible = false;
             foreach (Control row in deviceRows)
                 row.IsVisible = device;
             stack.Children.Add(overrides);

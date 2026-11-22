@@ -1,6 +1,6 @@
-name: Build (Linux)
+name: Build
 
-# Builds Sidetone (sidetone, sidetone-cli) + libvocoder natively on ARM64 and x86-64 Linux runners, runs the offline
+# Builds Sidetone (sidetone, sidetone-cli) + libvocoder natively on ARM64 and x86-64 Linux runners (and Android, macOS below), runs the offline
 # self-test on each, and uploads one tarball per architecture. Publishing a GitHub Release
 # also attaches them.
 
@@ -366,3 +366,95 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release upload "$TAG" out/release/Sidetone-$TAG-android.* --repo "$GITHUB_REPOSITORY" --clobber
+
+  # macOS: one universal Sidetone.app (both complete builds and a universal launcher, packaging/macos), built and
+  # tested on Apple silicon; the Intel half is tested on an Intel runner by the next job. Runners have no sound
+  # devices, so audio is checked only as far as starting PortAudio and listing what's there.
+  macos:
+    name: macos (universal .app)
+    runs-on: macos-15
+    env:
+      TAG: ${{ github.event.release.tag_name || github.ref_name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build libvocoder (universal)
+        run: |
+          cmake -S extern/dvmvocoder -B build/vocoder -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0
+          cmake --build build/vocoder -j"$(sysctl -n hw.ncpu)"
+          lib="$(find build/vocoder -name 'libvocoder.dylib' | head -1)"
+          lipo -info "$lib"
+          lipo "$lib" -verify_arch arm64 x86_64
+
+      - name: Publish both builds
+        run: |
+          for rid in osx-arm64 osx-x64; do
+            dotnet publish src/sidetone-cli/sidetone-cli.csproj -c Release -r $rid --self-contained true -o "out/$rid"
+            dotnet publish src/sidetone/sidetone.csproj -c Release -r $rid --self-contained true -o "out/$rid"
+            cp "$(find build/vocoder -name 'libvocoder.dylib' | head -1)" "out/$rid/"
+          done
+          file out/osx-arm64/sidetone out/osx-x64/sidetone out/osx-arm64/libportaudio.dylib out/osx-x64/libportaudio.dylib
+
+      - name: Self-test (Apple silicon)
+        run: out/osx-arm64/sidetone-cli selftest
+
+      - name: GUI self-check (Apple silicon)
+        run: |
+          out/osx-arm64/sidetone --version
+          out/osx-arm64/sidetone --selfcheck
+
+      - name: Audio starts (PortAudio, Core Audio)
+        run: out/osx-arm64/sidetone-cli devices || true     # a runner may have no devices; it must not crash
+
+      - name: Make Sidetone.app
+        run: |
+          version="$(out/osx-arm64/sidetone --version | awk '{print $2}' | cut -d. -f1-3)"
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          packaging/macos/make-app.sh "$version" out/osx-arm64 out/osx-x64 out
+          lipo -info out/Sidetone.app/Contents/MacOS/sidetone
+          out/Sidetone.app/Contents/MacOS/sidetone --version
+          out/Sidetone.app/Contents/MacOS/sidetone-cli --version
+          zip="Sidetone-${TAG//\//-}-macos.zip"
+          mv "out/Sidetone-$version-macos.zip" "out/$zip"
+          (cd out && shasum -a 256 "$zip" > "$zip.sha256")
+          echo "ZIP=$zip" >> "$GITHUB_ENV"
+
+      - name: Upload the app
+        uses: actions/upload-artifact@v7
+        with:
+          name: sidetone-macos
+          path: out/${{ env.ZIP }}*
+          if-no-files-found: error
+
+      - name: Attach to release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$TAG" "out/$ZIP" "out/$ZIP.sha256" --repo "$GITHUB_REPOSITORY" --clobber
+
+  # The Intel half of the universal app, on an Intel Mac: unzipped as a user would, run through the launcher.
+  macos-intel:
+    name: macos (Intel half)
+    needs: macos
+    runs-on: macos-15-intel
+    steps:
+      - name: Get the app
+        uses: actions/download-artifact@v8
+        with:
+          name: sidetone-macos
+
+      - name: Self-test and GUI self-check through the launcher
+        run: |
+          ditto -x -k Sidetone-*-macos.zip .
+          codesign --verify --deep --strict Sidetone.app
+          uname -m
+          Sidetone.app/Contents/MacOS/sidetone-cli selftest
+          Sidetone.app/Contents/MacOS/sidetone --selfcheck

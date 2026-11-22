@@ -24,6 +24,7 @@ namespace Sidetone.Cli
     {
         public static int Main(string[] args)
         {
+            DesktopPlatform.Setup();    // macOS and Windows: their own folders, speech, password store and notifications
             if (args.Length == 0 || args[0] is "-h" or "--help" or "help")
             {
                 PrintUsage();
