@@ -8,7 +8,22 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
 
 ## State at hand-off (2026-11-16)
 
-- Version **0.33.0** on `main` (set once, in `src/Directory.Build.props`): several FNE systems at
+- Version **0.34.0** on `main` (set once, in `src/Directory.Build.props`): **macOS**. One universal
+  `Sidetone.app` (`packaging/macos`: `launcher.c` built for both CPUs in one `clang` call, which execs
+  `Contents/Resources/{arm64,x64}/<its own name>`, so `Contents/MacOS/sidetone-cli` works too;
+  `Info.plist` with the microphone description; `make-app.sh` signs every Mach-O ad-hoc, then the
+  bundle, which covers its main program: signing that alone signs the bundle and fails while anything
+  else is unsigned). Audio `PortAudioBackend` (PortAudioSharp2 1.0.6, Apache-2.0; stereo streams at 8 kHz
+  or the device rate with `WavFile.StreamResampler`, writes paced at 0.5 s queued); `MacPlatform`
+  (`say`, Keychain through Security.framework, osascript notifications with the text as arguments);
+  `DesktopPlatform.Setup()` first in both programs (XDG folders to Application Support; Windows to
+  %APPDATA%/%LOCALAPPDATA%). Cmd = Ctrl; Linux-only Settings rows hidden; the TUI's window size from
+  .NET on macOS (ioctl is variadic, which P/Invoke gets wrong on Apple silicon). The control socket now
+  accepts asynchronously and cancels before closing: on macOS a blocked `Accept` hung `Close` (it
+  would have hung the app closing). CI jobs `macos` (macos-15: build, both suites, `devices`, .app)
+  and `macos-intel` (macos-15-intel: the Intel half through the launcher); runners have a virtual
+  sound device only. Nothing tested on a real Mac yet.
+  0.33.0: several FNE systems at
   once. `FneLink` (one per system: peer, `KeyStore`, `RadioAliasBook`, and `SinkForTest`/`RidForTest`
   for the self-test); `ConsoleChannel.Link`. The console's `system`, `peer`, `keys`, `aliases`,
   `sinkForTest` and `consoleRidForTest` now forward to the **primary** (first) link, which also holds
@@ -106,7 +121,8 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
   tab and channel, the call history between runs; from 0.29: announcements, `listen --key-file`; from 0.30: the scheduled time announcement, the new announcement level (0.30.3); from 0.31:
   on Android, hardware PTT keys on Sonim and the LEX L11; from 0.32: web streams (a real feed, and
   one with a password); from 0.33: two FNEs at once (CTRS's P25 FNE and its DMR FNE, for the
-  connection side until DMR itself is done); and the
+  connection side until DMR itself is done); from 0.34: all of macOS on real hardware (Open Anyway, the
+  microphone prompt, audio in and out, `say`, the Keychain, notifications, the TUI in Terminal); and the
   desktop's phone layout
   (Piper is installed on the owner's Surface, through `uv tool install piper-tts`, with the
   en_US-lessac-medium voice).
@@ -127,7 +143,7 @@ src/sidetone-android/       Sidetone for Android (net10.0-android, API 30+, targ
                             src/sidetone's sources (all but Program.cs) and adds the activity, audio, service, TTS, keystore
 extern/dvmconsole           submodule: monkey1911/dvmconsole-ARM64, branch dev (the Windows console)
 extern/dvmvocoder           submodule: DVMProject/dvmvocoder main at e7ab96e (v0.2 plus the m_autoGain fix), built by CMake into libvocoder.so
-packaging/                  icons, sidetone.desktop (for packages; the dvmcli/dvmgui wrappers went in 0.29),
+packaging/                  icons (sidetone-1024.png for macOS), macos/ (universal .app), sidetone.desktop (for packages; the dvmcli/dvmgui wrappers went in 0.29),
                             appimage/ (AppRun, build-appimage.sh: pinned appimagetool 1.9.1 + runtime 20251108,
                             SHA-256 checked), arch/ (PKGBUILD.in template + make-pkgbuild.sh, sidetone.install)
 tools/                      ci-status.sh, ci-screenshots.sh (see Testing), android-check.sh (the emulator self-test)
@@ -231,6 +247,11 @@ libvocoder only needs rebuilding when the `extern/dvmvocoder` submodule changes.
 locally too: `out/sidetone-$R/sidetone --screenshot FILE --demo --size 1180x760 --theme dark`
 (add `--show page|radio|settings|keyfile|patch|recall|tabs` for a box). Save these to the scratchpad and
 read the PNG directly, with no CI round trip.
+
+**macOS builds happen in CI only** (jobs `macos`, `macos-intel`): the managed code cross-publishes from
+Linux (`dotnet publish -r osx-arm64` compiles and catches errors), but libvocoder, signing and the .app
+need a Mac. PortAudio also runs on Linux (ALSA), so `PortAudioBackend` can be exercised here from a
+scratch program (play silence only).
 
 **Android builds happen in CI only** (job `android`): the NDK that builds libvocoder for Android runs on
 x86-64 hosts only, and this Surface is ARM64 with little disk. The job builds libvocoder for arm64-v8a

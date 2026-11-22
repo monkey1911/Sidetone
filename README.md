@@ -10,7 +10,7 @@ There are two front ends over the same console:
 - **`sidetone`**: a graphical console (Avalonia), with light and dark themes. See [Graphical console (sidetone)](#graphical-console-sidetone).
 - **Sidetone for Android**: the same graphical console as an Android app, with a phone layout. See [Android](#android).
 
-**What works:** FNE login (several systems at once), P25 receive and transmit (clear, AES-256, DES, ADP/ARC4 with keys from the FNE or a KFDtool key file), PipeWire audio, channel cards in tabs for the codeplug's zones, push-to-talk from the keyboard, a hotkey or a PTT device, alert tones, pages, radio commands, the channel marker, radio aliases, patching (two-way and one-way), instant recall with a call history kept between runs, audio outputs per tab and channel, recording to Opus or WAV, announcements (WAV files, or text spoken by Piper or espeak-ng, played onto talkgroups), a time announcement that can play by itself on the clock, web streams (MP3 feeds on a tab), and log files.
+**What works** (Linux, macOS and Android)**:** FNE login (several systems at once), P25 receive and transmit (clear, AES-256, DES, ADP/ARC4 with keys from the FNE or a KFDtool key file), PipeWire audio, channel cards in tabs for the codeplug's zones, push-to-talk from the keyboard, a hotkey or a PTT device, alert tones, pages, radio commands, the channel marker, radio aliases, patching (two-way and one-way), instant recall with a call history kept between runs, audio outputs per tab and channel, recording to Opus or WAV, announcements (WAV files, or text spoken by Piper or espeak-ng, played onto talkgroups), a time announcement that can play by itself on the clock, web streams (MP3 feeds on a tab), and log files.
 
 **Not yet:** DMR/NXDN/analog. What we'd like to add next is in [WISHLIST.md](WISHLIST.md).
 
@@ -20,6 +20,7 @@ There are two front ends over the same console:
   - [AppImage](#appimage)
   - [Arch Linux and Omarchy](#arch-linux-and-omarchy)
   - [Tarball](#tarball)
+- [macOS](#macos)
 - [Android](#android)
   - [Staying connected with the screen off](#staying-connected-with-the-screen-off)
   - [Hardware PTT key](#hardware-ptt-key)
@@ -114,6 +115,34 @@ tar -xzf ~/Downloads/sidetone-*-linux-x64.tar.gz -C ~
 ```
 
 Then run `./sidetone` or `./sidetone-cli` from that folder; **Add to app launcher** in Settings adds a launcher entry for it. The `desktop/` folder holds a launcher entry and icons for anyone packaging it.
+
+## macOS
+
+Sidetone runs on **macOS 14 (Sonoma) or newer**, on both Intel and Apple silicon Macs (0.34 and later). Each release has `Sidetone-VERSION-macos.zip`: one universal app holding a complete build for each kind of Mac, which picks the right one by itself. Unzip it and drag **Sidetone.app** into Applications. Nothing else needs installing.
+
+**The first time you open it,** macOS says it can't check it for malicious software, because the app isn't signed with a paid Apple developer certificate. To let it in once, open it, then go to **System Settings, Privacy & Security**, scroll down to the message about Sidetone, click **Open Anyway**, and confirm. (On macOS 15, right-clicking and choosing Open no longer does this.) Or, in Terminal:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Sidetone.app
+```
+
+**The microphone:** macOS asks once, the first time you transmit. If you said no, allow it in **System Settings, Privacy & Security, Microphone**. Until then, transmit sends silence.
+
+Differences from Linux:
+
+- **Audio** goes through Core Audio: choose the output and microphone in Settings, or per tab and channel, as on Linux.
+- **Shortcuts** use ⌘ where Linux uses Ctrl (⌘Q quits, ⌘, opens Settings, ⌘1 to ⌘9 pick a tab).
+- **Spoken announcements** use macOS's own voice (System Settings, Accessibility, Spoken Content, System voice). Piper or espeak-ng (from Homebrew) is used instead if you choose it in the announcement settings and it's installed.
+- A key file's password is remembered in your **Keychain**. Pages show as macOS notifications; the first one may ask to allow notifications.
+- Settings, recordings, logs and the call history are in `~/Library/Application Support/sidetone`.
+- **The terminal console** is inside the app. Run it from Terminal with its full path:
+
+```bash
+/Applications/Sidetone.app/Contents/MacOS/sidetone-cli tui --codeplug ~/codeplug.yml
+```
+
+- **A global PTT hotkey:** the same control socket as on Linux, so a tool such as Hammerspoon can run `sidetone-cli ptt down` and `sidetone-cli ptt up` (see [PTT from hotkeys and scripts](#ptt-from-hotkeys-and-scripts)).
+- **Not on macOS yet:** PTT devices such as USB desk mics (they're read from Linux's `/dev/input`), the app launcher entry and the display scale setting (macOS does both itself).
 
 ## Android
 
