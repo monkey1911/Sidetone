@@ -678,7 +678,7 @@ B: MSC=10
                   "--output / --input: the chosen devices are targeted by node name and named in the log");
 
             AudioSelection noPw = AudioSelection.Choose(null, null, () => throw new InvalidOperationException("pw-dump not found"));
-            Check(noPw.OutputTarget == null && noPw.OutputReport.Contains("PipeWire default") && noPw.OutputReport.Contains("pw-dump not found"),
+            Check(noPw.OutputTarget == null && noPw.OutputReport.Contains($"{AudioBackend.Current.Name} default") && noPw.OutputReport.Contains("pw-dump not found"),
                   "without pw-dump the defaults are still used and the log says why they can't be named");
         }
 
@@ -1066,7 +1066,9 @@ B: MSC=10
                 {
                     AudioBackend.Current = real;
                 }
-                Check(AudioBackend.Current is PipeWireBackend && AudioBackend.Current.Name == "PipeWire", "audio layer: Linux uses the PipeWire backend");
+                Check(OperatingSystem.IsMacOS() ? AudioBackend.Current is PortAudioBackend && AudioBackend.Current.Name == "Core Audio"
+                      : AudioBackend.Current is PipeWireBackend && AudioBackend.Current.Name == "PipeWire",
+                      $"audio layer: the system's own backend is used (Linux PipeWire, macOS Core Audio: {AudioBackend.Current.Name})");
             }
 
             // audio processing
@@ -2166,7 +2168,7 @@ zones:
             Check(before && up && !cp.Connected, "FNE peer: connected only while logged in; a lost connection (fnecore logging in again) shows as not connected");
             string sw = cp.PeerForTest.Information.Details.Software;
             Version mine = typeof(CliPeer).Assembly.GetName().Version;
-            Check(sw == $"SIDETONE_R{mine.Major:D2}A{mine.Minor:D2}_LNX" && CliPeer.SoftwareId(new Version(1, 2, 3), "AND") == "SIDETONE_R01A02_AND" &&
+            Check(sw == $"SIDETONE_R{mine.Major:D2}A{mine.Minor:D2}_{CliPeer.OsTag()}" && CliPeer.SoftwareId(new Version(1, 2, 3), "AND") == "SIDETONE_R01A02_AND" &&
                   CliPeer.SoftwareId(new Version(0, 31, 6), "WIN") == "SIDETONE_R00A31_WIN" && CliPeer.SoftwareId(new Version(0, 31), "MAC") == "SIDETONE_R00A31_MAC",
                   $"FNE peer: tells the FNE its version and platform, in the Windows console's form ({sw})");
         }
