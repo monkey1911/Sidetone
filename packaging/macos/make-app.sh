@@ -34,8 +34,10 @@ for s in 16 32 128 256 512; do
 done
 iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/sidetone.icns"
 
-# ad-hoc signature: every program and library inside first, then the bundle
-find "$APP/Contents" -type f \( -name "*.dylib" -o -perm -u+x \) -print0 | while IFS= read -r -d '' f; do
+# ad-hoc signature: every program and library inside first, then the bundle. The bundle's main program
+# (Contents/MacOS/sidetone) is left to the bundle's signature: signing it on its own signs the bundle, which
+# fails while anything else in it is still unsigned.
+find "$APP/Contents" -type f \( -name "*.dylib" -o -perm -u+x \) ! -path "$APP/Contents/MacOS/sidetone" -print0 | while IFS= read -r -d '' f; do
     # (not file | grep -q: with pipefail, grep quitting early breaks file's pipe and reads as "not Mach-O")
     case "$(file -b "$f")" in
         *Mach-O*) codesign --force --sign - "$f" ;;
