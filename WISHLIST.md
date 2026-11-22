@@ -31,7 +31,7 @@ Roughly in the order that makes sense to do them.
 
 5. **TMS (text messaging).** Waiting on others: it depends on data support on the FNE side. The question for the FNE's maintainers is what a console peer will be sent and allowed to send, so the GUI can get a messages panel that fits.
    - **SMPP** (2026-11-22, from the FNE's maintainers): the console will talk to a TMS server over SMPP (Short Message Peer-to-Peer, the protocol SMS gateways use), not through the FNE peer connection. No further details yet: which SMPP version, the server's address and login (likely new codeplug keys, per system), how radio IDs map to SMPP addresses, and whether delivery receipts are sent.
-   - What it would likely take, once known: a small SMPP client in the core (bind as a transceiver, `submit_sm` to send, `deliver_sm` to receive, `enquire_link` to keep the link up, reconnecting like the FNE connection), written in plain C# rather than a library (the .NET ones are commercial or unmaintained, and the needed part of SMPP 3.4 is small). Then a messages panel in the GUI and TUI, and Android notifications for incoming messages. A self-test against a stand-in SMPP server, as web streams have against a local HTTP server.
+   - What it would likely take, once known: a small SMPP client in the core (bind as a transceiver, `submit_sm` to send, `deliver_sm` to receive, `enquire_link` to keep the link up, reconnecting like the FNE connection), in plain C# unless a well-kept library turns up (not yet checked; the part of SMPP 3.4 needed is small). Then a messages panel in the GUI and TUI, and Android notifications for incoming messages. A self-test against a stand-in SMPP server, as web streams have against a local HTTP server.
 
 ## Partially implemented
 
