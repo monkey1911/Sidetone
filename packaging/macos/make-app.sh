@@ -36,9 +36,10 @@ iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/sidetone.icns"
 
 # ad-hoc signature: every program and library inside first, then the bundle
 find "$APP/Contents" -type f \( -name "*.dylib" -o -perm -u+x \) -print0 | while IFS= read -r -d '' f; do
-    if file -b "$f" | grep -q "Mach-O"; then
-        codesign --force --sign - "$f"
-    fi
+    # (not file | grep -q: with pipefail, grep quitting early breaks file's pipe and reads as "not Mach-O")
+    case "$(file -b "$f")" in
+        *Mach-O*) codesign --force --sign - "$f" ;;
+    esac
 done
 codesign --force --sign - "$APP"
 codesign --verify --deep --strict "$APP"
