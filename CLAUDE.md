@@ -8,7 +8,10 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
 
 ## State at hand-off (2026-11-16)
 
-- Version **0.31.5** on `main` (set once, in `src/Directory.Build.props`), fixes from an audit:
+- Version **0.31.6** on `main` (set once, in `src/Directory.Build.props`): the peer tells the FNE
+  its version and platform, `SIDETONE_R00A31_LNX` (`CliPeer.SoftwareId`; R major, A minor, as the
+  Windows console's `CONSOLE_R01A02`; then `LNX`, `AND`, `WIN` or `MAC`, the owner's choice); it was a
+  fixed `SIDETONE_R00A01`. 0.31.5, fixes from an audit:
   `CliPeer.Connected` reads fnecore's state (`Information.State == RUNNING`; it was a flag set at
   login and never cleared, so a lost connection still showed connected); a call whose TDU is lost
   ends after 3 s without frames (`P25VoiceReceiver.EndIfIdle`, `DispatchConsole.CallHousekeeping`,
@@ -42,7 +45,7 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
   announcement; 0.29 brought WAV
   announcements, `listen --key-file`, the dvmcli/dvmgui wrappers removed. Check
   `gh release list` for what was last published.
-- 370 checks (298 in `sidetone-cli selftest`, one of which runs only when a speech engine is
+- 371 checks (299 in `sidetone-cli selftest`, one of which runs only when a speech engine is
   installed; 72 in the GUI's `--selfcheck`) plus screenshots, and the Android job's on-device
   self-test (`DeviceSelfTest.cs`, on an API 30 emulator).
 - **Tested on the air by the owner:** RX/TX clear and AES, key delivery from the FNE, alias sync,

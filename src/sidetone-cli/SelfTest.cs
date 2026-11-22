@@ -2158,6 +2158,11 @@ zones:
             bool up = cp.Connected;
             cp.PeerForTest.Information.State = fnecore.ConnectionState.WAITING_LOGIN;     // what fnecore sets on a lost connection
             Check(before && up && !cp.Connected, "FNE peer: connected only while logged in; a lost connection (fnecore logging in again) shows as not connected");
+            string sw = cp.PeerForTest.Information.Details.Software;
+            Version mine = typeof(CliPeer).Assembly.GetName().Version;
+            Check(sw == $"SIDETONE_R{mine.Major:D2}A{mine.Minor:D2}_LNX" && CliPeer.SoftwareId(new Version(1, 2, 3), "AND") == "SIDETONE_R01A02_AND" &&
+                  CliPeer.SoftwareId(new Version(0, 31, 6), "WIN") == "SIDETONE_R00A31_WIN" && CliPeer.SoftwareId(new Version(0, 31), "MAC") == "SIDETONE_R00A31_MAC",
+                  $"FNE peer: tells the FNE its version and platform, in the Windows console's form ({sw})");
         }
 
         private static void SettingsRecoveryTests(string tmp)

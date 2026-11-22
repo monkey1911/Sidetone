@@ -116,6 +116,17 @@ namespace Sidetone.Core
         }
 
         /// <summary>
+        /// What the FNE is told this peer runs, in the Windows console's form (CONSOLE_R01A02: major and minor), with the
+        /// platform after it: SIDETONE_R00A31_LNX. The FNE's peer list then shows the version and OS of each Sidetone.
+        /// </summary>
+        internal static string SoftwareId(Version v, string os) =>
+            $"SIDETONE_R{(v?.Major ?? 0):D2}A{(v?.Minor ?? 0):D2}" + (os != null ? "_" + os : string.Empty);
+
+        /// <summary>The platform as the FNE is told it: LNX, AND, WIN or MAC (null for anything else).</summary>
+        internal static string OsTag() =>
+            OperatingSystem.IsAndroid() ? "AND" : OperatingSystem.IsLinux() ? "LNX" : OperatingSystem.IsWindows() ? "WIN" : OperatingSystem.IsMacOS() ? "MAC" : null;
+
+        /// <summary>
         /// Builds the fnecore peer from a codeplug system entry.
         /// </summary>
         private static FnePeer CreatePeer(Codeplug.System system)
@@ -139,7 +150,7 @@ namespace Sidetone.Core
                 {
                     ConventionalPeer = true,
                     PeerClass = PeerConnectionClass.PEER_CONN_CLASS_CONSOLE,
-                    Software = "SIDETONE_R00A01",
+                    Software = SoftwareId(typeof(CliPeer).Assembly.GetName().Version, OsTag()),
                     Identity = identity
                 }
             };
