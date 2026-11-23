@@ -517,49 +517,54 @@ namespace Sidetone.Gui
             Check(set.IsOpen && set.TxLimit.Text == "90", "Settings reopens on what was saved");
             Press(PhysicalKey.Escape);
 
-            // the app launcher entry, in a scratch folder
-            string data = Path.Combine(Path.GetTempPath(), $"sidetone-launcher-{Environment.ProcessId}");
-            try
+            // the app launcher entry, in a scratch folder (a Linux desktop entry; Windows paths don't fit it, and it isn't offered there)
+            if (OperatingSystem.IsWindows())
+                Console.WriteLine("  SKIP: launcher: the app launcher entry is a Linux desktop file (the installer adds the Start menu entry)");
+            else
             {
-                string entry = AppLauncher.Install(data, "/opt/side tone/sidetone");
-                string text = File.ReadAllText(entry);
-                Check(AppLauncher.IsInstalled(data) && text.Contains("Exec=\"/opt/side tone/sidetone\"") && text.Contains("Icon=sidetone") && text.Contains("Name=Sidetone") &&
-                      new FileInfo(Path.Combine(data, "icons", "hicolor", "scalable", "apps", "sidetone.svg")).Length > 200 &&
-                      new FileInfo(Path.Combine(data, "icons", "hicolor", "256x256", "apps", "sidetone.png")).Length > 1000,
-                      "launcher: the entry and both icons are written, with the program path quoted");
-                bool same = AppLauncher.Refresh(data, "/opt/side tone/sidetone");
-                bool moved = AppLauncher.Refresh(data, "/opt/sidetone-next/sidetone");
-                Check(!same && moved && File.ReadAllText(entry).Contains("Exec=\"/opt/sidetone-next/sidetone\""),
-                      "launcher: an entry follows the program to a new folder, and is left alone otherwise");
-                File.WriteAllText(entry, "[Desktop Entry]\nName=Mine\n");
-                Check(!AppLauncher.Refresh(data, "/opt/elsewhere/sidetone"), "launcher: an entry someone else wrote is left alone");
-                Check(AppLauncher.Remove(data) && !AppLauncher.IsInstalled(data) && !AppLauncher.Remove(data), "launcher: removing takes the entry and icons away");
+                string data = Path.Combine(Path.GetTempPath(), $"sidetone-launcher-{Environment.ProcessId}");
+                try
+                {
+                    string entry = AppLauncher.Install(data, "/opt/side tone/sidetone");
+                    string text = File.ReadAllText(entry);
+                    Check(AppLauncher.IsInstalled(data) && text.Contains("Exec=\"/opt/side tone/sidetone\"") && text.Contains("Icon=sidetone") && text.Contains("Name=Sidetone") &&
+                          new FileInfo(Path.Combine(data, "icons", "hicolor", "scalable", "apps", "sidetone.svg")).Length > 200 &&
+                          new FileInfo(Path.Combine(data, "icons", "hicolor", "256x256", "apps", "sidetone.png")).Length > 1000,
+                          "launcher: the entry and both icons are written, with the program path quoted");
+                    bool same = AppLauncher.Refresh(data, "/opt/side tone/sidetone");
+                    bool moved = AppLauncher.Refresh(data, "/opt/sidetone-next/sidetone");
+                    Check(!same && moved && File.ReadAllText(entry).Contains("Exec=\"/opt/sidetone-next/sidetone\""),
+                          "launcher: an entry follows the program to a new folder, and is left alone otherwise");
+                    File.WriteAllText(entry, "[Desktop Entry]\nName=Mine\n");
+                    Check(!AppLauncher.Refresh(data, "/opt/elsewhere/sidetone"), "launcher: an entry someone else wrote is left alone");
+                    Check(AppLauncher.Remove(data) && !AppLauncher.IsInstalled(data) && !AppLauncher.Remove(data), "launcher: removing takes the entry and icons away");
 
-                // an AppImage: the entry must start the .AppImage file, not the temporary mount it runs from
-                string fakeAppImage = Path.Combine(data, "Sidetone-x86_64.AppImage");
-                File.WriteAllText(fakeAppImage, "x");
-                string wasAppImage = Environment.GetEnvironmentVariable("APPIMAGE");
-                Environment.SetEnvironmentVariable("APPIMAGE", fakeAppImage);
-                string inAppImage = AppLauncher.ProgramPath;
-                Environment.SetEnvironmentVariable("APPIMAGE", Path.Combine(data, "gone.AppImage"));
-                string goneAppImage = AppLauncher.ProgramPath;
-                Environment.SetEnvironmentVariable("APPIMAGE", wasAppImage);
-                Check(inAppImage == fakeAppImage && goneAppImage == Environment.ProcessPath,
-                      "launcher: from an AppImage, the entry starts the AppImage file itself");
+                    // an AppImage: the entry must start the .AppImage file, not the temporary mount it runs from
+                    string fakeAppImage = Path.Combine(data, "Sidetone-x86_64.AppImage");
+                    File.WriteAllText(fakeAppImage, "x");
+                    string wasAppImage = Environment.GetEnvironmentVariable("APPIMAGE");
+                    Environment.SetEnvironmentVariable("APPIMAGE", fakeAppImage);
+                    string inAppImage = AppLauncher.ProgramPath;
+                    Environment.SetEnvironmentVariable("APPIMAGE", Path.Combine(data, "gone.AppImage"));
+                    string goneAppImage = AppLauncher.ProgramPath;
+                    Environment.SetEnvironmentVariable("APPIMAGE", wasAppImage);
+                    Check(inAppImage == fakeAppImage && goneAppImage == Environment.ProcessPath,
+                          "launcher: from an AppImage, the entry starts the AppImage file itself");
 
-                // a package's entry in a system data folder: found, so Settings doesn't add a second one
-                string sysShare = Path.Combine(data, "usr-share"), emptyShare = Path.Combine(data, "empty-share");
-                Directory.CreateDirectory(Path.Combine(sysShare, "applications"));
-                Directory.CreateDirectory(emptyShare);
-                File.WriteAllText(Path.Combine(sysShare, "applications", AppLauncher.DesktopFileName), "[Desktop Entry]");
-                Check(AppLauncher.SystemEntry($"{emptyShare}:{sysShare}") == Path.Combine(sysShare, "applications", AppLauncher.DesktopFileName) &&
-                      AppLauncher.SystemEntry(emptyShare) == null,
-                      "launcher: a launcher entry installed by a package is found in the system data folders");
-                Check(AppLauncher.QuoteExec("/a/50% \"x\" $y") == "\"/a/50%% \\\\\"x\\\\\" \\\\$y\"", "launcher: reserved characters in the path are escaped");
-            }
-            finally
-            {
-                try { Directory.Delete(data, true); } catch (Exception) { }
+                    // a package's entry in a system data folder: found, so Settings doesn't add a second one
+                    string sysShare = Path.Combine(data, "usr-share"), emptyShare = Path.Combine(data, "empty-share");
+                    Directory.CreateDirectory(Path.Combine(sysShare, "applications"));
+                    Directory.CreateDirectory(emptyShare);
+                    File.WriteAllText(Path.Combine(sysShare, "applications", AppLauncher.DesktopFileName), "[Desktop Entry]");
+                    Check(AppLauncher.SystemEntry($"{emptyShare}:{sysShare}") == Path.Combine(sysShare, "applications", AppLauncher.DesktopFileName) &&
+                          AppLauncher.SystemEntry(emptyShare) == null,
+                          "launcher: a launcher entry installed by a package is found in the system data folders");
+                    Check(AppLauncher.QuoteExec("/a/50% \"x\" $y") == "\"/a/50%% \\\\\"x\\\\\" \\\\$y\"", "launcher: reserved characters in the path are escaped");
+                }
+                finally
+                {
+                    try { Directory.Delete(data, true); } catch (Exception) { }
+                }
             }
             Check(holdBefore, "Space is hold-to-talk unless Settings or --space says otherwise");
 
