@@ -9,6 +9,8 @@
     <AssemblyName>sidetone</AssemblyName>
     <RootNamespace>Sidetone.Gui</RootNamespace>
     <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- Windows: .NET's globalization (Windows's own ICU) converts IANA time zones; the culture stays invariant (DesktopPlatform) -->
+    <InvariantGlobalization Condition="$(RuntimeIdentifier.StartsWith('win'))">false</InvariantGlobalization>
     <AvaloniaVersion>12.1.6</AvaloniaVersion>
   </PropertyGroup>
 

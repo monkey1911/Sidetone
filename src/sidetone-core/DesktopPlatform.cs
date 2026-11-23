@@ -24,7 +24,15 @@ namespace Sidetone.Core
             if (OperatingSystem.IsMacOS())
                 MacPlatform.Register();
             else if (OperatingSystem.IsWindows())
+            {
+                // Windows builds keep .NET's globalization (Windows's own ICU), which is what turns IANA time zones like
+                // America/Chicago into Windows's; numbers and dates stay invariant, as on Linux (no decimal commas in logs or parsing)
+                System.Globalization.CultureInfo.DefaultThreadCurrentCulture = System.Globalization.CultureInfo.InvariantCulture;
+                System.Globalization.CultureInfo.DefaultThreadCurrentUICulture = System.Globalization.CultureInfo.InvariantCulture;
+                System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureInfo.InvariantCulture;
+                System.Globalization.CultureInfo.CurrentUICulture = System.Globalization.CultureInfo.InvariantCulture;
                 WindowsPlatform.Register();
+            }
         }
 
         /// <summary>Sets the XDG folders that aren't set to the system's own places (macOS, Windows).</summary>

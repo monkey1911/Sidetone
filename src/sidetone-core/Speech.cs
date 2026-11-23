@@ -381,7 +381,11 @@ namespace Sidetone.Core
         /// </summary>
         public static string ZoneAbbreviation(TimeZoneInfo zone, DateTime utc)
         {
-            string name = zone.IsDaylightSavingTime(utc) ? zone.DaylightName : zone.StandardName;
+            bool daylight = zone.IsDaylightSavingTime(utc);
+            // Windows has no tzdata abbreviations, only names like "Central Standard Time": the common ones by table, the rest as offsets
+            if (OperatingSystem.IsWindows() && WindowsAbbreviations.TryGetValue(zone.StandardName ?? string.Empty, out (string Standard, string Daylight) letters))
+                return daylight ? letters.Daylight : letters.Standard;
+            string name = daylight ? zone.DaylightName : zone.StandardName;
             if (zone.Id == "UTC" || zone.Id == "Etc/UTC" || zone.Id == "Etc/UCT" || name == "Coordinated Universal Time")
                 return "UTC";
             if (!string.IsNullOrEmpty(name) && name.Length <= 6 && name.All(char.IsLetter))
@@ -391,6 +395,22 @@ namespace Sidetone.Core
             off = off.Duration();
             return off.Minutes == 0 ? $"UTC{sign}{off.Hours}" : $"UTC{sign}{off.Hours}:{off.Minutes:00}";
         }
+
+        /// <summary>Windows's zone names (StandardName) and their abbreviations, standard and daylight: North America, the UK.</summary>
+        private static readonly Dictionary<string, (string Standard, string Daylight)> WindowsAbbreviations = new()
+        {
+            ["Eastern Standard Time"] = ("EST", "EDT"),
+            ["Central Standard Time"] = ("CST", "CDT"),
+            ["Mountain Standard Time"] = ("MST", "MDT"),
+            ["US Mountain Standard Time"] = ("MST", "MST"),
+            ["Pacific Standard Time"] = ("PST", "PDT"),
+            ["Alaskan Standard Time"] = ("AKST", "AKDT"),
+            ["Hawaiian Standard Time"] = ("HST", "HST"),
+            ["Atlantic Standard Time"] = ("AST", "ADT"),
+            ["Newfoundland Standard Time"] = ("NST", "NDT"),
+            ["GMT Standard Time"] = ("GMT", "BST"),
+            ["Greenwich Standard Time"] = ("GMT", "GMT"),
+        };
 
         /// <summary>An abbreviation said out loud: letters one by one ("P S T"), an offset in words ("U T C minus five").</summary>
         public static string SayAbbreviation(string abbreviation)
@@ -462,8 +482,12 @@ namespace Sidetone.Core
 
         /// <summary>The time zone ids this computer knows, for the lists (UTC first, then by id).</summary>
         public static List<string> ZoneIds() =>
-            new[] { "UTC" }.Concat(TimeZoneInfo.GetSystemTimeZones().Select(z => z.Id).Where(id => id != "UTC" && id.Contains('/') && !id.StartsWith("Etc/", StringComparison.Ordinal))
+            new[] { "UTC" }.Concat(TimeZoneInfo.GetSystemTimeZones().Select(z => IanaId(z.Id)).Where(id => id != null && id != "UTC" && id.Contains('/') && !id.StartsWith("Etc/", StringComparison.Ordinal))
                                                              .OrderBy(id => id, StringComparer.Ordinal)).Distinct().ToList();
+
+        /// <summary>A zone's IANA id: as it is on Linux and macOS; on Windows, converted from Windows's own id (null when there isn't one).</summary>
+        private static string IanaId(string id) =>
+            !OperatingSystem.IsWindows() ? id : TimeZoneInfo.TryConvertWindowsIdToIanaId(id, out string iana) ? iana : null;
 
         /// <summary>The schedule choices, in minutes (0 is off).</summary>
         public static readonly int[] Intervals = { 0, 15, 30, 60 };

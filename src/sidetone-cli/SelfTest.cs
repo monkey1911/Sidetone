@@ -1351,7 +1351,7 @@ B: MSC=10
                 string keyLog = string.Join("\n", keyed.SnapshotLog(20));
                 Check(keyLog.Contains("keys: 2 from test.ekc") && !keyLog.Contains("correct horse") && !keyLog.Contains(Convert.ToHexString(material)),
                       "key file: the log says how many keys were loaded, and never the password or a key");
-                Check(LocalKeyFile.Resolve(cp, "/tmp/x.ekc") == "/tmp/x.ekc" && LocalKeyFile.Resolve(cp, null) == null,
+                Check(LocalKeyFile.Resolve(cp, "/tmp/x.ekc") == Path.GetFullPath("/tmp/x.ekc") && LocalKeyFile.Resolve(cp, null) == null,     // (Windows adds the drive)
                       "key file: an option or setting names it; a codeplug without one means none");
 
                 // selectable encryption
@@ -3385,7 +3385,7 @@ zones:
                   "start-up: the time limit is the option's, else the saved one, else 120 s; 5 to 900 s in both consoles");
             Check(savedPtt == null && startNotes.Any(n => n.Contains("saved PTT device isn't being used")) && optionPttRefused && buttonsAlone,
                   "start-up: a saved PTT device that can't be used (a bad button name) is a warning; on the command line it's an error");
-            Check(StartupChoices.KeyFile(cp, null, chosen) == "/keys/saved.ekc" && StartupChoices.KeyFile(cp, "/keys/option.ekc", chosen) == "/keys/option.ekc" &&
+            Check(StartupChoices.KeyFile(cp, null, chosen) == Path.GetFullPath("/keys/saved.ekc") && StartupChoices.KeyFile(cp, "/keys/option.ekc", chosen) == Path.GetFullPath("/keys/option.ekc") &&
                   StartupChoices.KeyFile(cp, null, new AppSettings()) == null,
                   "start-up: the key file is the option's, else the one chosen in Settings, else the codeplug's");
 
