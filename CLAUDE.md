@@ -98,7 +98,7 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
   key only worked in the foreground; `PttKeyReceiver` (declared in the manifest) takes Sonim's
   `PTT_KEY_DOWN/UP`, Kodiak's and MCPTT's key intents (Sonim's firmware lists apps declaring them for
   its PTT key). Target PTT devices: Zebra TC57/TC58, Motorola LEX L11 (no public interface known),
-  Sonim XP10 and XP Pro. `PttIntents.cs` handles them all. 0.31.3: an FNE address that can't be
+  Sonim XP10 and XP Pro. `PttIntents.cs` handles them all. The Sonim XP10's PTT key was tested and works (reported by the owner). 0.31.3: an FNE address that can't be
   looked up (`CliPeer.ResolveAddress`, `FneAddressException`) gets a plain reason instead of a crash
   (0.31.0) or a raw SocketException (0.31.1); found from an Android tester's debug logs. 0.31.2: Go offline / Go online
   (`ConsoleView.GoOffline`: closes the console, keeps the codeplug, remembered as
@@ -154,7 +154,7 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
   log files and Copy log, the TUI using the GUI's saved settings, the TUI's card buttons and key
   file box; from 0.26: Opus recordings and Delete after; from 0.28: one-way patches, outputs per
   tab and channel, the call history between runs; from 0.29: announcements, `listen --key-file`; from 0.30: the scheduled time announcement, the new announcement level (0.30.3); from 0.31:
-  on Android, hardware PTT keys on Sonim and the LEX L11; from 0.32: web streams (a real feed, and
+  on Android, hardware PTT keys on the Sonim XP Pro and the LEX L11; from 0.32: web streams (a real feed, and
   one with a password); from 0.34: macOS on Apple silicon (only CI so far), and on the
   owner's Intel Mac whatever their "it worked" didn't cover (ask before listing parts as tested); from
   0.36: the boxes on a real tablet; from
