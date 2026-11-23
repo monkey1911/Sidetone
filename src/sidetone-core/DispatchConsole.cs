@@ -255,7 +255,7 @@ namespace Sidetone.Core
         public void Start()
         {
             if (LogFolder != null && logFile == null)
-                LogFiles.Prune(LogFolder, DateTime.Now);
+                LogFiles.Prune(LogFolder, DateTime.UtcNow);
             AddLog($"Sidetone {Version} started{(LogFilePath != null ? $"; log file {LogFilePath}" : string.Empty)}");
             foreach (FneLink link in links)
             {
@@ -457,7 +457,7 @@ namespace Sidetone.Core
 
             P25Transmitter t = tx;
             if (t != null && t.IsTransmitting && txChan == c)
-                return new ChannelStatus(ChannelActivity.Transmitting, $"TX {DateTime.Now - t.StartedAt:mm\\:ss}", muted);
+                return new ChannelStatus(ChannelActivity.Transmitting, $"TX {DateTime.UtcNow - t.StartedAt:mm\\:ss}", muted);
             string patched = PatchTransmitText(c);
             if (patched != null)
                 return new ChannelStatus(ChannelActivity.Transmitting, patched, muted);
@@ -859,7 +859,7 @@ namespace Sidetone.Core
             txFeed = null;      // stop feeding mic audio before the call ends
             StopPatchTx();
 
-            double secs = (DateTime.Now - t.StartedAt).TotalSeconds;
+            double secs = (DateTime.UtcNow - t.StartedAt).TotalSeconds;
             bool was = t.IsTransmitting;
             t.Stop();
             RecallTxStopped(txChan);
@@ -1081,7 +1081,7 @@ namespace Sidetone.Core
         internal string ControlStatus()
         {
             if (Transmitting)
-                return $"ok: transmitting on {txChan?.Cfg.Name} (tg {tx.Talkgroup}) for {(DateTime.Now - tx.StartedAt).TotalSeconds:F0} s";
+                return $"ok: transmitting on {txChan?.Cfg.Name} (tg {tx.Talkgroup}) for {(DateTime.UtcNow - tx.StartedAt).TotalSeconds:F0} s";
             Chan c = chans[cursor];
             string conn = Connected ? "connected" : links.Count > 1 && ConnectedCount > 0 ? $"{ConnectedCount} of {links.Count} systems connected" : "not connected";
             return $"ok: idle, {conn}, PTT would transmit on {c.Cfg.Name}{(c.IsP25 ? $" (tg {c.Tg})" : $" ({c.Cfg.Mode}, no transmit)")}";
@@ -1288,11 +1288,11 @@ namespace Sidetone.Core
                 StopTx(stop);
             }
 
-            if (Transmitting && DateTime.Now - tx.StartedAt > txLimit)
+            if (Transmitting && DateTime.UtcNow - tx.StartedAt > txLimit)
                 StopTx($"{txLimit.TotalSeconds:F0} s transmit limit reached");
 
             if (Transmitting && !noAudioWarned && !NoAudio &&
-                NoAudioDue(DateTime.UtcNow, tx.StartedAt.ToUniversalTime(), new DateTime(Interlocked.Read(ref lastVoiceTicks), DateTimeKind.Utc), micMuted))
+                NoAudioDue(DateTime.UtcNow, tx.StartedAt, new DateTime(Interlocked.Read(ref lastVoiceTicks), DateTimeKind.Utc), micMuted))
             {
                 noAudioWarned = true;
                 AddLog("no audio from the microphone: check that it's plugged in, not turned down, and is the input in use (sidetone-cli devices)");
@@ -1304,9 +1304,9 @@ namespace Sidetone.Core
                 SaveSettings();
 
             // channel marker: a beep on every idle listening channel, every markerInterval
-            if (markerOn && DateTime.Now >= nextMarker)
+            if (markerOn && DateTime.UtcNow >= nextMarker)
             {
-                nextMarker = DateTime.Now + markerInterval;
+                nextMarker = DateTime.UtcNow + markerInterval;
                 if (toneJob == null && !Transmitting && links.Any(l => l.CanSend))
                 {
                     List<Chan> idle = TxCapableListening().Where(c => !(c.Rx?.InCall ?? false) && !c.Active).ToList();
@@ -1670,7 +1670,7 @@ namespace Sidetone.Core
         public void ToggleMarker()
         {
             markerOn = !markerOn;
-            nextMarker = DateTime.Now;     // first beep straight away
+            nextMarker = DateTime.UtcNow;     // first beep straight away
             AddLog(markerOn ? $"channel marker on: a {TonePlan.MarkerHz:F0} Hz beep every {markerInterval.TotalSeconds:F0} s on idle listening channels"
                             : "channel marker off");
         }
@@ -1701,7 +1701,7 @@ namespace Sidetone.Core
         public void AddLog(string message)
         {
             message = (message ?? string.Empty).Replace("(SIDETONE) ", string.Empty);
-            string line = $"{DateTime.Now:HH:mm:ss} {message}";
+            string line = $"{DateTime.UtcNow:HH:mm:ss} {message}";
             lock (uiLock)
             {
                 log.AddLast(line);
@@ -1725,7 +1725,7 @@ namespace Sidetone.Core
                                 Directory.CreateDirectory(dir);
                             logFileMade = file;
                         }
-                        File.AppendAllText(file, $"{DateTime.Now:yyyy-MM-dd} {line}{Environment.NewLine}");
+                        File.AppendAllText(file, $"{DateTime.UtcNow:yyyy-MM-dd} {line}{Environment.NewLine}");
                     }
                     catch { /* the log on screen still has it */ }
                 }
@@ -1742,6 +1742,6 @@ namespace Sidetone.Core
         public string LogFolder { get; set; }
 
         /// <summary>The file log lines are being written to right now, or null.</summary>
-        public string LogFilePath => logFile ?? (LogFolder != null ? LogFiles.FileFor(LogFolder, DateTime.Now) : null);
+        public string LogFilePath => logFile ?? (LogFolder != null ? LogFiles.FileFor(LogFolder, DateTime.UtcNow) : null);
     } // public class DispatchConsole
 }

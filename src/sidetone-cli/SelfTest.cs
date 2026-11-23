@@ -2203,9 +2203,9 @@ zones:
         {
             string dir = Path.Combine(tmp, "debug"), consoleLogs = Path.Combine(tmp, "debug-console-logs");
             Directory.CreateDirectory(consoleLogs);
-            File.WriteAllText(LogFiles.FileFor(consoleLogs, DateTime.Now), "12:00:00 Tac 1: RX Unit 12\n");
-            File.WriteAllText(LogFiles.FileFor(consoleLogs, DateTime.Now.AddDays(-10)), "old\n");
-            File.SetLastWriteTime(LogFiles.FileFor(consoleLogs, DateTime.Now.AddDays(-10)), DateTime.Now.AddDays(-10));
+            File.WriteAllText(LogFiles.FileFor(consoleLogs, DateTime.UtcNow), "12:00:00 Tac 1: RX Unit 12\n");
+            File.WriteAllText(LogFiles.FileFor(consoleLogs, DateTime.UtcNow.AddDays(-10)), "old\n");
+            File.SetLastWriteTime(LogFiles.FileFor(consoleLogs, DateTime.UtcNow.AddDays(-10)), DateTime.UtcNow.AddDays(-10));
             DebugLog.StopForTest();
             DebugLog.Start(dir, "self-test");
             try
@@ -2240,7 +2240,7 @@ zones:
                 using (StreamReader r = new StreamReader(z.GetEntry("about.txt").Open()))
                     about = r.ReadToEnd();
                 Check(files == 2 && names.Count == 3 && names.Contains("about.txt") && names.Any(n => n.StartsWith("debug/debug-")) &&
-                      names.Contains($"console/{Path.GetFileName(LogFiles.FileFor(consoleLogs, DateTime.Now))}") && about == "about this test",
+                      names.Contains($"console/{Path.GetFileName(LogFiles.FileFor(consoleLogs, DateTime.UtcNow))}") && about == "about this test",
                       $"debug log: Save debug logs zips the debug log, the recent console logs (not old ones) and about.txt ({string.Join(", ", names)})");
             }
             finally
@@ -2880,6 +2880,7 @@ zones:
       - { name: ""Page"", url: ""http://127.0.0.1:PORT/page"" }
       - { name: ""Zeros"", url: ""http://127.0.0.1:PORT/zeros"" }
       - { name: ""Down"", url: ""http://127.0.0.1:DOWN/live"" }
+      - { name: ""Stall"", url: ""http://127.0.0.1:PORT/stall"" }
   - name: ""Bravo""
     channels:
       - { name: ""B1"", system: ""Test FNE"", tgid: ""621"", mode: ""p25"" }
@@ -2945,7 +2946,8 @@ zones:
             int port = FreePort(), down = FreePort();
             string expectedAuth = "Basic " + Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("streamuser:streampass"));
             List<string> auths = new List<string>();
-            int liveConnections = 0;
+            int liveConnections = 0, stallConnections = 0;
+            ManualResetEventSlim stallRelease = new ManualResetEventSlim();
             System.Net.HttpListener server = new System.Net.HttpListener();
             server.Prefixes.Add($"http://127.0.0.1:{port}/");
             server.Start();
@@ -2989,6 +2991,16 @@ zones:
                                 r.ContentType = "text/html";
                                 r.OutputStream.Write(System.Text.Encoding.UTF8.GetBytes("<html>sign in</html>"));
                             }
+                            else if (path == "/stall")
+                            {
+                                // some audio, then nothing on a connection that stays open (a half-dead link)
+                                Interlocked.Increment(ref stallConnections);
+                                r.ContentType = "audio/mpeg";
+                                r.SendChunked = true;
+                                r.OutputStream.Write(mp3, 0, mp3.Length);
+                                r.OutputStream.Flush();
+                                stallRelease.Wait(TimeSpan.FromSeconds(30));
+                            }
                             else if (path == "/zeros")
                             {
                                 r.ContentType = "audio/mpeg";
@@ -3024,8 +3036,8 @@ zones:
                 ConsoleStream S(string name) => sc.Streams.First(x => x.Name == name);
                 StreamSink Sink(string name) { lock (sinks) return sinks.TryGetValue(name, out StreamSink k) ? k : null; }
 
-                Check(string.Join(",", sc.Streams.Select(x => x.Name)) == "Live,NoAuth,Aac,Page,Zeros,Down,Bravo feed" &&
-                      sc.StreamsIn(sc.Zones[0]).Count == 6 && sc.StreamsIn(sc.Zones[1]).Single().Name == "Bravo feed" &&
+                Check(string.Join(",", sc.Streams.Select(x => x.Name)) == "Live,NoAuth,Aac,Page,Zeros,Down,Stall,Bravo feed" &&
+                      sc.StreamsIn(sc.Zones[0]).Count == 7 && sc.StreamsIn(sc.Zones[1]).Single().Name == "Bravo feed" &&
                       sc.Streams.All(x => x.State == StreamState.Off && !x.On && x.StateText == "Off") &&
                       S("Live").IdleColor == "#150282" && S("Live").Host == "127.0.0.1",
                       "web streams: read per tab from the codeplug, all off at start; a zone with no channels (no tab) is left out");
@@ -3092,6 +3104,19 @@ zones:
                       Why("Page").Contains("web page") && Why("Zeros").Contains("isn't MP3") && Why("Down").Contains("(3 attempts)") &&
                       S("Down").StateText == "Failed" && !S("Down").On,
                       $"web streams: refused streams fail with a plain reason, an unreachable one after 3 attempts ({Why("NoAuth")}; {Why("Aac")}; {Why("Page")}; {Why("Zeros")}; {Why("Down")})");
+                // a stream that stops sending without closing (a phone changing networks): given up on, and connected again
+                TimeSpan readWas = WebStreamPlayer.QuietTimeout;
+                WebStreamPlayer.QuietTimeout = TimeSpan.FromMilliseconds(500);
+                ConsoleStream stall = S("Stall");
+                sc.ToggleStream(stall);
+                bool reconnected = WaitFor(() => Volatile.Read(ref stallConnections) >= 2);
+                bool stallLogged = string.Join("\n", sc.SnapshotLog(40)).Contains("stream Stall (127.0.0.1): no answer (timed out); trying again");
+                sc.ToggleStream(stall);
+                WebStreamPlayer.QuietTimeout = readWas;
+                stallRelease.Set();
+                Check(reconnected && stallLogged && !stall.On,
+                      $"web streams: a stream that goes silent on an open connection times out and connects again ({stallConnections} connections, logged {stallLogged})");
+
                 string streamLog = string.Join("\n", sc.SnapshotLog(200));
                 Check(streamLog.Contains("stream Live (127.0.0.1)") && !streamLog.Contains("streampass") && !streamLog.Contains("streamuser") &&
                       !streamLog.Contains("feedtoken") && !streamLog.Contains("/live"),
@@ -3123,6 +3148,7 @@ zones:
             finally
             {
                 WebStreamPlayer.RetryDelay = retryWas;
+                stallRelease.Set();
                 server.Stop();
             }
 
@@ -3425,12 +3451,12 @@ zones:
             string liveLogs = Path.Combine(tmp, "live-logs");
             Tui logged = new Tui(cp, sys, TimeSpan.FromSeconds(120), null) { NoAudio = true, LogFolder = liveLogs };
             logged.AddLog("a line for the log file");
-            string todays = LogFiles.FileFor(liveLogs, DateTime.Now);
+            string todays = LogFiles.FileFor(liveLogs, DateTime.UtcNow);
             string written = File.Exists(todays) ? File.ReadAllText(todays) : string.Empty;
             string fixedFile = Path.Combine(tmp, "fixed.log");
             Tui fixedLog = new Tui(cp, sys, TimeSpan.FromSeconds(120), fixedFile) { NoAudio = true, LogFolder = liveLogs };
             fixedLog.AddLog("goes to the --log file");
-            Check(written.Contains("a line for the log file") && written.StartsWith(DateTime.Now.ToString("yyyy-MM-dd ")) &&
+            Check(written.Contains("a line for the log file") && written.StartsWith(DateTime.UtcNow.ToString("yyyy-MM-dd ")) &&
                   logged.LogFilePath == todays && fixedLog.LogFilePath == fixedFile && File.ReadAllText(fixedFile).Contains("--log file") &&
                   !File.ReadAllText(todays).Contains("--log file") && new Tui(cp, sys, TimeSpan.FromSeconds(120), null).LogFilePath == null,
                   "log files: lines go to today's file with the date; --log FILE wins; without a folder there's no file");

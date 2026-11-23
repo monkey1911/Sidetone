@@ -146,7 +146,7 @@ namespace Sidetone.Core
                 firstPacket = true;
                 packetSequence = 0;
                 FramesSent = 0;
-                StartedAt = DateTime.Now;
+                StartedAt = DateTime.UtcNow;
                 IsTransmitting = true;
 
                 sink.SendP25Tdu(SourceId, Talkgroup, StreamId, grantDemand: true, encrypted: Encrypted);

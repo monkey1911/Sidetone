@@ -323,7 +323,7 @@ namespace Sidetone.Droid
                     if (x.Timestamp <= seen)
                         continue;
                     newest = Math.Max(newest, x.Timestamp);
-                    DateTime when = DateTimeOffset.FromUnixTimeMilliseconds(x.Timestamp).LocalDateTime;
+                    DateTime when = DateTimeOffset.FromUnixTimeMilliseconds(x.Timestamp).UtcDateTime;
                     ApplicationExitInfoReason reason = (ApplicationExitInfoReason)x.Reason;
                     DebugLog.Write("last-exit", $"{when:yyyy-MM-dd HH:mm:ss}: {reason} ({x.Description ?? "no description"}), status {x.Status}, importance {x.Importance}");
                     if (reason == ApplicationExitInfoReason.Anr)

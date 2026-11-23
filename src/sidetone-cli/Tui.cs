@@ -977,7 +977,7 @@ namespace Sidetone.Cli
             }
             if (txHere)
             {
-                TimeSpan held = DateTime.Now - tx.StartedAt;
+                TimeSpan held = DateTime.UtcNow - tx.StartedAt;
                 Style s = Style.Of(Ansi.BrightWhite, Ansi.Red, bold: true);
                 screen.Fill(new Rect(x, y, w, 1), s);
                 screen.Text(x, y, $" ● TX {peer?.ConsoleRid}  {held:mm\\:ss}", s, w);
@@ -1064,7 +1064,7 @@ namespace Sidetone.Cli
             }
             else if (Transmitting)
             {
-                TimeSpan held = DateTime.Now - tx.StartedAt;
+                TimeSpan held = DateTime.UtcNow - tx.StartedAt;
                 Style s = Style.Of(Ansi.BrightWhite, Ansi.Red, bold: true);
                 screen.Fill(new Rect(0, y, width, 1), s);
                 string warn = micMuted ? "   ■ MIC MUTED (u to unmute)" : noAudioWarned ? "   ■ NO AUDIO FROM THE MICROPHONE" : string.Empty;

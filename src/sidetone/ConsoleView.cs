@@ -757,12 +757,18 @@ namespace Sidetone.Gui
             string folder = console?.RecordingsFolder ?? appSettings.RecordingsFolder ?? DispatchConsole.DefaultRecordingsFolder;
             if (offline)
                 return;
+            _ = OpenFolder(folder);
+        }
+
+        /// <summary>Shows a folder in the system's file manager (Finder, Explorer, or the Linux desktop's).</summary>
+        private async Task OpenFolder(string folder)
+        {
             try
             {
                 Directory.CreateDirectory(folder);
-                System.Diagnostics.ProcessStartInfo psi = new System.Diagnostics.ProcessStartInfo("xdg-open") { UseShellExecute = false };
-                psi.ArgumentList.Add(folder);
-                System.Diagnostics.Process.Start(psi)?.Dispose();
+                ILauncher launcher = TopLevel.GetTopLevel(this)?.Launcher;
+                if (launcher == null || !await launcher.LaunchDirectoryInfoAsync(new DirectoryInfo(folder)))
+                    console?.AddLog($"warning: couldn't open {folder} (no file manager answered)");
             }
             catch (Exception ex)
             {
@@ -1055,17 +1061,7 @@ namespace Sidetone.Gui
             if (offline || file == null)
                 return;
             string folder = Path.GetDirectoryName(file);
-            try
-            {
-                Directory.CreateDirectory(folder);
-                System.Diagnostics.ProcessStartInfo psi = new System.Diagnostics.ProcessStartInfo("xdg-open") { UseShellExecute = false };
-                psi.ArgumentList.Add(folder);
-                System.Diagnostics.Process.Start(psi)?.Dispose();
-            }
-            catch (Exception ex)
-            {
-                console?.AddLog($"warning: couldn't open {folder} ({ex.Message})");
-            }
+            _ = OpenFolder(folder);
         }
 
         /// <summary>Adds or removes the app launcher entry; returns what happened, as a sentence.</summary>
@@ -1472,7 +1468,7 @@ namespace Sidetone.Gui
                 txBar.Background = p.Tx;
                 txText.Foreground = p.OnStrong;
                 txText.Text = $"● TRANSMITTING   {on?.Cfg.Name}   tg {t.Talkgroup}   {(t.Encrypted ? KeyStore.AlgorithmName(t.AlgorithmId) : "clear")}   " +
-                              $"{DateTime.Now - t.StartedAt:mm\\:ss} / {c.TxLimit:mm\\:ss}{warn}";
+                              $"{DateTime.UtcNow - t.StartedAt:mm\\:ss} / {c.TxLimit:mm\\:ss}{warn}";
                 keyHints.Foreground = p.OnStrong;
                 return;
             }

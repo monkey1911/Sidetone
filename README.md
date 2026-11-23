@@ -753,7 +753,7 @@ zones:
 
 ## Log files
 
-Both consoles write their log to a file as well as the screen, one file per day: `~/.local/state/sidetone/logs/sidetone-YYYY-MM-DD.log` (under `$XDG_STATE_HOME` if that is set). Files older than 14 days are deleted when a console starts. Each run begins with a `Sidetone X.Y.Z started` line, so runs on the same day can be told apart.
+Both consoles write their log to a file as well as the screen, one file per day: `~/.local/state/sidetone/logs/sidetone-YYYY-MM-DD.log` (under `$XDG_STATE_HOME` if that is set). Files older than 14 days are deleted when a console starts. Each run begins with a `Sidetone X.Y.Z started` line, so runs on the same day can be told apart. Times in the log, on screen and in the files (and the files' dates), are UTC, as the FNE's and dvmhost's logs are, so lines can be matched up across them (0.36.1 and later).
 
 - **Copy log** in the graphical console's Settings puts this run's log (the last 500 lines) on the clipboard; **Open folder** opens the log files' folder.
 - `--log FILE` writes this run's log to that file instead, and `--no-log` keeps no file at all.
@@ -772,7 +772,7 @@ When something goes wrong (a codeplug won't open, the app freezes or closes), th
 
 On Android it also records why the app stopped the last time (a crash, "not responding", or the system closing it), with the details Android keeps.
 
-To send them to someone, press **Save debug logs…**. It's on the start screen, and in Settings under Log. It saves one zip: the last three days of debug and console logs, plus a short `about.txt` with the versions and the device. On a phone you choose where it goes (Downloads, Drive and so on), then share it from there. Debug logs are kept for 7 days in `~/.local/state/sidetone/debug/`, or in the app's own storage on Android. Codeplugs, passwords and keys are never in them.
+To send them to someone, press **Save debug logs…**. It's on the start screen, and in Settings under Log. It saves one zip: the last three days of debug and console logs, plus a short `about.txt` with the versions and the device. On a phone you choose where it goes (Downloads, Drive and so on), then share it from there. Their times are UTC too. Debug logs are kept for 7 days in `~/.local/state/sidetone/debug/`, or in the app's own storage on Android. Codeplugs, passwords and keys are never in them.
 
 ## Patching
 

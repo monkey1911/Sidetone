@@ -85,7 +85,7 @@ namespace Sidetone.Core
             string f = folder;
             if (f == null)
                 return;
-            DateTime now = DateTime.Now;
+            DateTime now = DateTime.UtcNow;
             string line = $"{now:yyyy-MM-dd HH:mm:ss.fff} [{Environment.CurrentManagedThreadId,3}] {area}: {text}{Environment.NewLine}";
             lock (sync)
             {
@@ -174,7 +174,7 @@ namespace Sidetone.Core
         public static int MakeBundle(string zipPath, string about, string consoleLogs, int days = 3)
         {
             Write("logs", $"saving the logs to {Path.GetFileName(zipPath)}");
-            DateTime since = DateTime.Now.Date.AddDays(-(days - 1));
+            DateTime since = DateTime.UtcNow.Date.AddDays(-(days - 1));
             int count = 0;
             if (File.Exists(zipPath))
                 File.Delete(zipPath);

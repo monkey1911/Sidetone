@@ -564,7 +564,7 @@ namespace Sidetone.Cli
         private static void Say(string message)
         {
             lock (sayLock)
-                Console.WriteLine($"{DateTime.Now:HH:mm:ss} {message}");
+                Console.WriteLine($"{DateTime.UtcNow:HH:mm:ss} {message}");
         }
 
         /// <summary>

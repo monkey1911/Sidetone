@@ -36,6 +36,8 @@ namespace Sidetone.Core
 
         /// <summary>Between connection attempts (shorter in the self-test).</summary>
         internal static TimeSpan RetryDelay = TimeSpan.FromSeconds(5);
+        /// <summary>No data for this long on a playing stream: it's dead, connect again (shorter in the self-test).</summary>
+        internal static TimeSpan QuietTimeout = TimeSpan.FromSeconds(30);
 
         private readonly Codeplug.WebStream cfg;
         private readonly Func<IAudioOutput> openOutput;
@@ -290,7 +292,10 @@ namespace Sidetone.Core
             {
                 if (read > Limit)
                     throw new InvalidDataException("no MP3 audio found");
-                int n = inner.ReadAsync(buffer.AsMemory(offset, count), token).AsTask().GetAwaiter().GetResult();
+                // a connection left half-open (a phone changing networks) sends nothing and never closes: give up and reconnect
+                using CancellationTokenSource quiet = CancellationTokenSource.CreateLinkedTokenSource(token);
+                quiet.CancelAfter(QuietTimeout);
+                int n = inner.ReadAsync(buffer.AsMemory(offset, count), quiet.Token).AsTask().GetAwaiter().GetResult();
                 read += n;
                 return n;
             }

@@ -8,7 +8,15 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
 
 ## State at hand-off (2026-11-16)
 
-- Version **0.36.0** on `main` (set once, in `src/Directory.Build.props`): Android improvements. Sharing
+- Version **0.36.1** on `main` (set once, in `src/Directory.Build.props`): fixes from an audit. Logs are
+  UTC (the console's log lines and files, debug logs, `listen`'s output), as the FNE's and dvmhost's are
+  (the owner's choice); the transmit clock (`P25Transmitter.StartedAt`, the time limit) and the channel
+  marker's timer are UTC too, so a clock change can't stretch the time limit or stop the marker. Cards,
+  Recent calls, recordings' names and the time announcement stay local. A web stream with no data for
+  30 s (`WebStreamPlayer.QuietTimeout`: a half-open connection after a phone changes networks) is given
+  up on and connected again. Open folder (recordings, logs) uses Avalonia's launcher, so it works on
+  macOS and Windows (it ran `xdg-open`).
+  0.36.0: Android improvements. Sharing
   recordings: Instant recall's button is **Recordings…** on a device (`RecordingsOverlay`: days newest
   first, Share and Share day; `Recordings.List` reads the files back from the names `RecordingPath`
   gives them), handed to `IGuiPlatform.Share`; Android's `AndroidPlatform.Share` uses AndroidX's
