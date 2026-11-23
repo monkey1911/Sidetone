@@ -2453,6 +2453,43 @@ zones:
             else
                 Console.WriteLine("(no text-to-speech engine installed: the real-engine check is skipped)");
 
+            // the system's own voice: macOS's say, Windows's SAPI, registered as the consoles do at start-up
+            if (OperatingSystem.IsMacOS() || OperatingSystem.IsWindows())
+            {
+                IPlatformSpeech speechWas = Speech.Platform;
+                var secretsWere = SecretStore.Platform;
+                var notifyWas = DesktopNotify.Platform;
+                Speech.Platform = null;
+                if (OperatingSystem.IsMacOS())
+                    MacPlatform.Register();
+                else
+                    WindowsPlatform.Register();
+                try
+                {
+                    SpeechEngine own = Speech.Platform == null ? null : Speech.Choose(null, null, out _);
+                    if (own == null)
+                        Console.WriteLine("SKIP: text to speech: this system has no voice installed, so its own engine can't be checked here");
+                    else
+                    {
+                        string spokeError = null;
+                        short[] ownSpeech = Array.Empty<short>();
+                        System.Diagnostics.Stopwatch ownTook = System.Diagnostics.Stopwatch.StartNew();
+                        try { ownSpeech = Speech.Synthesize(own, "Sidetone self test. The time is two twenty P M."); }
+                        catch (Exception ex) { spokeError = ex.Message; }
+                        double ownLevel = ownSpeech.Length > 0 ? WavFile.SpeechLevelDb(ownSpeech) : -120;
+                        Check(spokeError == null && own.Kind == SpeechEngineKind.Platform && ownSpeech.Length > 8000 && ownLevel > VoiceProcessor.TargetDb - 4 && ownLevel < VoiceProcessor.TargetDb + 1,
+                              $"text to speech: the system's own voice ({own.Label}) says a sentence, levelled like any announcement " +
+                              $"({(spokeError ?? $"{ownSpeech.Length / 8000.0:F1} s of audio, speech {ownLevel:F1} dBFS, in {ownTook.ElapsedMilliseconds} ms")})");
+                    }
+                }
+                finally
+                {
+                    Speech.Platform = speechWas;
+                    SecretStore.Platform = secretsWere;
+                    DesktopNotify.Platform = notifyWas;
+                }
+            }
+
             // the console: spoken announcements and the time, sent like WAV announcements
             string sset = Path.Combine(tmp, "speech-settings.json");
             List<(TonePlan Plan, List<ConsoleChannel> Targets)> sent = new List<(TonePlan, List<ConsoleChannel>)>();

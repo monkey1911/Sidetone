@@ -22,7 +22,8 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
   accepts asynchronously and cancels before closing: on macOS a blocked `Accept` hung `Close` (it
   would have hung the app closing). CI jobs `macos` (macos-15: build, both suites, `devices`, .app)
   and `macos-intel` (macos-15-intel: the Intel half through the launcher); runners have a virtual
-  sound device only. The owner reported the 0.34.0 build working on their Intel MacBook (macOS 15).
+  sound device only. The owner reported the 0.34.0 build working on their Intel MacBook (macOS 15),
+  including the time announcement spoken by macOS's own voice (`say`).
   0.33.0: several FNE systems at
   once. `FneLink` (one per system: peer, `KeyStore`, `RadioAliasBook`, and `SinkForTest`/`RidForTest`
   for the self-test); `ConsoleChannel.Link`. The console's `system`, `peer`, `keys`, `aliases`,
