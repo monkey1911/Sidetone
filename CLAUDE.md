@@ -22,7 +22,10 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
   self-test, uninstall), `windows-installer-arm` (the same, checks the ARM64 PE went in). The self-test
   skips Unix-only checks on Windows (file modes count as passed; the stand-in speech scripts and the
   launcher entry print SKIP), and macOS and Windows each speak a sentence with their own voice.
-  Tested by the owner on Windows 10 x64: text to speech (SAPI) and the microphone (transmit).
+  Tested by the owner on Windows 10 x64 and Windows 11 x64 (a domain-joined Toughbook FZ-55): text to
+  speech (SAPI) and the microphone (transmit). Neither showed SmartScreen, because the setup came out
+  of a zip through 7-Zip, which doesn't carry the downloaded-file tag over. Both showed a blank console
+  window beside the GUI, fixed (WinExe) after that build.
   0.34.0: **macOS**. One universal
   `Sidetone.app` (`packaging/macos`: `launcher.c` built for both CPUs in one `clang` call, which execs
   `Contents/Resources/{arm64,x64}/<its own name>`, so `Contents/MacOS/sidetone-cli` works too;
@@ -139,8 +142,9 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
   one with a password); from 0.33: two FNEs at once (CTRS's P25 FNE and its DMR FNE, for the
   connection side until DMR itself is done); from 0.34: macOS on Apple silicon (only CI so far), and on the
   owner's Intel Mac whatever their "it worked" didn't cover (ask before listing parts as tested); from
-  0.35: on Windows 10 x64 the rest (SmartScreen and the installer, receive audio, Credential Manager,
-  the taskbar flash, the TUI), and all of it on Windows 11 x64 and 11 ARM; and the
+  0.35: on Windows 10 and 11 x64 the rest (SmartScreen with a browser-downloaded setup, receive audio,
+  Credential Manager, the taskbar flash, the TUI), no console window since the WinExe fix, and all of
+  it on Windows 11 ARM; and the
   desktop's phone layout
   (Piper is installed on the owner's Surface, through `uv tool install piper-tts`, with the
   en_US-lessac-medium voice).
