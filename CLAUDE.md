@@ -18,7 +18,8 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
   two-column rows stacked, fixed-width fields stretched or capped at 320 in wrapping rows), remembering
   every change so wide layouts get the old boxes back; applied on layout switches and each refresh of an
   open box. Button rows in the boxes are WrapPanels. The old scaling (`FitBoxToWidth`) is gone.
-  Untested on a real phone.
+  Tested by the owner on a phone: sharing recordings works, and the boxes "look much better". A real
+  tablet keeping the centred boxes isn't reported (CI's tablet screenshot only).
   0.35.0: **Windows**. `WasapiBackend`
   (NAudio.Wasapi 3.3.0, MIT; endpoints by ID; shared mode at the device's mix format with
   `WavFile.StreamResampler` both ways; `WasapiOut`/`WasapiCapture` are marked obsolete in 3.3, kept as
@@ -155,7 +156,7 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
   one with a password); from 0.33: two FNEs at once (CTRS's P25 FNE and its DMR FNE, for the
   connection side until DMR itself is done); from 0.34: macOS on Apple silicon (only CI so far), and on the
   owner's Intel Mac whatever their "it worked" didn't cover (ask before listing parts as tested); from
-  0.36: sharing recordings and the phone sheets on a real phone; from
+  0.36: the boxes on a real tablet; from
   0.35: on Windows 10 and 11 x64 the rest (receive audio, Credential Manager, the taskbar flash, the
   TUI), and all of it on Windows 11 ARM; and the
   desktop's phone layout
