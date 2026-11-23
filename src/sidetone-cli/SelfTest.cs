@@ -1067,8 +1067,9 @@ B: MSC=10
                     AudioBackend.Current = real;
                 }
                 Check(OperatingSystem.IsMacOS() ? AudioBackend.Current is PortAudioBackend && AudioBackend.Current.Name == "Core Audio"
+                      : OperatingSystem.IsWindows() ? AudioBackend.Current.Name == "Windows audio"
                       : AudioBackend.Current is PipeWireBackend && AudioBackend.Current.Name == "PipeWire",
-                      $"audio layer: the system's own backend is used (Linux PipeWire, macOS Core Audio: {AudioBackend.Current.Name})");
+                      $"audio layer: the system's own backend is used (Linux PipeWire, macOS Core Audio, Windows WASAPI: {AudioBackend.Current.Name})");
             }
 
             // audio processing
