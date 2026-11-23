@@ -172,6 +172,11 @@ namespace Sidetone.Cli
         /// </summary>
         public Terminal()
         {
+            if (OperatingSystem.IsWindows())
+            {
+                StartWindows();
+                return;
+            }
             if (!IsTerminal() || TcGetAttr(0, savedTermios) != 0)
                 throw new InvalidOperationException("the TUI needs an interactive terminal");
             haveTermios = true;
@@ -198,7 +203,7 @@ namespace Sidetone.Cli
             {
                 // macOS: .NET's own call (ioctl takes variable arguments, which Apple silicon passes differently
                 // from a plain P/Invoke, and the request number differs from Linux's)
-                if (OperatingSystem.IsMacOS())
+                if (OperatingSystem.IsMacOS() || OperatingSystem.IsWindows())
                 {
                     try
                     {
@@ -219,6 +224,11 @@ namespace Sidetone.Cli
         public void Write(string s)
         {
             byte[] bytes = Encoding.UTF8.GetBytes(s);
+            if (OperatingSystem.IsWindows())
+            {
+                WriteFile(stdOut, bytes, bytes.Length, out _, IntPtr.Zero);
+                return;
+            }
             int off = 0;
             while (off < bytes.Length)
             {
@@ -237,6 +247,13 @@ namespace Sidetone.Cli
         {
             InputParser parser = new InputParser();
             byte[] buf = new byte[256];
+            while (!closed && OperatingSystem.IsWindows())
+            {
+                if (!ReadFile(stdIn, buf, buf.Length, out int got, IntPtr.Zero) || got <= 0)
+                    return;
+                foreach (InputEvent e in parser.Feed(buf.AsSpan(0, got)))
+                    events.Enqueue(e);
+            }
             while (!closed)
             {
                 // read fd 0 directly: .NET's console stream would run terminal input through its own line editor
@@ -257,6 +274,15 @@ namespace Sidetone.Cli
             if (Interlocked.Exchange(ref restored, 1) == 1)
                 return;
             try { Write(MouseOff + CursorShow + "\x1b[0m" + AltScreenOff); } catch { /* ignore */ }
+            if (OperatingSystem.IsWindows())
+            {
+                if (haveModes)
+                {
+                    SetConsoleMode(stdIn, savedIn);
+                    SetConsoleMode(stdOut, savedOut);
+                }
+                return;
+            }
             if (haveTermios)
                 TcSetAttr(0, TCSANOW, savedTermios);
         }
@@ -271,7 +297,58 @@ namespace Sidetone.Cli
         }
 
         /// <summary>True when stdin and stdout are both terminals.</summary>
-        public static bool IsTerminal() => IsATty(0) == 1 && IsATty(1) == 1;
+        public static bool IsTerminal() => OperatingSystem.IsWindows()
+            ? GetConsoleMode(GetStdHandle(StdInput), out _) && GetConsoleMode(GetStdHandle(StdOutput), out _)
+            : IsATty(0) == 1 && IsATty(1) == 1;
+
+        /*
+        ** Windows: the console's own VT mode, so Windows Terminal and conhost send the same escape
+        ** sequences (keys, the mouse) as a Unix terminal and draw what's written the same way.
+        */
+
+        private const int StdInput = -10, StdOutput = -11;
+        private const uint EnableProcessedOutput = 0x1, EnableVirtualTerminalProcessing = 0x4;
+        private const uint EnableExtendedFlags = 0x80, EnableVirtualTerminalInput = 0x200;
+        private IntPtr stdIn, stdOut;
+        private uint savedIn, savedOut;
+        private bool haveModes;
+
+        private void StartWindows()
+        {
+            stdIn = GetStdHandle(StdInput);
+            stdOut = GetStdHandle(StdOutput);
+            if (!GetConsoleMode(stdIn, out savedIn) || !GetConsoleMode(stdOut, out savedOut))
+                throw new InvalidOperationException("the TUI needs an interactive terminal (Windows Terminal or a console window)");
+            haveModes = true;
+            SetConsoleCP(65001);            // UTF-8 both ways
+            SetConsoleOutputCP(65001);
+            // raw input: no line editing, echo or Ctrl+C handling (it arrives as a key), no Quick Edit (it would take the mouse)
+            if (!SetConsoleMode(stdIn, EnableVirtualTerminalInput | EnableExtendedFlags) ||
+                !SetConsoleMode(stdOut, savedOut | EnableProcessedOutput | EnableVirtualTerminalProcessing))
+            {
+                Restore();
+                throw new InvalidOperationException("this console can't do what the TUI needs (Windows 10 or newer, in Windows Terminal or a console window)");
+            }
+            Write(AltScreenOn + CursorHide + MouseOn + "\x1b[2J");
+            AppDomain.CurrentDomain.ProcessExit += (_, _) => Restore();
+            Thread windowsReader = new Thread(ReadLoop) { IsBackground = true, Name = "terminal input" };
+            windowsReader.Start();
+        }
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern IntPtr GetStdHandle(int which);
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool GetConsoleMode(IntPtr handle, out uint mode);
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool SetConsoleMode(IntPtr handle, uint mode);
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool SetConsoleCP(uint codePage);
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool SetConsoleOutputCP(uint codePage);
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool ReadFile(IntPtr handle, byte[] buffer, int count, out int read, IntPtr overlapped);
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool WriteFile(IntPtr handle, byte[] buffer, int count, out int written, IntPtr overlapped);
 
         // struct termios is treated as opaque (60 bytes on glibc; generous buffer) and only touched by libc
         private const int TermiosSize = 256;

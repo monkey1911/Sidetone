@@ -60,6 +60,7 @@ namespace Sidetone.Core
         private static IAudioBackend ForPlatform() =>
             OperatingSystem.IsLinux() ? new PipeWireBackend()
             : OperatingSystem.IsMacOS() ? new PortAudioBackend()
+            : OperatingSystem.IsWindows() ? new WasapiBackend()
             : new NoAudioBackend($"audio isn't supported on {System.Runtime.InteropServices.RuntimeInformation.OSDescription} yet");
     } // public static class AudioBackend
 

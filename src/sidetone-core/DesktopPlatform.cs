@@ -23,6 +23,8 @@ namespace Sidetone.Core
             SetFolders();
             if (OperatingSystem.IsMacOS())
                 MacPlatform.Register();
+            else if (OperatingSystem.IsWindows())
+                WindowsPlatform.Register();
         }
 
         /// <summary>Sets the XDG folders that aren't set to the system's own places (macOS, Windows).</summary>

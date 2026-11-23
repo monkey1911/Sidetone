@@ -4,10 +4,14 @@
 *
 * The desktop window: a frame around the ConsoleView, which is the whole console (the same view
 * is the single view of the Android app). The window gives it a title, the icon, the keyboard,
-* and closes the console when it closes.
+* and closes the console when it closes. On Windows, a page flashes its taskbar button (Windows has no
+* notifications Sidetone can use without a Start-menu identity; toasts may come later).
 */
 
+using System.Runtime.InteropServices;
 using Avalonia.Controls;
+using Avalonia.Threading;
+using Sidetone.Core;
 
 namespace Sidetone.Gui
 {
@@ -41,6 +45,34 @@ namespace Sidetone.Gui
 
             Closing += (s, e) => View.CloseConsole();
             Deactivated += (s, e) => View.KeyboardLost();      // the key-up would go to another window
+
+            if (OperatingSystem.IsWindows())
+                DesktopNotify.Platform ??= (title, body, urgent) =>
+                {
+                    Dispatcher.UIThread.Post(Flash);
+                    return true;
+                };
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct FlashInfo
+        {
+            public uint Size;
+            public IntPtr Window;
+            public uint Flags, Count, Timeout;
+        }
+
+        [DllImport("user32.dll")]
+        private static extern bool FlashWindowEx(ref FlashInfo info);
+
+        /// <summary>Flashes the taskbar button until the window comes to the front (Windows).</summary>
+        private void Flash()
+        {
+            if (IsActive || TryGetPlatformHandle()?.Handle is not IntPtr hwnd)
+                return;
+            const uint flashAll = 0x3, untilForeground = 0xC;
+            FlashInfo info = new FlashInfo { Size = (uint)Marshal.SizeOf<FlashInfo>(), Window = hwnd, Flags = flashAll | untilForeground };
+            FlashWindowEx(ref info);
         }
     } // public sealed class MainWindow
 }

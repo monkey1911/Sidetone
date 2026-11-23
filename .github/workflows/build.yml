@@ -1,6 +1,6 @@
 name: Build
 
-# Builds Sidetone (sidetone, sidetone-cli) + libvocoder natively on ARM64 and x86-64 Linux runners (and Android, macOS below), runs the offline
+# Builds Sidetone (sidetone, sidetone-cli) + libvocoder natively on ARM64 and x86-64 Linux runners (and Android, macOS and Windows below), runs the offline
 # self-test on each, and uploads one tarball per architecture. Publishing a GitHub Release
 # also attaches them.
 
@@ -461,3 +461,146 @@ jobs:
           uname -m
           Sidetone.app/Contents/MacOS/sidetone-cli selftest
           Sidetone.app/Contents/MacOS/sidetone --selfcheck
+
+  # Windows: built and tested natively on x64 and ARM64 runners (they have no sound devices; audio is checked only as
+  # far as listing what's there). The installer job puts both builds into one setup .exe (packaging/windows).
+  windows:
+    name: windows (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: windows-latest
+            cmake: x64
+          - arch: arm64
+            runner: windows-11-arm
+            cmake: ARM64
+    defaults:
+      run:
+        shell: bash
+    env:
+      RID: win-${{ matrix.arch }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build libvocoder (MSVC)
+        run: |
+          cmake -S extern/dvmvocoder -B build/vocoder -A ${{ matrix.cmake }}
+          cmake --build build/vocoder --config Release
+          find build/vocoder -name 'libvocoder.dll'
+
+      - name: Publish
+        run: |
+          dotnet publish src/sidetone-cli/sidetone-cli.csproj -c Release -r "$RID" --self-contained true -o "out/$RID"
+          dotnet publish src/sidetone/sidetone.csproj -c Release -r "$RID" --self-contained true -o "out/$RID"
+          cp "$(find build/vocoder -name 'libvocoder.dll' | head -1)" "out/$RID/"
+
+      - name: Self-test
+        timeout-minutes: 15
+        run: out/$RID/sidetone-cli.exe selftest
+
+      - name: GUI self-check
+        timeout-minutes: 15
+        run: |
+          out/$RID/sidetone.exe --version
+          out/$RID/sidetone.exe --selfcheck
+
+      - name: Audio starts (WASAPI)
+        run: out/$RID/sidetone-cli.exe devices || true     # a runner may have no devices; it must not crash
+
+      - name: Upload the build
+        uses: actions/upload-artifact@v7
+        with:
+          name: sidetone-${{ env.RID }}
+          path: out/${{ env.RID }}
+          if-no-files-found: error
+
+  windows-installer:
+    name: windows (installer)
+    needs: windows
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    env:
+      TAG: ${{ github.event.release.tag_name || github.ref_name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Get both builds
+        uses: actions/download-artifact@v8
+        with:
+          pattern: sidetone-win-*
+          path: out
+
+      - name: Make the installer
+        run: |
+          iscc="/c/Program Files (x86)/Inno Setup 6/ISCC.exe"
+          if [ ! -f "$iscc" ]; then choco install innosetup -y --no-progress >/dev/null; fi
+          version="$(out/sidetone-win-x64/sidetone.exe --version | awk '{print $2}' | cut -d. -f1-3)"
+          win() { cygpath -w "$1"; }     # Inno Setup wants Windows paths, not Git Bash's /d/a/...
+          "$iscc" //Q "//DAppVersion=$version" "//DSourceX64=$(win "$PWD/out/sidetone-win-x64")" "//DSourceArm64=$(win "$PWD/out/sidetone-win-arm64")" \
+            "//O$(win "$PWD/out")" "$(win "$PWD/packaging/windows/sidetone.iss")"
+          setup="Sidetone-${TAG//\//-}-windows-setup.exe"
+          mv "out/Sidetone-$version-windows-setup.exe" "out/$setup"
+          (cd out && sha256sum "$setup" > "$setup.sha256")
+          echo "SETUP=$setup" >> "$GITHUB_ENV"
+
+      - name: Install, run the installed self-test, uninstall
+        timeout-minutes: 20
+        run: |
+          "out/$SETUP" //VERYSILENT //SUPPRESSMSGBOXES //NORESTART //TASKS=addtopath
+          app="$LOCALAPPDATA/Programs/Sidetone"
+          ls "$app" | head
+          "$app/sidetone.exe" --version
+          "$app/sidetone-cli.exe" selftest | tail -3
+          "$app/unins000.exe" //VERYSILENT //SUPPRESSMSGBOXES
+          sleep 5
+          test ! -f "$app/sidetone.exe" || { echo "::error::uninstall left the program behind"; exit 1; }
+
+      - name: Upload the installer
+        uses: actions/upload-artifact@v7
+        with:
+          name: sidetone-windows-setup
+          path: out/${{ env.SETUP }}*
+          if-no-files-found: error
+
+      - name: Attach to release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$TAG" "out/$SETUP" "out/$SETUP.sha256" --repo "$GITHUB_REPOSITORY" --clobber
+
+  # the installer on Windows on ARM: it must pick the ARM64 build
+  windows-installer-arm:
+    name: windows (installer on ARM64)
+    needs: windows-installer
+    runs-on: windows-11-arm
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Get the installer
+        uses: actions/download-artifact@v8
+        with:
+          name: sidetone-windows-setup
+
+      - name: Install, check it's the ARM64 build, run the self-test, uninstall
+        timeout-minutes: 20
+        run: |
+          ./Sidetone-*-windows-setup.exe //VERYSILENT //SUPPRESSMSGBOXES //NORESTART
+          app="$LOCALAPPDATA/Programs/Sidetone"
+          "$app/sidetone-cli.exe" selftest | tail -3
+          powershell -NoProfile -Command "\$b=[IO.File]::ReadAllBytes('$app\\sidetone.exe'); \$pe=[BitConverter]::ToInt32(\$b,0x3C); \$m=[BitConverter]::ToUInt16(\$b,\$pe+4); if (\$m -ne 0xAA64) { Write-Error ('not an ARM64 program: machine 0x{0:X}' -f \$m); exit 1 } else { 'sidetone.exe is ARM64' }"
+          "$app/unins000.exe" //VERYSILENT //SUPPRESSMSGBOXES

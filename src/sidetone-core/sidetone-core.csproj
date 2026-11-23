@@ -43,6 +43,8 @@
     <!-- macOS audio (PortAudioBackend). shortcut: its small PortAudio library (about 230 KB) also lands in Linux and
          Windows builds, unused there (they use PipeWire and WASAPI); drop it with a build target if size ever matters -->
     <PackageReference Include="PortAudioSharp2" Version="1.0.6" />
+    <!-- Windows audio (WasapiBackend): NAudio's WASAPI part, MIT, as the Windows console uses -->
+    <PackageReference Include="NAudio.Wasapi" Version="3.3.0" />
   </ItemGroup>
 
   <ItemGroup>
