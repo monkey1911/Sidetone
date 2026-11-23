@@ -36,6 +36,9 @@ namespace Sidetone.Gui
 
         /// <summary>The device, for the saved debug logs (like "Samsung SM-G736U, Android 14 (API 34)").</summary>
         string DeviceDescription { get; }
+
+        /// <summary>Offers files to other apps through the system's share sheet. False when nothing could take them.</summary>
+        bool Share(IReadOnlyList<string> files, string subject);
     }
 
     public static class GuiPlatform

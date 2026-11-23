@@ -205,7 +205,7 @@ namespace Sidetone.Gui
             recChoose = new Tap("Choose…", () => { Close(); pickRecordings(); }, fontSize: 12, padX: 10, padY: 5);
             recOpen = new Tap("Open", openRecordings, fontSize: 12, padX: 10, padY: 5);
             recDefault = new Tap("Use the default", () => { defaultRecordings(); Close(); }, fontSize: 12, padX: 10, padY: 5);
-            StackPanel recRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+            WrapPanel recRow = new WrapPanel { ItemSpacing = 6, LineSpacing = 6 };
             recRow.Children.Add(recChoose.Root);
             recRow.Children.Add(recOpen.Root);
             recRow.Children.Add(recDefault.Root);
@@ -213,30 +213,30 @@ namespace Sidetone.Gui
             notifyOff = new Tap("Off", () => { Notify = false; message.Text = string.Empty; }, fontSize: 12, padX: 12, padY: 5);
             formatOpus = new Tap("Opus (small files)", () => SetFormat(DispatchConsole.FormatOpus), fontSize: 12, padX: 10, padY: 5);
             formatWav = new Tap("WAV", () => SetFormat(DispatchConsole.FormatWav), fontSize: 12, padX: 12, padY: 5);
-            StackPanel formatRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
+            WrapPanel formatRow = new WrapPanel { ItemSpacing = 4, LineSpacing = 4 };
             formatRow.Children.Add(formatOpus.Root);
             formatRow.Children.Add(formatWav.Root);
             historyOn = new Tap("Keep", () => SetHistory(true, HistorySecure), fontSize: 12, padX: 12, padY: 5);
             historyOff = new Tap("Don't keep", () => SetHistory(false, HistorySecure), fontSize: 12, padX: 12, padY: 5);
             secureOut = new Tap("Leave their audio out", () => SetHistory(KeepHistory, false), fontSize: 12, padX: 10, padY: 5);
             secureIn = new Tap("Keep their audio too", () => SetHistory(KeepHistory, true), fontSize: 12, padX: 10, padY: 5);
-            StackPanel historyRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
+            WrapPanel historyRow = new WrapPanel { ItemSpacing = 4, LineSpacing = 4 };
             historyRow.Children.Add(historyOn.Root);
             historyRow.Children.Add(historyOff.Root);
-            StackPanel secureRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
+            WrapPanel secureRow = new WrapPanel { ItemSpacing = 4, LineSpacing = 4 };
             secureRow.Children.Add(secureOut.Root);
             secureRow.Children.Add(secureIn.Root);
             historyText.Text = "Recent calls and instant recall's last ten calls per channel are kept when Sidetone closes, so they can be replayed after a restart. " +
                                "A secure call's audio is kept decrypted, so it's left out unless you choose otherwise; its Recent calls entry is always kept. " +
                                "Don't keep deletes the saved history.";
-            StackPanel notifyRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
+            WrapPanel notifyRow = new WrapPanel { ItemSpacing = 4, LineSpacing = 4 };
             notifyRow.Children.Add(notifyOn.Root);
             notifyRow.Children.Add(notifyOff.Root);
 
             logCopy = new Tap("Copy log", PressCopyLog, fontSize: 12, padX: 10, padY: 5);
             logOpen = new Tap("Open folder", () => OpenLogFolder?.Invoke(), fontSize: 12, padX: 10, padY: 5);
             logSave = new Tap("Save debug logs…", () => _ = PressSaveDebugLogs(), fontSize: 12, padX: 10, padY: 5);
-            StackPanel logRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+            WrapPanel logRow = new WrapPanel { ItemSpacing = 6, LineSpacing = 6 };
             logRow.Children.Add(logCopy.Root);
             logRow.Children.Add(logOpen.Root);
             logRow.Children.Add(logSave.Root);
@@ -245,7 +245,7 @@ namespace Sidetone.Gui
             keyChoose = new Tap("Choose…", () => { Close(); pickKeyFile(); }, fontSize: 12, padX: 10, padY: 5);
             keyNone = new Tap("Stop using it", () => { Close(); clearKeyFile(); }, fontSize: 12, padX: 10, padY: 5);
             keyUnlock = new Tap("Unlock…", () => { Close(); unlockKeyFile(); }, fontSize: 12, padX: 10, padY: 5);
-            StackPanel keyRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+            WrapPanel keyRow = new WrapPanel { ItemSpacing = 6, LineSpacing = 6 };
             keyRow.Children.Add(keyChoose.Root);
             keyRow.Children.Add(keyUnlock.Root);
             keyRow.Children.Add(keyNone.Root);
@@ -256,11 +256,11 @@ namespace Sidetone.Gui
 
             spaceHold = new Tap("Hold to talk", () => SetSpace(false), fontSize: 12, padX: 10, padY: 5);
             spaceToggle = new Tap("Press to start, press again to stop", () => SetSpace(true), fontSize: 12, padX: 10, padY: 5);
-            StackPanel spaceRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
+            WrapPanel spaceRow = new WrapPanel { ItemSpacing = 4, LineSpacing = 4 };
             spaceRow.Children.Add(spaceHold.Root);
             spaceRow.Children.Add(spaceToggle.Root);
 
-            StackPanel limitRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+            WrapPanel limitRow = new WrapPanel { ItemSpacing = 8, LineSpacing = 8 };
             limitRow.Children.Add(TxLimit);
             limitRow.Children.Add(seconds);
 
@@ -289,7 +289,7 @@ namespace Sidetone.Gui
 
             cancel = new Tap("Cancel", Close, fontSize: 13, minWidth: 90, padY: 8);
             saveTap = new Tap("Save", Save, fontSize: 13, minWidth: 110, padY: 8);
-            StackPanel buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 4, 0, 0) };
+            WrapPanel buttons = new WrapPanel { ItemSpacing = 8, LineSpacing = 8, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 4, 0, 0) };
             buttons.Children.Add(cancel.Root);
             buttons.Children.Add(saveTap.Root);
 

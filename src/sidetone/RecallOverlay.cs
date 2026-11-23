@@ -3,7 +3,8 @@
 * Sidetone - an IP dispatch console for DVMProject FNE networks. Graphical front end.
 *
 * The Instant recall box: a channel's last calls, newest first, each with a Play button, plus the
-* channel's Record switch and a way to the recordings folder.
+* channel's Record switch and a way to the recordings: the folder on a desktop, the Recordings box (to share
+* them) on a device.
 */
 
 using Avalonia;
@@ -48,6 +49,10 @@ namespace Sidetone.Gui
         public ConsoleChannel Channel => shown;
         /// <summary>How many calls are listed.</summary>
         public int Count => lines.Count;
+
+        /// <summary>The recordings button: its words, and pressing it (self-check hooks).</summary>
+        internal string FolderText => folder.Text;
+        internal void PressFolder() => openFolder();
 
         public RecallOverlay(Func<DispatchConsole> console, Action changed, Action closed, Action openFolder)
         {
@@ -213,6 +218,7 @@ namespace Sidetone.Gui
                 record.Paint(p.Tx, p.OnStrong);
             else
                 record.Paint(Brushes.Transparent, p.Text, p.Edge);
+            folder.Text = GuiPlatform.Current != null ? "Recordings…" : "Open recordings folder";     // a device shares them instead
             folder.Paint(Brushes.Transparent, p.Text, p.Edge);
             done.Paint(p.Accent, p.OnStrong);
         }

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- What the FileProvider (org.sidetone.app.files, in the manifest) may hand to another app: only the recordings,
+     under the app's files folder (XDG_DATA_HOME is files/data, so recordings are files/data/sidetone/recordings).
+     Settings, logs, codeplugs and key files are never offered. -->
+<paths>
+    <files-path name="recordings" path="data/sidetone/recordings/" />
+</paths>

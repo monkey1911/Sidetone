@@ -55,7 +55,7 @@ namespace Sidetone.Gui
             rememberTap.Root.HorizontalAlignment = HorizontalAlignment.Left;
             skip = new Tap("Not now", Close, fontSize: 13, minWidth: 90, padY: 8);
             unlockTap = new Tap("Unlock", Submit, fontSize: 13, minWidth: 110, padY: 8);
-            StackPanel buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 6, 0, 0) };
+            WrapPanel buttons = new WrapPanel { ItemSpacing = 8, LineSpacing = 8, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 6, 0, 0) };
             buttons.Children.Add(skip.Root);
             buttons.Children.Add(unlockTap.Root);
 

@@ -153,7 +153,7 @@ namespace Sidetone.Gui
             content.Children.Add(FieldRow(Label("Will say"), willSay));
             content.Children.Add(FieldRow(Label(string.Empty), hearTime.Root, playTime.Root, playTimeAll.Root, next));
 
-            StackPanel buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 8, 0, 0) };
+            WrapPanel buttons = new WrapPanel { ItemSpacing = 8, LineSpacing = 8, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 8, 0, 0) };
             buttons.Children.Add(add.Root);
             buttons.Children.Add(done.Root);
 
@@ -194,9 +194,9 @@ namespace Sidetone.Gui
             return t;
         }
 
-        private static StackPanel FieldRow(params Control[] items)
+        private static WrapPanel FieldRow(params Control[] items)
         {
-            StackPanel row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+            WrapPanel row = new WrapPanel { ItemSpacing = 8, LineSpacing = 8 };
             foreach (Control c in items)
                 row.Children.Add(c);
             return row;
@@ -303,7 +303,7 @@ namespace Sidetone.Gui
             }, fontSize: 12, padX: 10, padY: 4);
             l.Strong.Add(here);
             l.Plain.Add(all);
-            StackPanel inner = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+            WrapPanel inner = new WrapPanel { ItemSpacing = 6, LineSpacing = 6 };
             inner.Children.Add(l.Name);
             inner.Children.Add(l.Length);
             inner.Children.Add(here.Root);

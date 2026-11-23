@@ -43,11 +43,11 @@ namespace Sidetone.Gui
         private readonly TextBlock alias = new TextBlock { FontSize = 12, MinHeight = 16 };
         private readonly TextBlock message = new TextBlock { FontSize = 13, FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap, MinHeight = 18 };
         private readonly List<TextBlock> labels = new List<TextBlock>();
-        private readonly StackPanel modeRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
+        private readonly WrapPanel modeRow = new WrapPanel { ItemSpacing = 4, LineSpacing = 4 };
         private readonly StackPanel tonePanel = new StackPanel { Spacing = 8 };
         private readonly StackPanel pageRidPanel = new StackPanel { Spacing = 8 };
         private readonly StackPanel radioPanel = new StackPanel { Spacing = 10 };
-        private readonly StackPanel actionRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
+        private readonly WrapPanel actionRow = new WrapPanel { ItemSpacing = 4, LineSpacing = 4 };
         private readonly Tap twoTone, digital, cancel, send;
         private readonly List<Tap> actions = new List<Tap>();
 
@@ -93,7 +93,7 @@ namespace Sidetone.Gui
 
             cancel = new Tap("Cancel", Close, fontSize: 13, minWidth: 90, padY: 8);
             send = new Tap("Send", Submit, fontSize: 13, minWidth: 110, padY: 8);
-            StackPanel buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 6, 0, 0) };
+            WrapPanel buttons = new WrapPanel { ItemSpacing = 8, LineSpacing = 8, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 6, 0, 0) };
             buttons.Children.Add(cancel.Root);
             buttons.Children.Add(send.Root);
 

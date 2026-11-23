@@ -163,7 +163,7 @@ namespace Sidetone.Gui
             note.Text = "Each zone in the codeplug is a tab. Channels on other tabs keep working: they go on listening, patching and recording. " +
                         "A hidden zone's channels are switched off: they stop listening and their traffic isn't shown. Remembered for this system.";
             done = new Tap("Done", Close, fontSize: 13, minWidth: 110, padY: 8);
-            StackPanel buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 8, 0, 0) };
+            WrapPanel buttons = new WrapPanel { ItemSpacing = 8, LineSpacing = 8, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 8, 0, 0) };
             buttons.Children.Add(done.Root);
 
             DockPanel dock = new DockPanel();
@@ -204,7 +204,7 @@ namespace Sidetone.Gui
                 TextBlock name = new TextBlock { Text = zone.Name, FontSize = 14, FontWeight = FontWeight.SemiBold, Width = 200, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
                 TextBlock state = new TextBlock { FontSize = 12, Width = 150, VerticalAlignment = VerticalAlignment.Center };
                 Tap toggle = new Tap("Hide", () => Toggle(index), fontSize: 12, minWidth: 70, padX: 10, padY: 4);
-                StackPanel inner = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
+                WrapPanel inner = new WrapPanel { ItemSpacing = 10, LineSpacing = 10 };
                 inner.Children.Add(swatch);
                 inner.Children.Add(name);
                 inner.Children.Add(state);

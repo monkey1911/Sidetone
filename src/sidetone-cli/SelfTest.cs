@@ -3354,6 +3354,33 @@ zones:
 
         private static void RecordingPruneTests(string tmp)
         {
+            // the Recordings list (Android's share sheet): names written by RecordingPath, read back newest first
+            {
+                string listRoot = Path.Combine(tmp, "list-recordings");
+                string Make(string system, RecalledCall call, string format = DispatchConsole.FormatOpus)
+                {
+                    string path = DispatchConsole.RecordingPath(listRoot, system, call, format);
+                    Directory.CreateDirectory(Path.GetDirectoryName(path));
+                    File.WriteAllText(path, "x");
+                    return path;
+                }
+                DateTime d1 = new DateTime(2026, 11, 21, 23, 12, 5), d2 = new DateTime(2026, 11, 22, 17, 38, 40);
+                string a = Make("CTRS", new RecalledCall { Channel = "Fire_Dispatch 2", Talkgroup = 301, Who = "Engine-7", Started = d1 });
+                string b = Make("CTRS", new RecalledCall { Channel = "Tac 1", Talkgroup = 101, Who = "9000001", Started = d2, Tx = true }, DispatchConsole.FormatWav);
+                string c = Make("CTRS", new RecalledCall { Channel = "Tac 1", Talkgroup = 101, Who = "9000001", Started = d2, Tx = true }, DispatchConsole.FormatWav);  // same second: -2
+                string other = Make("Other FNE", new RecalledCall { Channel = "Link", Talkgroup = 100, Who = "Unit 12", Started = d2.AddMinutes(-30) });
+                File.WriteAllText(Path.Combine(Path.GetDirectoryName(b), "unfinished.opus.part"), "x");
+                File.WriteAllText(Path.Combine(Path.GetDirectoryName(b), "notes.txt"), "x");
+                File.WriteAllText(Path.Combine(Path.GetDirectoryName(b), "random_name.opus"), "x");
+                List<RecordingFile> listed = Recordings.List(listRoot);
+                RecordingFile first = listed.FirstOrDefault(), fire = listed.FirstOrDefault(r => r.Path == a);
+                Check(listed.Count == 4 && listed.Select(r => r.Path).Take(2).OrderBy(x => x).SequenceEqual(new[] { b, c }.OrderBy(x => x)) && listed[2].Path == other && listed[3].Path == a &&
+                      first.Started == d2 && first.Tx && first.Talkgroup == 101 && first.Channel == "Tac_1" && first.System == "CTRS" &&
+                      fire != null && fire.Channel == "Fire_Dispatch_2" && fire.Who == "Engine-7" && !fire.Tx && fire.Talkgroup == 301 && fire.Started == d1 &&
+                      listed[2].System == "Other_FNE" && listed[2].Who == "Unit_12" && Recordings.List(Path.Combine(tmp, "no-such-folder")).Count == 0,
+                      $"recordings list: read back from their names, newest first, across systems and days; unfinished and other files left out ({listed.Count})");
+            }
+
             // old recordings: only Sidetone's audio files in date-named day folders are deleted
             string recRoot = Path.Combine(tmp, "prune-recordings");
             DateTime pruneToday = new DateTime(2026, 11, 18);

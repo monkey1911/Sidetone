@@ -50,7 +50,7 @@ namespace Sidetone.Gui
                         "A patched channel is always listening. Patches aren't remembered when Sidetone closes.";
             clear = new Tap("Clear all", () => { console()?.ClearPatches(); changed(); }, fontSize: 13, minWidth: 90, padY: 8);
             done = new Tap("Done", Close, fontSize: 13, minWidth: 110, padY: 8);
-            StackPanel buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 8, 0, 0) };
+            WrapPanel buttons = new WrapPanel { ItemSpacing = 8, LineSpacing = 8, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 8, 0, 0) };
             buttons.Children.Add(clear.Root);
             buttons.Children.Add(done.Root);
 
@@ -86,7 +86,7 @@ namespace Sidetone.Gui
                     continue;       // a hidden zone's channels are switched off
                 ConsoleChannel channel = chan;
                 TextBlock name = new TextBlock { Text = chan.Cfg.Name, FontSize = 14, FontWeight = FontWeight.SemiBold, Width = 170, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
-                StackPanel row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
+                WrapPanel row = new WrapPanel { ItemSpacing = 4, LineSpacing = 4 };
                 row.Children.Add(name);
                 List<Tap> taps = new List<Tap>();
                 for (int p = 0; p <= c.PatchNames.Count; p++)

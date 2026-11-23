@@ -23,5 +23,11 @@
 	<uses-feature android:name="android.hardware.microphone" android:required="false" />
 	<uses-feature android:name="android.hardware.touchscreen" android:required="false" />
 
-	<application android:label="Sidetone" android:icon="@drawable/icon" android:allowBackup="false" />
+	<application android:label="Sidetone" android:icon="@drawable/icon" android:allowBackup="false">
+		<!-- sharing recordings (AndroidPlatform.Share): only the recordings folder, see Resources/xml/file_paths.xml -->
+		<provider android:name="androidx.core.content.FileProvider" android:authorities="org.sidetone.app.files"
+		          android:exported="false" android:grantUriPermissions="true">
+			<meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
+		</provider>
+	</application>
 </manifest>

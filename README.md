@@ -26,6 +26,7 @@ There are two front ends over the same console:
   - [Staying connected with the screen off](#staying-connected-with-the-screen-off)
   - [Hardware PTT key](#hardware-ptt-key)
   - [The phone layout](#the-phone-layout)
+  - [Sharing recordings](#sharing-recordings)
   - [When something goes wrong on Android](#when-something-goes-wrong-on-android)
 - [Codeplug](#codeplug)
   - [Several FNE systems](#several-fne-systems)
@@ -206,7 +207,11 @@ Every PTT intent that reaches Sidetone is written in the debug log (`ptt:` lines
 
 ### The phone layout
 
-On a screen narrower than 700 points (a phone held upright), the cards are in one column, and only the focused card shows its volume, mute and recording buttons. At the bottom are a big hold-to-talk **PTT**, **Tones** and **Mute all**, and four pages: **Channels**, **Calls** (recent calls), **Log**, and **More** (alert tones, the channel marker, page, radio command, patch, recall, announcements, tabs, the microphone and the theme). Boxes are scaled down to fit the screen. Android's Back closes the open box, or goes back to the channels. A tablet, or a phone turned on its side, gets the usual layout. On a desktop, making the window narrow shows the phone layout too.
+On a screen narrower than 700 points (a phone held upright), the cards are in one column, and only the focused card shows its volume, mute and recording buttons. At the bottom are a big hold-to-talk **PTT**, **Tones** and **Mute all**, and four pages: **Channels**, **Calls** (recent calls), **Log**, and **More** (alert tones, the channel marker, page, radio command, patch, recall, announcements, tabs, the microphone and the theme). Boxes (Settings, Instant recall, Patches and the rest) open as full-screen sheets at full size: labels above their fields, lists and fields the width of the screen, rows of buttons wrapping, and the box's own buttons (Save, Done) at the bottom. Android's Back closes the open box, or goes back to the channels. A tablet, or a phone turned on its side, gets the usual layout, with the usual centred boxes. On a desktop, making the window narrow shows the phone layout too.
+
+### Sharing recordings
+
+Recordings are kept in the app's own storage. To send them somewhere (email, a drive, a messaging app, the Files app), open **Instant recall** (More, Recall…) and tap **Recordings…**. The recordings are listed by day, newest first, each call with its time, talkgroup, RX or TX and talker. **Share** sends one call; **Share day** sends all of that day's at once, through Android's share sheet. Only the recordings are ever offered this way, never settings, codeplugs or keys. Recordings are Opus files by default (Settings, Format: WAV if the other end needs it).
 
 ### When something goes wrong on Android
 

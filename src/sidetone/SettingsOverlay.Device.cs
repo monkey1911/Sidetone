@@ -46,7 +46,7 @@ namespace Sidetone.Gui
         {
             pttLearn = new Tap("Learn…", StartLearning, fontSize: 13, padX: 12, padY: 7);
             pttNone = new Tap("None", () => { StopLearning(); pttKey = null; pttKeyName = null; message.Text = string.Empty; }, fontSize: 13, padX: 12, padY: 7);
-            StackPanel keyButtons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+            WrapPanel keyButtons = new WrapPanel { ItemSpacing = 6, LineSpacing = 6 };
             keyButtons.Children.Add(pttLearn.Root);
             keyButtons.Children.Add(pttNone.Root);
             StackPanel keyRow = new StackPanel { Spacing = 6 };
@@ -55,19 +55,19 @@ namespace Sidetone.Gui
 
             lockedOn = new Tap("Allow", () => pttFromBroadcasts = true, fontSize: 13, padX: 12, padY: 7);
             lockedOff = new Tap("Off", () => pttFromBroadcasts = false, fontSize: 13, padX: 12, padY: 7);
-            StackPanel lockedRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+            WrapPanel lockedRow = new WrapPanel { ItemSpacing = 6, LineSpacing = 6 };
             lockedRow.Children.Add(lockedOn.Root);
             lockedRow.Children.Add(lockedOff.Root);
 
             screenOn = new Tap("Keep it on", () => keepScreenOn = true, fontSize: 13, padX: 12, padY: 7);
             screenOff = new Tap("Let it sleep", () => keepScreenOn = false, fontSize: 13, padX: 12, padY: 7);
-            StackPanel screenRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+            WrapPanel screenRow = new WrapPanel { ItemSpacing = 6, LineSpacing = 6 };
             screenRow.Children.Add(screenOn.Root);
             screenRow.Children.Add(screenOff.Root);
 
             wakeOn = new Tap("Wake the screen", () => wakeOnCall = true, fontSize: 13, padX: 12, padY: 7);
             wakeOff = new Tap("Leave it off", () => wakeOnCall = false, fontSize: 13, padX: 12, padY: 7);
-            StackPanel wakeRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+            WrapPanel wakeRow = new WrapPanel { ItemSpacing = 6, LineSpacing = 6 };
             wakeRow.Children.Add(wakeOn.Root);
             wakeRow.Children.Add(wakeOff.Root);
 

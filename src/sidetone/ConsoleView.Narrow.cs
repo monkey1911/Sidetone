@@ -43,7 +43,8 @@ namespace Sidetone.Gui
         private Tap moreThemeSystem, moreThemeLight, moreThemeDark;
         private readonly List<Tap> moreAlerts = new List<Tap>();
         private readonly List<TextBlock> moreHeadings = new List<TextBlock>();
-        private readonly List<(Grid Box, LayoutTransformControl Holder, Control Card)> fittedBoxes = new List<(Grid, LayoutTransformControl, Control)>();
+        /// <summary>Every box (its root grid: the scrim, then the card), made a full-screen sheet on a phone (PhoneSheet).</summary>
+        private readonly List<Grid> boxes = new List<Grid>();
 
         /// <summary>The phone layout is on show (self-check hook).</summary>
         internal bool Narrow => narrow;
@@ -65,8 +66,8 @@ namespace Sidetone.Gui
             _ => navChannels
         };
 
-        /// <summary>The scale a box is shown at (1 when it fits; self-check hook).</summary>
-        internal double BoxScale(Grid box) => fittedBoxes.Where(f => f.Box == box).Select(f => f.Holder.LayoutTransform is ScaleTransform st ? st.ScaleX : 1).FirstOrDefault(1);
+        /// <summary>A box's card (self-check hook).</summary>
+        internal static Control BoxCard(Grid box) => box.Children.Count > 1 ? box.Children[1] : null;
 
         private void BuildNarrow()
         {
@@ -189,6 +190,7 @@ namespace Sidetone.Gui
             if (announceBox.IsOpen) { announceBox.Close(); root.Focus(); return true; }
             if (routingBox.IsOpen) { routingBox.Close(); root.Focus(); return true; }
             if (zoneBox.IsOpen) { zoneBox.Close(); root.Focus(); return true; }
+            if (recordingsBox.IsOpen) { recordingsBox.Close(); root.Focus(); return true; }
             if (recallBox.IsOpen) { recallBox.Close(); root.Focus(); return true; }
             if (patchBox.IsOpen) { patchBox.Close(); root.Focus(); return true; }
             if (settingsBox.IsOpen) { settingsBox.Close(); root.Focus(); return true; }
@@ -212,7 +214,7 @@ namespace Sidetone.Gui
                     page = NarrowPage.Channels;
             }
             UpdateLayoutMode();
-            FitBoxes(width);
+            FitBoxes(all: true);
             RefreshNow();
         }
 
@@ -260,32 +262,14 @@ namespace Sidetone.Gui
         }
 
         /// <summary>
-        /// Puts a box's card in a holder that scales it down when it's wider than the view (phones). The
-        /// boxes are laid out for a desktop; scaled, all of a box stays usable without a second layout.
+        /// Phones get the boxes as full-screen sheets (PhoneSheet), tablets and desktops the boxes as they are: every box when the
+        /// layout switches, and the open ones on each refresh (a box builds some rows when it opens).
         /// </summary>
-        private void FitBoxToWidth(Grid box)
+        private void FitBoxes(bool all = false)
         {
-            if (box.Children.Count < 2 || box.Children[1] is not Control card)
-                return;
-            box.Children.RemoveAt(1);
-            LayoutTransformControl holder = new LayoutTransformControl
-            {
-                Child = card,
-                HorizontalAlignment = card.HorizontalAlignment,
-                VerticalAlignment = card.VerticalAlignment
-            };
-            box.Children.Add(holder);
-            fittedBoxes.Add((box, holder, card));
-        }
-
-        private void FitBoxes(double width)
-        {
-            foreach ((Grid _, LayoutTransformControl holder, Control card) in fittedBoxes)
-            {
-                double cardWidth = double.IsNaN(card.Width) ? 0 : card.Width + card.Margin.Left + card.Margin.Right;
-                double scale = width > 0 && cardWidth > 0 && cardWidth > width - 8 ? Math.Max(0.4, (width - 8) / cardWidth) : 1;
-                holder.LayoutTransform = scale < 1 ? new ScaleTransform(scale, scale) : null;
-            }
+            foreach (Grid box in boxes)
+                if ((all || box.IsVisible) && BoxCard(box) is Control card)
+                    PhoneSheet.Apply(card, narrow);
         }
 
         private void RefreshNarrow(DispatchConsole c, Palette p, bool tx, ToneJob tone)

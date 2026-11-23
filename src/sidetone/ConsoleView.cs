@@ -95,6 +95,13 @@ namespace Sidetone.Gui
         private Tap pageTap, radioTap, markerTap, patchTap, recallTap;
         private PatchOverlay patchBox;
         private RecallOverlay recallBox;
+        private RecordingsOverlay recordingsBox;
+
+        /// <summary>The Patches box (self-check hook).</summary>
+        internal PatchOverlay PatchBox => patchBox;
+
+        /// <summary>The Recordings box (self-check hook).</summary>
+        internal RecordingsOverlay RecordingsBox => recordingsBox;
 
         /// <summary>The Instant recall box (self-check hook).</summary>
         internal RecallOverlay RecallBox => recallBox;
@@ -232,6 +239,10 @@ namespace Sidetone.Gui
                     recallBox.Show(console?.Channels[1]);
                     recallBox.Refresh(palette);
                     break;
+                case "recordings":
+                    recordingsBox.Show();
+                    recordingsBox.Refresh(palette);
+                    break;
                 case "patch":
                     if (console != null)
                     {
@@ -351,7 +362,8 @@ namespace Sidetone.Gui
             };
             keyBox = new KeyFileOverlay(UnlockKeyFile, () => root.Focus());
             patchBox = new PatchOverlay(() => console, RefreshNow, () => root.Focus());
-            recallBox = new RecallOverlay(() => console, RefreshNow, () => root.Focus(), OpenRecordingsFolder);
+            recallBox = new RecallOverlay(() => console, RefreshNow, () => root.Focus(), OpenRecordings);
+            recordingsBox = new RecordingsOverlay(() => console?.RecordingsFolder ?? appSettings.RecordingsFolder ?? DispatchConsole.DefaultRecordingsFolder, () => root.Focus());
             zoneBox = new ZoneOverlay(() => console, RefreshNow, () => root.Focus());
             announceBox = new AnnouncementOverlay(() => console, () => _ = PickAnnouncements(), RefreshNow, () => root.Focus());
             routingBox = new RoutingOverlay(() => console, () => offline ? DemoCodeplug.AudioDevices() : AudioDeviceList.Query(), RefreshNow, () => root.Focus());
@@ -421,6 +433,7 @@ namespace Sidetone.Gui
             Grid.SetRow(keyBox.Root, 1);
             Grid.SetRow(patchBox.Root, 1);
             Grid.SetRow(recallBox.Root, 1);
+            Grid.SetRow(recordingsBox.Root, 1);
             Grid.SetRow(zoneBox.Root, 1);
             Grid.SetRow(routingBox.Root, 1);
             Grid.SetRow(announceBox.Root, 1);
@@ -431,12 +444,12 @@ namespace Sidetone.Gui
             root.Children.Add(settingsBox.Root);
             root.Children.Add(patchBox.Root);
             root.Children.Add(recallBox.Root);
+            root.Children.Add(recordingsBox.Root);
             root.Children.Add(zoneBox.Root);
             root.Children.Add(routingBox.Root);
             root.Children.Add(announceBox.Root);
             root.Children.Add(keyBox.Root);
-            foreach (Grid box in new[] { overlay.Root, settingsBox.Root, patchBox.Root, recallBox.Root, zoneBox.Root, routingBox.Root, announceBox.Root, keyBox.Root })
-                FitBoxToWidth(box);
+            boxes.AddRange(new[] { overlay.Root, settingsBox.Root, patchBox.Root, recallBox.Root, recordingsBox.Root, zoneBox.Root, routingBox.Root, announceBox.Root, keyBox.Root });
             Content = root;
         }
 
@@ -726,6 +739,19 @@ namespace Sidetone.Gui
         }
 
         /// <summary>Opens the recordings folder in the file manager.</summary>
+        /// <summary>Instant recall's recordings button: the Recordings box on a device (to share them), else the folder.</summary>
+        private void OpenRecordings()
+        {
+            if (GuiPlatform.Current == null)
+            {
+                OpenRecordingsFolder();
+                return;
+            }
+            recallBox.Close();
+            recordingsBox.Show();
+            RefreshNow();
+        }
+
         private void OpenRecordingsFolder()
         {
             string folder = console?.RecordingsFolder ?? appSettings.RecordingsFolder ?? DispatchConsole.DefaultRecordingsFolder;
@@ -1204,6 +1230,7 @@ namespace Sidetone.Gui
             overlay?.Close();
             patchBox?.Close();
             recallBox?.Close();
+            recordingsBox?.Close();
             zoneBox?.Close();
             routingBox?.Close();
             announceBox?.Close();
@@ -1409,6 +1436,8 @@ namespace Sidetone.Gui
             overlay.Refresh(p);
             patchBox.Refresh(p);
             recallBox.Refresh(p);
+            recordingsBox.Refresh(p);
+            FitBoxes();     // the open box, with any rows it just built
             if (c.Replaying != null)
                 recallTap.Paint(p.Accent, p.OnStrong);
             else
@@ -1504,6 +1533,17 @@ namespace Sidetone.Gui
                 {
                     e.Handled = true;
                     keyBox.Submit();
+                }
+                return;
+            }
+
+            // the Recordings box is open: Esc closes it
+            if (recordingsBox.IsOpen)
+            {
+                if (e.Key == Key.Escape)
+                {
+                    e.Handled = true;
+                    recordingsBox.Close();
                 }
                 return;
             }

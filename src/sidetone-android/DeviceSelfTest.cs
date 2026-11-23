@@ -164,6 +164,33 @@ namespace Sidetone.Droid
                 }
             });
 
+            Try("sharing: a recording gets a content:// URI from the FileProvider, readable by the app it goes to; nothing outside the recordings folder does", () =>
+            {
+                string day = Path.Combine(DispatchConsole.DefaultRecordingsFolder, "Selftest", "2026-11-22");
+                Directory.CreateDirectory(day);
+                string a = Path.Combine(day, "173840_Tac_1_TG101_RX_Unit_12.opus"), b = Path.Combine(day, "174000_Tac_1_TG101_TX_9000001.opus");
+                File.WriteAllText(a, "x");
+                File.WriteAllText(b, "x");
+                try
+                {
+                    Android.Content.Intent one = AndroidPlatform.Instance.ShareIntent(new[] { a }, "test");
+                    Android.Content.Intent both = AndroidPlatform.Instance.ShareIntent(new[] { a, b }, "test");
+#pragma warning disable CA1422, CS0618 // the typed overload is Android 13+
+                    Android.Net.Uri uri = one.GetParcelableExtra(Android.Content.Intent.ExtraStream) as Android.Net.Uri;
+#pragma warning restore CA1422, CS0618
+                    bool outsideRefused = false;
+                    try { AndroidPlatform.Instance.ShareIntent(new[] { AppSettings.DefaultPath }, "test"); }
+                    catch (Java.Lang.IllegalArgumentException) { outsideRefused = true; }
+                    return uri != null && uri.Scheme == "content" && uri.Authority == AndroidPlatform.FilesAuthority && uri.Path.StartsWith("/recordings/", StringComparison.Ordinal) &&
+                           one.Action == Android.Content.Intent.ActionSend && both.Action == Android.Content.Intent.ActionSendMultiple && both.ClipData?.ItemCount == 2 &&
+                           (one.Flags & Android.Content.ActivityFlags.GrantReadUriPermission) != 0 && one.Type == "audio/ogg" && outsideRefused;
+                }
+                finally
+                {
+                    Directory.Delete(Path.Combine(DispatchConsole.DefaultRecordingsFolder, "Selftest"), true);
+                }
+            });
+
             Try("text to speech: Android's engine is used and says a sentence, levelled like any announcement", () =>
             {
                 SpeechEngine e = Speech.Choose(null, null, out string why);

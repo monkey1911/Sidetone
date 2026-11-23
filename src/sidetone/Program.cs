@@ -18,6 +18,8 @@ using Avalonia;
 using Avalonia.Headless;
 using Avalonia.Input;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
+using Avalonia.Controls;
 
 // Linux only, like the core
 [assembly: System.Runtime.Versioning.SupportedOSPlatform("linux")]
@@ -39,6 +41,9 @@ namespace Sidetone.Gui
         public void ConsoleStopped() { }
         public void OpenBatterySettings() { }
         public string DeviceDescription => "Test device";
+        /// <summary>What the last share offered.</summary>
+        public List<string> Shared;
+        public bool Share(IReadOnlyList<string> files, string subject) { Shared = files.ToList(); return true; }
     }
 
     public static class Program
@@ -697,16 +702,44 @@ namespace Sidetone.Gui
             Tap(v.MuteAllTap);
             Check(allMuted && !c.GlobalMute, "phone layout: Mute all mutes and unmutes everything");
 
+            // boxes on a phone: full-screen sheets at full size (PhoneSheet), labels above their fields, nothing cut off
+            void Settle()
+            {
+                for (int i = 0; i < 3; i++)
+                {
+                    v.RefreshNow();
+                    Dispatcher.UIThread.RunJobs();
+                    w.UpdateLayout();
+                }
+            }
             v.OpenBox("settings");
-            Dispatcher.UIThread.RunJobs();
-            w.UpdateLayout();
-            double settingsScale = v.BoxScale(v.SettingsBox.Root);
+            Settle();
+            Control settingsCard = ConsoleView.BoxCard(v.SettingsBox.Root);
+            Grid outputRow = v.SettingsBox.Output.Parent as Grid;
+            bool sheet = settingsCard.Bounds.Width >= v.Bounds.Width - 1 && settingsCard.Bounds.Height > 600;
+            bool stacked = outputRow != null && outputRow.RowDefinitions.Count == 2 && Grid.GetRow(v.SettingsBox.Output) == 1 && v.SettingsBox.Output.Bounds.Width > 340;
             bool closedByBack = v.GoBack() && !v.SettingsBox.IsOpen;
-            Check(settingsScale < 1 && settingsScale >= 0.4 && closedByBack, $"phone layout: a box wider than the screen is scaled to fit ({settingsScale:0.00}), and Back closes it");
+            Check(sheet && stacked && closedByBack,
+                  $"phone layout: a box is a full-screen sheet ({settingsCard.Bounds.Width:0}x{settingsCard.Bounds.Height:0} in {v.Bounds.Width:0}), labels above their fields, which fill the width; Back closes it");
+            v.OpenBox("patch");
+            Settle();
+            Control patchCard = ConsoleView.BoxCard(v.PatchBox.Root);
+            double widest = patchCard.GetVisualDescendants().OfType<Border>().Where(bd => bd.IsEffectivelyVisible && bd.Bounds.Width > 0)
+                                     .Select(bd => bd.TranslatePoint(new Point(bd.Bounds.Width, 0), patchCard)?.X ?? 0).DefaultIfEmpty(0).Max();
+            v.GoBack();
+            Check(widest > 0 && widest <= patchCard.Bounds.Width + 0.5,
+                  $"phone layout: the Patches buttons wrap instead of being cut off (rightmost edge {widest:0} of {patchCard.Bounds.Width:0})");
 
             Resize(1280, 800);
-            Check(!v.Narrow && v.PttTap.Root.IsEffectivelyVisible && !v.BigPtt.Root.IsEffectivelyVisible && v.BoxScale(v.SettingsBox.Root) == 1,
-                  "phone layout: widening the window brings the usual layout back");
+            v.OpenBox("settings");
+            Settle();
+            Control tabletCard = ConsoleView.BoxCard(v.SettingsBox.Root);
+            Grid tabletRow = v.SettingsBox.Output.Parent as Grid;
+            bool desktopBox = Math.Abs(tabletCard.Bounds.Width - 580) < 1 && tabletRow.ColumnDefinitions.Count == 2 && tabletRow.RowDefinitions.Count == 0 &&
+                              tabletCard.Bounds.X > 100;
+            v.GoBack();
+            Check(!v.Narrow && v.PttTap.Root.IsEffectivelyVisible && !v.BigPtt.Root.IsEffectivelyVisible && desktopBox,
+                  $"phone layout: widening the window (a tablet) brings the usual layout and the usual centred boxes back ({tabletCard.Bounds.Width:0} wide)");
 
             // a device platform (Android's, stood in for): Settings shows the PTT key, screen and battery rows
             FakeDevice fakeDevice = new FakeDevice();
@@ -737,9 +770,47 @@ namespace Sidetone.Gui
                 Check(waiting && learned && !ds.IsOpen && fakeDevice.AppliedKey == 25 && fakeDevice.AppliedName == "KEYCODE_VOLUME_DOWN" &&
                       SettingsOverlay.KeyLabel("KEYCODE_VOLUME_DOWN", 25) == "Volume down" && SettingsOverlay.KeyLabel("KEYCODE_1015", 1015) == "key 1015",
                       "device: Settings learns a hardware PTT key by pressing it (Volume down), and Save hands it to the platform");
+
+                // recordings: Instant recall's button opens the Recordings box, which hands calls to the share sheet
+                string recDir = Path.Combine(Path.GetTempPath(), $"sidetone-share-{Environment.ProcessId}");
+                try
+                {
+                    DateTime today = DateTime.Today;
+                    string Rec(DateTime at, string who, bool tx = false)
+                    {
+                        string f = DispatchConsole.RecordingPath(recDir, "Demo System", new RecalledCall { Channel = "Tac 1", Talkgroup = 101, Who = who, Started = at, Tx = tx });
+                        Directory.CreateDirectory(Path.GetDirectoryName(f));
+                        File.WriteAllText(f, "x");
+                        return f;
+                    }
+                    string newest = Rec(today.AddHours(17).AddMinutes(38), "Unit 12"), earlier = Rec(today.AddHours(9), "9000001", tx: true), yesterday = Rec(today.AddDays(-1).AddHours(23), "Engine 7");
+                    dv.ActiveConsole.RecordingsFolder = recDir;
+                    dv.OpenBox("recall");
+                    dv.RefreshNow();
+                    bool shareLabel = dv.RecallBox.FolderText == "Recordings…";
+                    dv.RecallBox.PressFolder();
+                    Dispatcher.UIThread.RunJobs();
+                    RecordingsOverlay rb = dv.RecordingsBox;
+                    bool recListed = rb.IsOpen && !dv.RecallBox.IsOpen && rb.Files.Count == 3 && rb.Days.Count == 2 && rb.Days[0] == today && rb.Files[0].Path == newest;
+                    rb.ShareFile(0);
+                    bool one = fakeDevice.Shared != null && fakeDevice.Shared.SequenceEqual(new[] { newest });
+                    rb.ShareDay(today);
+                    bool day = fakeDevice.Shared != null && fakeDevice.Shared.OrderBy(x => x).SequenceEqual(new[] { newest, earlier }.OrderBy(x => x)) && !fakeDevice.Shared.Contains(yesterday);
+                    bool closes = dv.GoBack() && !rb.IsOpen;
+                    Check(shareLabel && recListed && one && day && closes && RecordingsOverlay.DayName(today).StartsWith("Today, ") && RecordingsOverlay.DayName(today.AddDays(-1)).StartsWith("Yesterday, "),
+                          "device: Instant recall's Recordings… lists the recordings by day, newest first; Share gives one call to the share sheet, Share day all of that day's; Back closes it");
+                }
+                finally
+                {
+                    try { Directory.Delete(recDir, true); } catch (Exception) { }
+                }
                 dw.Close();
             }
             finally { GuiPlatform.Current = null; }
+            w.View.OpenBox("recall");
+            w.View.RefreshNow();
+            Check(w.View.RecallBox.FolderText == "Open recordings folder", "desktop: Instant recall keeps 'Open recordings folder' (sharing is for devices)");
+            w.View.RecallBox.Close();
 
             // touch: a finger acts when it lifts without having moved (so scrolling over cards doesn't choose them)
             TouchTap tt = new TouchTap();
@@ -793,7 +864,7 @@ namespace Sidetone.Gui
             Console.WriteLine("                  [--scale FACTOR] [--key-file FILE.ekc] [--record-dir DIR] [--no-notify] [--no-processing]");
             Console.WriteLine("  sidetone --install-launcher | --remove-launcher");
             Console.WriteLine("  sidetone --demo");
-            Console.WriteLine("  sidetone --screenshot FILE.png [--demo] [--theme light|dark] [--size 1280x800] [--show page|digital|radio|settings|keyfile|patch|recall]");
+            Console.WriteLine("  sidetone --screenshot FILE.png [--demo] [--theme light|dark] [--size 1280x800] [--show page|digital|radio|settings|keyfile|patch|recall|recordings|tabs]");
             Console.WriteLine();
             Console.WriteLine("Without --codeplug, the codeplug opened last time is used. --demo shows a made-up system");
             Console.WriteLine("without connecting to anything. The options are the same as 'sidetone-cli tui'; see the README.");

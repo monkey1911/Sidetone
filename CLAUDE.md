@@ -8,7 +8,18 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
 
 ## State at hand-off (2026-11-16)
 
-- Version **0.35.0** on `main` (set once, in `src/Directory.Build.props`): **Windows**. `WasapiBackend`
+- Version **0.36.0** on `main` (set once, in `src/Directory.Build.props`): Android improvements. Sharing
+  recordings: Instant recall's button is **Recordings…** on a device (`RecordingsOverlay`: days newest
+  first, Share and Share day; `Recordings.List` reads the files back from the names `RecordingPath`
+  gives them), handed to `IGuiPlatform.Share`; Android's `AndroidPlatform.Share` uses AndroidX's
+  FileProvider (`org.sidetone.app.files`, `Resources/xml/file_paths.xml` exposes only
+  files/data/sidetone/recordings) and ACTION_SEND / SEND_MULTIPLE with the read grant. Phone boxes:
+  `PhoneSheet.Apply(card, narrow)` makes each box a full-screen sheet (card fills the view, labelled
+  two-column rows stacked, fixed-width fields stretched or capped at 320 in wrapping rows), remembering
+  every change so wide layouts get the old boxes back; applied on layout switches and each refresh of an
+  open box. Button rows in the boxes are WrapPanels. The old scaling (`FitBoxToWidth`) is gone.
+  Untested on a real phone.
+  0.35.0: **Windows**. `WasapiBackend`
   (NAudio.Wasapi 3.3.0, MIT; endpoints by ID; shared mode at the device's mix format with
   `WavFile.StreamResampler` both ways; `WasapiOut`/`WasapiCapture` are marked obsolete in 3.3, kept as
   the Windows console's proven classes). `WindowsPlatform`: SAPI speech through COM on an STA thread
@@ -102,8 +113,9 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
   announcement; 0.29 brought WAV
   announcements, `listen --key-file`, the dvmcli/dvmgui wrappers removed. Check
   `gh release list` for what was last published.
-- 399 checks (324 in `sidetone-cli selftest`, one of which runs only when a speech engine is
-  installed; 75 in the GUI's `--selfcheck`) plus screenshots, and the Android job's on-device
+- Over 400 checks in `sidetone-cli selftest` and the GUI's `--selfcheck` (some run only where they
+  apply: a speech engine installed, the system's own voice on macOS and Windows; Unix-only ones SKIP on
+  Windows) plus screenshots, and the Android job's on-device
   self-test (`DeviceSelfTest.cs`, on an API 30 emulator).
 - **Tested on the air by the owner:** RX/TX clear and AES, key delivery from the FNE, alias sync,
   alert tones, channel marker, QCII and digital pages, radio check (the radio answers; see the FNE
@@ -143,6 +155,7 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
   one with a password); from 0.33: two FNEs at once (CTRS's P25 FNE and its DMR FNE, for the
   connection side until DMR itself is done); from 0.34: macOS on Apple silicon (only CI so far), and on the
   owner's Intel Mac whatever their "it worked" didn't cover (ask before listing parts as tested); from
+  0.36: sharing recordings and the phone sheets on a real phone; from
   0.35: on Windows 10 and 11 x64 the rest (receive audio, Credential Manager, the taskbar flash, the
   TUI), and all of it on Windows 11 ARM; and the
   desktop's phone layout

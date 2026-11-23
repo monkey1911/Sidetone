@@ -248,6 +248,63 @@ namespace Sidetone.Droid
         public string DeviceDescription =>
             $"{Build.Manufacturer} {Build.Model}, Android {Build.VERSION.Release} (API {(int)Build.VERSION.SdkInt})";
 
+        /*
+        ** Sharing recordings
+        */
+
+        /// <summary>The FileProvider in the manifest; it serves only the recordings folder (Resources/xml/file_paths.xml).</summary>
+        public const string FilesAuthority = "org.sidetone.app.files";
+
+        /// <summary>Offers recordings to other apps through Android's share sheet.</summary>
+        public bool Share(IReadOnlyList<string> files, string subject)
+        {
+            Intent chooser;
+            try { chooser = Intent.CreateChooser(ShareIntent(files, subject), "Share recordings"); }
+            catch (Java.Lang.IllegalArgumentException ex)
+            {
+                DebugLog.Write("share", $"not shared: {ex.Message}");
+                return false;
+            }
+            Activity a = Activity;
+            Context from = (Context)a ?? AppContext;
+            if (a == null)
+                chooser.AddFlags(ActivityFlags.NewTask);
+            try
+            {
+                from.StartActivity(chooser);
+                DebugLog.Write("share", $"{files.Count} recording(s) offered to the share sheet");
+                return true;
+            }
+            catch (ActivityNotFoundException)
+            {
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// The share intent for recordings: content:// URIs from the FileProvider, which the receiving app may read
+        /// (and only those files). Throws IllegalArgumentException for a file outside the recordings folder.
+        /// </summary>
+        internal Intent ShareIntent(IReadOnlyList<string> files, string subject)
+        {
+            List<Android.Net.Uri> uris = files.Select(f => FileProvider.GetUriForFile(AppContext, FilesAuthority, new Java.IO.File(f))).ToList();
+            bool allOpus = files.All(f => f.EndsWith(".opus", StringComparison.OrdinalIgnoreCase));
+            bool allWav = files.All(f => f.EndsWith(".wav", StringComparison.OrdinalIgnoreCase));
+            Intent share = new Intent(uris.Count == 1 ? Intent.ActionSend : Intent.ActionSendMultiple);
+            share.SetType(allOpus ? "audio/ogg" : allWav ? "audio/wav" : "audio/*");
+            share.PutExtra(Intent.ExtraSubject, subject);
+            if (uris.Count == 1)
+                share.PutExtra(Intent.ExtraStream, uris[0]);
+            else
+                share.PutParcelableArrayListExtra(Intent.ExtraStream, uris.Cast<IParcelable>().ToList());
+            ClipData clip = ClipData.NewRawUri(subject, uris[0]);
+            foreach (Android.Net.Uri u in uris.Skip(1))
+                clip.AddItem(new ClipData.Item(u));
+            share.ClipData = clip;          // so the read grant covers every file
+            share.AddFlags(ActivityFlags.GrantReadUriPermission);
+            return share;
+        }
+
         /// <summary>
         /// Writes why the app stopped the last times (Android keeps the reasons: a crash, the app not responding, the
         /// system ending it for memory, the person swiping it away), with the thread dump of an app-not-responding,
