@@ -42,7 +42,8 @@ Roughly in the order that makes sense to do them.
 
 - ~~**Android.**~~ Done in 0.31: Sidetone for Android 11 and newer (built for API 36, as Google Play requires), the graphical console with a phone layout, Android's audio, a foreground service that stays connected with the screen off, the phone's own text to speech, key-file passwords in the Android Keystore, and a hardware PTT key learned by pressing it. CI builds the APK and the Play Store bundle and runs the self-test on an Android 11 emulator.
   - Still to do: publish on Google Play: a developer account, the store listing, the privacy policy, the Data safety form, and the foreground service declaration (with a short video). Maybe separate US and international builds, if the encryption export rules call for it.
-  - Still to do: rugged phones whose PTT key reaches only apps that know the maker's own signal (Sonim, Kyocera and others), once someone with such a phone can say which signal it sends.
+  - ~~Still to do: rugged phones whose PTT key reaches only apps that know the maker's own signal (Sonim).~~ Done in 0.31.4 (Sonim's `PTT_KEY_DOWN`/`UP`, Kodiak's and MCPTT's key actions); tested on a Sonim XP10.
+  - Still to do: the same for Kyocera and others, once someone with such a phone can say which signal it sends.
   - ~~Still to do: exporting or sharing recordings (they stay in the app's storage).~~ Done in 0.36: Instant recall, Recordings…, Share or Share day through Android's share sheet (a FileProvider that serves only the recordings).
   - ~~Still to do: boxes laid out for a phone (today the desktop boxes are scaled down to fit).~~ Done in 0.36: full-screen sheets on phones (`PhoneSheet`), the usual boxes on tablets.
 
