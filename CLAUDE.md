@@ -68,6 +68,8 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
   at least one; `--system NAME` still picks one. `LastSystem` is now only the offline view's label.
   Screenshot mode fills any codeplug with the demo's activity (`DemoCodeplug.Populate`), so a codeplug
   rendered there needs 4 tabs and 4 channels.
+  Tested by a tester (reported by the owner): several FNEs at once works, and they like turning
+  systems off in Settings.
   0.32.0: web streams, the codeplug's
   `web_streams` per zone (`WebStreamPlayer.cs`, `DispatchConsole.Streams.cs`; cards after the tab's
   channels, `StreamCard`; the TUI's `s` box, `Tui.Streams.cs`). MP3 only, decoded by NLayer 3.0.1 (it
@@ -153,8 +155,7 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
   file box; from 0.26: Opus recordings and Delete after; from 0.28: one-way patches, outputs per
   tab and channel, the call history between runs; from 0.29: announcements, `listen --key-file`; from 0.30: the scheduled time announcement, the new announcement level (0.30.3); from 0.31:
   on Android, hardware PTT keys on Sonim and the LEX L11; from 0.32: web streams (a real feed, and
-  one with a password); from 0.33: two FNEs at once (CTRS's P25 FNE and its DMR FNE, for the
-  connection side until DMR itself is done); from 0.34: macOS on Apple silicon (only CI so far), and on the
+  one with a password); from 0.34: macOS on Apple silicon (only CI so far), and on the
   owner's Intel Mac whatever their "it worked" didn't cover (ask before listing parts as tested); from
   0.36: the boxes on a real tablet; from
   0.35: on Windows 10 and 11 x64 the rest (receive audio, Credential Manager, the taskbar flash, the
