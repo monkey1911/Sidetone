@@ -516,7 +516,7 @@ B: MSC=10
             }))
             {
                 server.Start();
-                Check(File.GetUnixFileMode(path) == (UnixFileMode.UserRead | UnixFileMode.UserWrite), "control: the socket is readable and writable by its owner only");
+                Check(OperatingSystem.IsWindows() || File.GetUnixFileMode(path) == (UnixFileMode.UserRead | UnixFileMode.UserWrite), "control: the socket is readable and writable by its owner only");
                 Check(ControlClient.Send(path, "status") == "ok: status", "control: a command gets one reply line");
 
                 bool refused = false;
@@ -1193,7 +1193,7 @@ B: MSC=10
                     bool named = wav != null && Path.GetFileName(wav).Contains("_TG" + calling.Tg + "_RX_") && wav.StartsWith(recDir) &&
                                  Path.GetFileName(Path.GetDirectoryName(wav)) == kept[0].Started.ToString("yyyy-MM-dd");
                     long size = wav != null && File.Exists(wav) ? new FileInfo(wav).Length : 0;
-                    UnixFileMode mode = wav != null && File.Exists(wav) ? File.GetUnixFileMode(wav) : 0;
+                    UnixFileMode mode = wav != null && File.Exists(wav) && !OperatingSystem.IsWindows() ? File.GetUnixFileMode(wav) : 0;     // Windows: the user's own folders
                     Check(rt.RecordingsWritten == 1 && named && size == 44 + 18 * 160 * 2 && (mode & (UnixFileMode.GroupRead | UnixFileMode.OtherRead)) == 0,
                           $"recording: the call is saved as a WAV named for its time, talkgroup and talker, readable only by the user ({size} bytes)");
 
@@ -1263,7 +1263,7 @@ B: MSC=10
                     int expectSamples = opusFrames * 160;
                     Check(opus != null && opus.EndsWith(".opus") && head.StartsWith("OggS") && head.Contains("OpusHead") && opusBytes.Length < wavEquivalent / 5 &&
                           Math.Abs(decoded.Count - expectSamples) <= 480 && decodedRms > spokenRms * 0.6 && decodedRms < spokenRms * 1.5 &&
-                          (File.GetUnixFileMode(opus) & (UnixFileMode.GroupRead | UnixFileMode.OtherRead)) == 0,
+                          (OperatingSystem.IsWindows() || (File.GetUnixFileMode(opus) & (UnixFileMode.GroupRead | UnixFileMode.OtherRead)) == 0),
                           $"recording: by default the call is saved as Opus, about an eighth of the WAV's size, and decodes to the same length and level " +
                           $"({opusBytes.Length} bytes vs {wavEquivalent}; {decoded.Count} samples vs {expectSamples}; level {decodedRms:F0} vs {spokenRms:F0})");
 
@@ -2344,94 +2344,100 @@ zones:
                   Speech.TimeAnnouncementText(bare, winter) == "eight twenty P M",
                   $"time announcement: words before, the time in the chosen zone, the zone, then words after ({said12})");
 
-            // engines: stand-in programs in a folder of their own, so the test doesn't depend on what's installed
-            string bin = Path.Combine(tmp, "speech-bin"), voices = Path.Combine(tmp, "speech-voices"), heard = Path.Combine(tmp, "speech-heard.txt");
-            Directory.CreateDirectory(bin);
-            Directory.CreateDirectory(voices);
-            string spokenWav = Path.Combine(tmp, "speech-out.wav");
-            WriteTestWav(spokenWav, 22050, 1, 16, false, 1.5, (t, ch) => 0.3 * Math.Sin(2 * Math.PI * 220 * t) * Math.Sin(2 * Math.PI * 3 * t));
-            void FakeEngine(string name, string outFlag, bool fail = false)
+            if (OperatingSystem.IsWindows())
+                Console.WriteLine("SKIP: text to speech: the stand-in Piper and espeak-ng are shell scripts (Linux and macOS run these checks)");
+            else
             {
-                string script = Path.Combine(bin, name);
-                File.WriteAllText(script, "#!/bin/sh\n" +
-                    $"echo \"$@\" > '{heard}.args'\ncat > '{heard}'\n" +
-                    (fail ? "echo 'voice model is broken' >&2\nexit 3\n"
-                          : $"while [ $# -gt 0 ]; do if [ \"$1\" = \"{outFlag}\" ]; then cp '{spokenWav}' \"$2\"; fi; shift; done\n"));
-                File.SetUnixFileMode(script, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-            }
-            Speech.programFoldersForTest = new[] { bin };
-            Speech.voiceFoldersForTest = new[] { voices };
-            try
-            {
-                SpeechEngine none = Speech.Choose(null, null, out string noneWhy);
-                FakeEngine("espeak-ng", "-w");
-                SpeechEngine espeakOnly = Speech.Choose(null, null, out _);
-                FakeEngine("piper", "-f");
-                SpeechEngine piperNoVoice = Speech.Choose(null, null, out _), piperForced = Speech.Choose(Speech.PiperSetting, null, out string forcedWhy);
-                string deepVoice = Path.Combine(voices, "en", "en_US", "lessac", "medium", "en_US-lessac-medium.onnx");
-                Directory.CreateDirectory(Path.GetDirectoryName(deepVoice));
-                File.WriteAllText(deepVoice, "model");
-                File.WriteAllText(deepVoice + ".json", "{}");
-                File.WriteAllText(Path.Combine(voices, "half-downloaded.onnx"), "no json beside it");
-                SpeechEngine piper = Speech.Choose(null, null, out _), espeakChosen = Speech.Choose(Speech.EspeakSetting, "en-gb", out _);
-                Check(none == null && noneWhy.Contains("install Piper") && noneWhy.Contains("espeak-ng") &&
-                      espeakOnly?.Kind == SpeechEngineKind.EspeakNg && espeakOnly.Voice == "en-us" &&
-                      piperNoVoice?.Kind == SpeechEngineKind.EspeakNg && piperForced == null && forcedWhy.Contains("no voice") &&
-                      piper?.Kind == SpeechEngineKind.Piper && piper.Voice == deepVoice && Speech.PiperVoices().Count == 1 && piper.Label == "Piper, voice en_US-lessac-medium" &&
-                      espeakChosen?.Kind == SpeechEngineKind.EspeakNg && espeakChosen.Voice == "en-gb",
-                      "text to speech: Piper with a voice (found in sub-folders) is chosen first, else espeak-ng; with neither, it says what to install");
-
-                short[] made = Speech.Synthesize(piper, "Shift change in ten minutes.\nAll units.");
-                string piperArgs = File.ReadAllText(heard + ".args").Trim(), piperText = File.ReadAllText(heard).Trim();
-                short[] madeEspeak = Speech.Synthesize(espeakChosen, "Radio check");
-                string espeakArgs = File.ReadAllText(heard + ".args").Trim();
-                Check(Math.Abs(made.Length - 12000) <= 2 && madeEspeak.Length == made.Length && piperText == "Shift change in ten minutes. All units." &&
-                      piperArgs.StartsWith($"-m {deepVoice} -f ") && espeakArgs.StartsWith("--stdin -v en-gb -w "),
-                      $"text to speech: the engine gets the text on its input (not through a shell) and its WAV becomes 8 kHz announcement audio ({made.Length} samples; {piperArgs.Split(' ')[0]} …)");
-
-                // the speed: Piper's length scale (the voice's own, divided by the speed), espeak-ng's words per minute
-                piper.Rate = 0.9;
-                espeakChosen.Rate = 0.9;
-                Speech.Synthesize(piper, "slower");
-                string slowArgs = File.ReadAllText(heard + ".args").Trim();
-                File.WriteAllText(deepVoice + ".json", "{\"audio\": {\"sample_rate\": 22050}, \"inference\": {\"noise_scale\": 0.667, \"length_scale\": 1.2}}");
-                Speech.Synthesize(piper, "slower still");
-                string slowOwnArgs = File.ReadAllText(heard + ".args").Trim();
-                Speech.Synthesize(espeakChosen, "slower");
-                string slowEspeak = File.ReadAllText(heard + ".args").Trim();
-                piper.Rate = 1;
-                espeakChosen.Rate = 1;
-                Check(slowArgs.StartsWith($"-m {deepVoice} --length_scale 1.111 -f ") && slowOwnArgs.Contains("--length_scale 1.333 ") &&
-                      slowEspeak.StartsWith("--stdin -v en-gb -s 158 -w ") && !piperArgs.Contains("length_scale") && !espeakArgs.Contains(" -s "),
-                      $"text to speech: a slower speed lengthens Piper's own pace (1.2 becomes 1.333 at 90%) and slows espeak-ng's words per minute; normal passes nothing ({slowOwnArgs.Split(" -f ")[0].Split(' ').Last()})");
-
-                // through the console: the engine runs on a worker thread, and the audio is sent from the UI thread
-                Tui worker = new Tui(cp, sys, TimeSpan.FromSeconds(120), null) { NoAudio = true };
-                List<(TonePlan Plan, List<ConsoleChannel> Targets)> workerSent = new List<(TonePlan, List<ConsoleChannel>)>();
-                worker.sendAnnouncementForTest = (plan, targets) => workerSent.Add((plan, targets));
-                string workerWhy = worker.SpeakAnnouncement("Radio check", allListening: false);
-                bool preparing = worker.SpeechPreparing, busyRefused = worker.SpeakAnnouncement("Again", false)?.Contains("still being made") == true;
-                for (int i = 0; i < 500 && workerSent.Count == 0; i++)
+                // engines: stand-in programs in a folder of their own, so the test doesn't depend on what's installed
+                string bin = Path.Combine(tmp, "speech-bin"), voices = Path.Combine(tmp, "speech-voices"), heard = Path.Combine(tmp, "speech-heard.txt");
+                Directory.CreateDirectory(bin);
+                Directory.CreateDirectory(voices);
+                string spokenWav = Path.Combine(tmp, "speech-out.wav");
+                WriteTestWav(spokenWav, 22050, 1, 16, false, 1.5, (t, ch) => 0.3 * Math.Sin(2 * Math.PI * 220 * t) * Math.Sin(2 * Math.PI * 3 * t));
+                void FakeEngine(string name, string outFlag, bool fail = false)
                 {
-                    Thread.Sleep(10);
-                    worker.Tick();
+                    string script = Path.Combine(bin, name);
+                    File.WriteAllText(script, "#!/bin/sh\n" +
+                        $"echo \"$@\" > '{heard}.args'\ncat > '{heard}'\n" +
+                        (fail ? "echo 'voice model is broken' >&2\nexit 3\n"
+                              : $"while [ $# -gt 0 ]; do if [ \"$1\" = \"{outFlag}\" ]; then cp '{spokenWav}' \"$2\"; fi; shift; done\n"));
+                    File.SetUnixFileMode(script, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
                 }
-                Check(workerWhy == null && preparing && busyRefused && workerSent.Count == 1 && !worker.SpeechPreparing && workerSent[0].Plan.Frames.Length > 75 &&
-                      worker.SpokenLength("Radio check") == TimeSpan.FromSeconds(1.5),
-                      "spoken announcements: the engine runs off the UI thread (another is refused until it has finished), then the audio is sent");
+                Speech.programFoldersForTest = new[] { bin };
+                Speech.voiceFoldersForTest = new[] { voices };
+                try
+                {
+                    SpeechEngine none = Speech.Choose(null, null, out string noneWhy);
+                    FakeEngine("espeak-ng", "-w");
+                    SpeechEngine espeakOnly = Speech.Choose(null, null, out _);
+                    FakeEngine("piper", "-f");
+                    SpeechEngine piperNoVoice = Speech.Choose(null, null, out _), piperForced = Speech.Choose(Speech.PiperSetting, null, out string forcedWhy);
+                    string deepVoice = Path.Combine(voices, "en", "en_US", "lessac", "medium", "en_US-lessac-medium.onnx");
+                    Directory.CreateDirectory(Path.GetDirectoryName(deepVoice));
+                    File.WriteAllText(deepVoice, "model");
+                    File.WriteAllText(deepVoice + ".json", "{}");
+                    File.WriteAllText(Path.Combine(voices, "half-downloaded.onnx"), "no json beside it");
+                    SpeechEngine piper = Speech.Choose(null, null, out _), espeakChosen = Speech.Choose(Speech.EspeakSetting, "en-gb", out _);
+                    Check(none == null && noneWhy.Contains("install Piper") && noneWhy.Contains("espeak-ng") &&
+                          espeakOnly?.Kind == SpeechEngineKind.EspeakNg && espeakOnly.Voice == "en-us" &&
+                          piperNoVoice?.Kind == SpeechEngineKind.EspeakNg && piperForced == null && forcedWhy.Contains("no voice") &&
+                          piper?.Kind == SpeechEngineKind.Piper && piper.Voice == deepVoice && Speech.PiperVoices().Count == 1 && piper.Label == "Piper, voice en_US-lessac-medium" &&
+                          espeakChosen?.Kind == SpeechEngineKind.EspeakNg && espeakChosen.Voice == "en-gb",
+                          "text to speech: Piper with a voice (found in sub-folders) is chosen first, else espeak-ng; with neither, it says what to install");
 
-                FakeEngine("piper", "-f", fail: true);
-                string failed = null;
-                try { Speech.Synthesize(piper, "hello"); } catch (ArgumentException ex) { failed = ex.Message; }
-                string empty = null;
-                try { Speech.Synthesize(piper, "  "); } catch (ArgumentException ex) { empty = ex.Message; }
-                Check(failed != null && failed.Contains("Piper failed") && failed.Contains("exit code 3") && failed.Contains("voice model is broken") && empty != null,
-                      $"text to speech: an engine that fails says why ({failed})");
-            }
-            finally
-            {
-                Speech.programFoldersForTest = null;
-                Speech.voiceFoldersForTest = null;
+                    short[] made = Speech.Synthesize(piper, "Shift change in ten minutes.\nAll units.");
+                    string piperArgs = File.ReadAllText(heard + ".args").Trim(), piperText = File.ReadAllText(heard).Trim();
+                    short[] madeEspeak = Speech.Synthesize(espeakChosen, "Radio check");
+                    string espeakArgs = File.ReadAllText(heard + ".args").Trim();
+                    Check(Math.Abs(made.Length - 12000) <= 2 && madeEspeak.Length == made.Length && piperText == "Shift change in ten minutes. All units." &&
+                          piperArgs.StartsWith($"-m {deepVoice} -f ") && espeakArgs.StartsWith("--stdin -v en-gb -w "),
+                          $"text to speech: the engine gets the text on its input (not through a shell) and its WAV becomes 8 kHz announcement audio ({made.Length} samples; {piperArgs.Split(' ')[0]} …)");
+
+                    // the speed: Piper's length scale (the voice's own, divided by the speed), espeak-ng's words per minute
+                    piper.Rate = 0.9;
+                    espeakChosen.Rate = 0.9;
+                    Speech.Synthesize(piper, "slower");
+                    string slowArgs = File.ReadAllText(heard + ".args").Trim();
+                    File.WriteAllText(deepVoice + ".json", "{\"audio\": {\"sample_rate\": 22050}, \"inference\": {\"noise_scale\": 0.667, \"length_scale\": 1.2}}");
+                    Speech.Synthesize(piper, "slower still");
+                    string slowOwnArgs = File.ReadAllText(heard + ".args").Trim();
+                    Speech.Synthesize(espeakChosen, "slower");
+                    string slowEspeak = File.ReadAllText(heard + ".args").Trim();
+                    piper.Rate = 1;
+                    espeakChosen.Rate = 1;
+                    Check(slowArgs.StartsWith($"-m {deepVoice} --length_scale 1.111 -f ") && slowOwnArgs.Contains("--length_scale 1.333 ") &&
+                          slowEspeak.StartsWith("--stdin -v en-gb -s 158 -w ") && !piperArgs.Contains("length_scale") && !espeakArgs.Contains(" -s "),
+                          $"text to speech: a slower speed lengthens Piper's own pace (1.2 becomes 1.333 at 90%) and slows espeak-ng's words per minute; normal passes nothing ({slowOwnArgs.Split(" -f ")[0].Split(' ').Last()})");
+
+                    // through the console: the engine runs on a worker thread, and the audio is sent from the UI thread
+                    Tui worker = new Tui(cp, sys, TimeSpan.FromSeconds(120), null) { NoAudio = true };
+                    List<(TonePlan Plan, List<ConsoleChannel> Targets)> workerSent = new List<(TonePlan, List<ConsoleChannel>)>();
+                    worker.sendAnnouncementForTest = (plan, targets) => workerSent.Add((plan, targets));
+                    string workerWhy = worker.SpeakAnnouncement("Radio check", allListening: false);
+                    bool preparing = worker.SpeechPreparing, busyRefused = worker.SpeakAnnouncement("Again", false)?.Contains("still being made") == true;
+                    for (int i = 0; i < 500 && workerSent.Count == 0; i++)
+                    {
+                        Thread.Sleep(10);
+                        worker.Tick();
+                    }
+                    Check(workerWhy == null && preparing && busyRefused && workerSent.Count == 1 && !worker.SpeechPreparing && workerSent[0].Plan.Frames.Length > 75 &&
+                          worker.SpokenLength("Radio check") == TimeSpan.FromSeconds(1.5),
+                          "spoken announcements: the engine runs off the UI thread (another is refused until it has finished), then the audio is sent");
+
+                    FakeEngine("piper", "-f", fail: true);
+                    string failed = null;
+                    try { Speech.Synthesize(piper, "hello"); } catch (ArgumentException ex) { failed = ex.Message; }
+                    string empty = null;
+                    try { Speech.Synthesize(piper, "  "); } catch (ArgumentException ex) { empty = ex.Message; }
+                    Check(failed != null && failed.Contains("Piper failed") && failed.Contains("exit code 3") && failed.Contains("voice model is broken") && empty != null,
+                          $"text to speech: an engine that fails says why ({failed})");
+                }
+                finally
+                {
+                    Speech.programFoldersForTest = null;
+                    Speech.voiceFoldersForTest = null;
+                }
+
             }
 
             // a real engine, when one is installed (CI installs espeak-ng; Piper here when it has a voice)
@@ -2706,7 +2712,7 @@ zones:
             h1.SaveHistory();
             string histFile = h1.HistoryPath;
             string histJson = File.Exists(histFile) ? File.ReadAllText(histFile) : string.Empty;
-            UnixFileMode histMode = File.Exists(histFile) ? File.GetUnixFileMode(histFile) : 0;
+            UnixFileMode histMode = File.Exists(histFile) && !OperatingSystem.IsWindows() ? File.GetUnixFileMode(histFile) : 0;
             Check(heard && histFile == Path.Combine(histDir, "Test_FNE.json") && histJson.Length > 0 &&
                   (histMode & (UnixFileMode.GroupRead | UnixFileMode.OtherRead)) == 0 && !Directory.GetFiles(histDir, "*.part").Any(),
                   "history: saved to one file per system, readable only by the user");
