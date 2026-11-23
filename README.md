@@ -10,7 +10,7 @@ There are two front ends over the same console:
 - **`sidetone`**: a graphical console (Avalonia), with light and dark themes. See [Graphical console (sidetone)](#graphical-console-sidetone).
 - **Sidetone for Android**: the same graphical console as an Android app, with a phone layout. See [Android](#android).
 
-**What works** (Linux, macOS and Android)**:** FNE login (several systems at once), P25 receive and transmit (clear, AES-256, DES, ADP/ARC4 with keys from the FNE or a KFDtool key file), PipeWire audio, channel cards in tabs for the codeplug's zones, push-to-talk from the keyboard, a hotkey or a PTT device, alert tones, pages, radio commands, the channel marker, radio aliases, patching (two-way and one-way), instant recall with a call history kept between runs, audio outputs per tab and channel, recording to Opus or WAV, announcements (WAV files, or text spoken by Piper or espeak-ng, played onto talkgroups), a time announcement that can play by itself on the clock, web streams (MP3 feeds on a tab), and log files.
+**What works** (Linux, macOS, Windows and Android)**:** FNE login (several systems at once), P25 receive and transmit (clear, AES-256, DES, ADP/ARC4 with keys from the FNE or a KFDtool key file), PipeWire audio, channel cards in tabs for the codeplug's zones, push-to-talk from the keyboard, a hotkey or a PTT device, alert tones, pages, radio commands, the channel marker, radio aliases, patching (two-way and one-way), instant recall with a call history kept between runs, audio outputs per tab and channel, recording to Opus or WAV, announcements (WAV files, or text spoken by Piper or espeak-ng, played onto talkgroups), a time announcement that can play by itself on the clock, web streams (MP3 feeds on a tab), and log files.
 
 **Not yet:** DMR/NXDN/analog. What we'd like to add next is in [WISHLIST.md](WISHLIST.md).
 
@@ -21,6 +21,7 @@ There are two front ends over the same console:
   - [Arch Linux and Omarchy](#arch-linux-and-omarchy)
   - [Tarball](#tarball)
 - [macOS](#macos)
+- [Windows](#windows)
 - [Android](#android)
   - [Staying connected with the screen off](#staying-connected-with-the-screen-off)
   - [Hardware PTT key](#hardware-ptt-key)
@@ -143,6 +144,27 @@ Differences from Linux:
 
 - **A global PTT hotkey:** the same control socket as on Linux, so a tool such as Hammerspoon can run `sidetone-cli ptt down` and `sidetone-cli ptt up` (see [PTT from hotkeys and scripts](#ptt-from-hotkeys-and-scripts)).
 - **Not on macOS yet:** PTT devices such as USB desk mics (they're read from Linux's `/dev/input`), the app launcher entry and the display scale setting (macOS does both itself).
+
+## Windows
+
+Sidetone runs on **Windows 10 (version 1809) and Windows 11**, on both x64 PCs and ARM PCs (0.35 and later). Each release has `Sidetone-VERSION-windows-setup.exe`: one installer for both kinds of PC, which installs the build the PC needs. It installs for your user only, so no administrator password is needed, into `%LOCALAPPDATA%\Programs\Sidetone`, with a Start menu entry. Optionally it adds a desktop shortcut, and puts `sidetone-cli` on PATH for the terminal console and PTT scripts. Uninstall it from Settings, Apps; your settings, recordings and logs are kept.
+
+**The first time you run the installer,** Windows SmartScreen says it protected your PC, because the installer isn't signed with a paid code-signing certificate. Click **More info**, then **Run anyway**. On a PC with **Smart App Control** turned on, Windows 11 blocks unsigned programs outright; Sidetone can't be installed there until it's signed.
+
+Differences from Linux:
+
+- **Audio** goes through Windows's own audio (WASAPI): choose the output and microphone in Settings, or per tab and channel. If transmit sends silence, check **Settings, Privacy & security, Microphone** (desktop apps must be allowed to use it).
+- **Spoken announcements** use Windows's own voices (Settings, Time & language, Speech). Piper or espeak-ng is used instead if you choose it in the announcement settings and it's installed.
+- A key file's password is remembered in **Credential Manager**. When the console is paged, its taskbar button flashes.
+- Settings are in `%APPDATA%\sidetone`; recordings, logs and the call history in `%LOCALAPPDATA%\sidetone`.
+- **The terminal console** runs in Windows Terminal or a console window, with the mouse, as on Linux. If you let the installer add it to PATH, open a new terminal and run:
+
+```powershell
+sidetone-cli tui --codeplug C:\Radio\codeplug.yml
+```
+
+- **A global PTT hotkey:** the same control socket as on Linux, so a tool such as AutoHotkey can run `sidetone-cli ptt down` and `sidetone-cli ptt up` (see [PTT from hotkeys and scripts](#ptt-from-hotkeys-and-scripts)).
+- **Not on Windows yet:** PTT devices such as USB desk mics, and Windows notifications (pages flash the taskbar button instead).
 
 ## Android
 

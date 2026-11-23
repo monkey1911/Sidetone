@@ -8,7 +8,22 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
 
 ## State at hand-off (2026-11-16)
 
-- Version **0.34.0** on `main` (set once, in `src/Directory.Build.props`): **macOS**. One universal
+- Version **0.35.0** on `main` (set once, in `src/Directory.Build.props`): **Windows**. `WasapiBackend`
+  (NAudio.Wasapi 3.3.0, MIT; endpoints by ID; shared mode at the device's mix format with
+  `WavFile.StreamResampler` both ways; `WasapiOut`/`WasapiCapture` are marked obsolete in 3.3, kept as
+  the Windows console's proven classes). `WindowsPlatform`: SAPI speech through COM on an STA thread
+  (CI's runners have Microsoft David), Credential Manager for key-file passwords; pages flash the
+  taskbar (`MainWindow`). Windows builds keep .NET's globalization (InvariantGlobalization false for win
+  RIDs, Windows's ICU) so IANA zones resolve; `DesktopPlatform` sets the culture invariant; zone list
+  converted from Windows ids; US/UK abbreviations by table (`Speech.WindowsAbbreviations`). TUI in the
+  console's VT mode (`TerminalIO.StartWindows`). `packaging/windows/sidetone.iss` (Inno Setup: one setup
+  for x64 and ARM64 picking by `IsArm64`, per user, optional PATH entry). CI: `windows` (windows-latest,
+  windows-11-arm: MSVC libvocoder, both suites, devices), `windows-installer` (silent install, installed
+  self-test, uninstall), `windows-installer-arm` (the same, checks the ARM64 PE went in). The self-test
+  skips Unix-only checks on Windows (file modes count as passed; the stand-in speech scripts and the
+  launcher entry print SKIP), and macOS and Windows each speak a sentence with their own voice.
+  Nothing tested on a real Windows PC yet.
+  0.34.0: **macOS**. One universal
   `Sidetone.app` (`packaging/macos`: `launcher.c` built for both CPUs in one `clang` call, which execs
   `Contents/Resources/{arm64,x64}/<its own name>`, so `Contents/MacOS/sidetone-cli` works too;
   `Info.plist` with the microphone description; `make-app.sh` signs every Mach-O ad-hoc, then the
@@ -123,7 +138,9 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
   on Android, hardware PTT keys on Sonim and the LEX L11; from 0.32: web streams (a real feed, and
   one with a password); from 0.33: two FNEs at once (CTRS's P25 FNE and its DMR FNE, for the
   connection side until DMR itself is done); from 0.34: macOS on Apple silicon (only CI so far), and on the
-  owner's Intel Mac whatever their "it worked" didn't cover (ask before listing parts as tested); and the
+  owner's Intel Mac whatever their "it worked" didn't cover (ask before listing parts as tested); from
+  0.35: all of Windows on real PCs (SmartScreen, the installer, audio in and out, SAPI, Credential
+  Manager, the TUI in Windows Terminal) on 10/11 x64 and 11 ARM; and the
   desktop's phone layout
   (Piper is installed on the owner's Surface, through `uv tool install piper-tts`, with the
   en_US-lessac-medium voice).
@@ -144,11 +161,11 @@ src/sidetone-android/       Sidetone for Android (net10.0-android, API 30+, targ
                             src/sidetone's sources (all but Program.cs) and adds the activity, audio, service, TTS, keystore
 extern/dvmconsole           submodule: monkey1911/dvmconsole-ARM64, branch dev (the Windows console)
 extern/dvmvocoder           submodule: DVMProject/dvmvocoder main at e7ab96e (v0.2 plus the m_autoGain fix), built by CMake into libvocoder.so
-packaging/                  icons (sidetone-1024.png for macOS), macos/ (universal .app), sidetone.desktop (for packages; the dvmcli/dvmgui wrappers went in 0.29),
+packaging/                  icons (sidetone-1024.png for macOS), macos/ (universal .app), windows/ (Inno Setup), sidetone.desktop (for packages; the dvmcli/dvmgui wrappers went in 0.29),
                             appimage/ (AppRun, build-appimage.sh: pinned appimagetool 1.9.1 + runtime 20251108,
                             SHA-256 checked), arch/ (PKGBUILD.in template + make-pkgbuild.sh, sidetone.install)
 tools/                      ci-status.sh, ci-screenshots.sh (see Testing), android-check.sh (the emulator self-test)
-.github/workflows/build.yml the only CI workflow ("Build"; Linux, Android and macOS)
+.github/workflows/build.yml the only CI workflow ("Build"; Linux, Android, macOS and Windows)
 ```
 
 ### Core (`src/sidetone-core`)
@@ -249,7 +266,8 @@ locally too: `out/sidetone-$R/sidetone --screenshot FILE --demo --size 1180x760 
 (add `--show page|radio|settings|keyfile|patch|recall|tabs` for a box). Save these to the scratchpad and
 read the PNG directly, with no CI round trip.
 
-**macOS builds happen in CI only** (jobs `macos`, `macos-intel`): the managed code cross-publishes from
+**macOS and Windows builds happen in CI only** (jobs `macos`, `macos-intel`, `windows`, `windows-installer`,
+`windows-installer-arm`). For macOS: the managed code cross-publishes from
 Linux (`dotnet publish -r osx-arm64` compiles and catches errors), but libvocoder, signing and the .app
 need a Mac. PortAudio also runs on Linux (ALSA), so `PortAudioBackend` can be exercised here from a
 scratch program (play silence only).
