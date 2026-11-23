@@ -16,6 +16,9 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
   30 s (`WebStreamPlayer.QuietTimeout`: a half-open connection after a phone changes networks) is given
   up on and connected again. Open folder (recordings, logs) uses Avalonia's launcher, so it works on
   macOS and Windows (it ran `xdg-open`).
+  After 0.36.1: the self-test checks the transmit time limit on a live transmission (`StartTx` now
+  checks `FneLink.CanSend` and sends through `FneLink.Sink`, the same as `Peer` in real use, so the
+  self-test's stand-in sink can transmit).
   0.36.0: Android improvements. Sharing
   recordings: Instant recall's button is **Recordings…** on a device (`RecordingsOverlay`: days newest
   first, Share and Share day; `Recordings.List` reads the files back from the names `RecordingPath`
@@ -214,8 +217,9 @@ tools/                      ci-status.sh, ci-screenshots.sh (see Testing), andro
   `ClearFrame` event exposes what it sends), `P25FrameBuilder`.
 - `KeyStore` (keys from the FNE, plus `SetLocal` for a key file), `LocalKeys.cs` (KFDtool `.ekc`
   via the submodule's `EkcKeyStore`; `SecretStore` = `secret-tool` keyring).
-- Audio: `AudioBackend.cs` (`IAudioBackend`, `IAudioOutput`, `IAudioInput`; `PipeWireBackend` is
-  the only real one; `NoAudioBackend` elsewhere). `AudioSinks.cs` (`PipeWireSink` = `pw-play`,
+- Audio: `AudioBackend.cs` (`IAudioBackend`, `IAudioOutput`, `IAudioInput`; `AudioBackend.ForPlatform`
+  picks `PipeWireBackend` on Linux, `PortAudioBackend` on macOS, `WasapiBackend` on Windows; Android sets
+  its own `AndroidAudioBackend`; `NoAudioBackend` where none works). `AudioSinks.cs` (`PipeWireSink` = `pw-play`,
   `WavSink`), `PipeWireCapture.cs` (`pw-record`), `AudioDevices.cs` (`pw-dump` parsing, device
   matching, startup report). **Nothing outside the PipeWire backend may start `pw-*` tools.**
 - Recordings: `OpusFileSink` (in `AudioSinks.cs`; Concentus 2.2.2 + Concentus.OggFile, pure C#,
@@ -249,7 +253,7 @@ receiver's lock.
 console; `MainWindow` is a thin desktop `Window` around it (title, icon, keys, closing). On Android,
 `App` hands the same view to `IActivityApplicationLifetime.MainViewFactory` (made once, kept).
 Below 700 px wide the view switches to the phone layout (one column, big PTT, Channels/Calls/Log/More
-pages, boxes scaled down with a `LayoutTransformControl`). `IGuiPlatform` (`GuiPlatform.Current`,
+pages; on a phone each box is a full-screen sheet, `PhoneSheet`, while tablets keep the usual boxes). `IGuiPlatform` (`GuiPlatform.Current`,
 null on a desktop) is what a device adds: the hardware PTT key, keep screen on, the foreground
 service, battery settings; `SettingsOverlay.Device.cs` holds its Settings rows.
 

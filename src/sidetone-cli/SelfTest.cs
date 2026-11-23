@@ -1061,6 +1061,22 @@ B: MSC=10
                     int logged = ft.SnapshotLog(50).Count;
                     fake.Outputs[2].Fail("the device went away");
                     Check(ft.SnapshotLog(50).Any(l => l.Contains("the device went away")), "audio layer: a backend reporting a failed output is logged on the channel");
+
+                    // the transmit time limit: a transmission still going past it is stopped (the stuck-PTT safety stop)
+                    Tui lt = new Tui(cp, sys, TimeSpan.FromSeconds(1), null);
+                    CaptureSink limitOut = new CaptureSink(new CliPeer(sys, new KeyStore(), verbose: false));
+                    lt.sinkForTest = limitOut;
+                    lt.consoleRidForTest = 9000002;
+                    string limitStart = lt.StartTx(lt.Channels.First(x => x.IsP25 && !x.Encrypted && !x.Cfg.RxOnly));
+                    bool limitWasOn = lt.Transmitting;
+                    lt.Housekeeping();
+                    bool keptBefore = lt.Transmitting;
+                    Thread.Sleep(1300);
+                    lt.Housekeeping();
+                    Check(limitStart == null && limitWasOn && keptBefore && !lt.Transmitting && limitOut.TduCount > 0 &&
+                          lt.SnapshotLog(20).Any(l => l.Contains("1 s transmit limit reached")),
+                          $"transmit limit: a transmission still on after the limit is stopped and ended on the network (started: {limitStart ?? "yes"}, TDUs {limitOut.TduCount})");
+                    lt.Shutdown();
                 }
                 finally
                 {

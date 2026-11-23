@@ -753,18 +753,18 @@ namespace Sidetone.Core
                 return Refuse($"{c.Cfg.Name}: can't transmit on a {c.Cfg.Mode} channel");
             if (c.Cfg.RxOnly)
                 return Refuse($"{c.Cfg.Name}: receive-only channel");
-            if (!c.Link.Connected)
+            if (!c.Link.CanSend)      // connected (the self-test's stand-in sink counts)
                 return Refuse(links.Count > 1 ? $"not connected to {c.Link.Name} yet" : "not connected to the FNE yet");
             if (PatchTransmitText(c) != null)
                 return Refuse($"{c.Cfg.Name}: a patch is transmitting here");
 
             Select(c);
 
-            P25Transmitter t = new P25Transmitter(c.Link.Peer, c.Link.Keys, c.Link.ConsoleRid, c.Tg, c.ActiveTxAlg, c.ActiveKeyId);
+            P25Transmitter t = new P25Transmitter(c.Link.Sink, c.Link.Keys, c.Link.ConsoleRid, c.Tg, c.ActiveTxAlg, c.ActiveKeyId);
             if (!t.Start(out string error))
             {
                 if (c.TxSecure && KeyStore.IsSupported(c.KeyRequestAlg))
-                    c.Link.Peer.RequestKey(c.KeyRequestAlg, c.KeyId);
+                    c.Link.Peer?.RequestKey(c.KeyRequestAlg, c.KeyId);
                 return Refuse($"{c.Cfg.Name}: not transmitting: {error}");
             }
 
