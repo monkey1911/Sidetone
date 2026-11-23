@@ -44,8 +44,15 @@ namespace Sidetone.Gui
     public static class Program
     {
         [STAThread]
+        [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+        private static extern bool AttachConsole(int processId);
+
         public static int Main(string[] args)
         {
+            // Windows builds it as a GUI program (no console window); started from a terminal, its output (--version,
+            // --selfcheck, errors) goes to that terminal. Output that's redirected (CI) needs nothing.
+            if (OperatingSystem.IsWindows() && Console.IsOutputRedirected == false)
+                AttachConsole(-1);      // ATTACH_PARENT_PROCESS; fails quietly when started from the Start menu
             DesktopPlatform.Setup();    // macOS and Windows: their own folders, speech, password store and notifications
             if (args.Length > 0 && (args[0] == "--version" || args[0] == "version"))
             {

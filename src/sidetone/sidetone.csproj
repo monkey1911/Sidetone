@@ -6,6 +6,8 @@
   -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
+    <!-- Windows: a GUI program, so no console window opens beside it (Program.Main attaches to a terminal it was started from) -->
+    <OutputType Condition="$(RuntimeIdentifier.StartsWith('win'))">WinExe</OutputType>
     <AssemblyName>sidetone</AssemblyName>
     <RootNamespace>Sidetone.Gui</RootNamespace>
     <InvariantGlobalization>true</InvariantGlobalization>
