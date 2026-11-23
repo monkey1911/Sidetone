@@ -202,7 +202,7 @@ namespace Sidetone.Gui
             foreach ((RecalledCall call, TextBlock text, Tap play) in lines)
             {
                 bool playing = c.Replaying == call;
-                text.Text = $"{call.Started:HH:mm:ss}   {(call.Tx ? "TX" : "RX")}   {call.Who}   {call.Length.TotalSeconds:F0} s, {call.Crypt}" +
+                text.Text = $"{call.Started:HH:mm:ss}   {(call.Tx ? "TX" : "RX")}   {call.Label}   {call.Length.TotalSeconds:F0} s, {call.Crypt}" +
                             (playing ? $"   ▶ {c.ReplayPosition.TotalSeconds:F0} s" : string.Empty);
                 text.Foreground = playing ? p.Accent : call.Tx ? p.Tx : p.Text;
                 play.Text = playing ? "Stop" : "Play";

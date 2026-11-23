@@ -43,6 +43,9 @@ namespace Sidetone.Core
         private DateTime historyDue;
         private readonly object historyFileLock = new object();
 
+        /// <summary>A channel in the history file: SYSTEM:CHANNEL (two FNEs can each have a channel of the same name).</summary>
+        private static string HistoryKey(Chan c) => $"{c.Link.Name}:{c.Cfg.Name}";
+
         private static string SafeName(string text) => string.Concat((text ?? "system").Select(ch => char.IsLetterOrDigit(ch) || ch == '-' || ch == '.' ? ch : '_'));
 
         /// <summary>Something new for the history: it is saved a little later.</summary>
@@ -66,7 +69,8 @@ namespace Sidetone.Core
 
         private sealed class SavedHistory
         {
-            public int Version { get; set; } = 1;
+            /// <summary>1: calls keyed "zone/name/tg" (one system); 2 (0.36.2): "SYSTEM:CHANNEL".</summary>
+            public int Version { get; set; } = 2;
             public List<SavedRecent> Recent { get; set; } = new List<SavedRecent>();
             public List<SavedCall> Calls { get; set; } = new List<SavedCall>();
         }
@@ -82,7 +86,7 @@ namespace Sidetone.Core
 
         private sealed class SavedCall
         {
-            /// <summary>The channel, as remembered settings name it ("zone/name/tg").</summary>
+            /// <summary>The channel: "SYSTEM:CHANNEL" (HistoryKey; the tab doesn't matter), or "zone/name/tg" in a version 1 file.</summary>
             public string Key { get; set; }
             public string Channel { get; set; }
             public uint Talkgroup { get; set; }
@@ -130,7 +134,7 @@ namespace Sidetone.Core
                         Buffer.BlockCopy(call.Frames[i], 0, frames, i * P25VoiceReceiver.ImbeLength, P25VoiceReceiver.ImbeLength);
                     snapshot.Calls.Add(new SavedCall
                     {
-                        Key = ChanKey(c), Channel = call.Channel, Talkgroup = call.Talkgroup, Source = call.Source, Who = call.Who,
+                        Key = HistoryKey(c), Channel = call.Channel, Talkgroup = call.Talkgroup, Source = call.Source, Who = call.Who,
                         Started = call.Started, Tx = call.Tx, Crypt = call.Crypt, Cut = call.Cut, Frames = Convert.ToBase64String(frames)
                     });
                 }
@@ -208,7 +212,10 @@ namespace Sidetone.Core
                 recentVersion++;
             }
 
-            Dictionary<string, Chan> byKey = chans.GroupBy(ChanKey).ToDictionary(g => g.Key, g => g.First());
+            // a version 1 file is the first system's only, keyed as its settings are
+            Dictionary<string, Chan> byKey = saved.Version >= 2
+                ? chans.GroupBy(HistoryKey).ToDictionary(g => g.Key, g => g.First())
+                : chans.Where(ch => ch.Link == links[0]).GroupBy(ChanKey).ToDictionary(g => g.Key, g => g.First());
             int calls = 0;
             HashSet<Chan> channels = new HashSet<Chan>();
             lock (recallLock)
@@ -224,7 +231,7 @@ namespace Sidetone.Core
                         continue;
                     RecalledCall call = new RecalledCall
                     {
-                        Channel = s.Channel ?? c.Cfg.Name, Talkgroup = s.Talkgroup, Source = s.Source, Who = s.Who,
+                        Channel = s.Channel ?? c.Cfg.Name, SystemName = c.Link.Name, Talkgroup = s.Talkgroup, Source = s.Source, Who = s.Who,
                         Started = s.Started, Tx = s.Tx, Crypt = s.Crypt ?? "clear", Cut = s.Cut
                     };
                     for (int i = 0; i < frames.Length; i += P25VoiceReceiver.ImbeLength)

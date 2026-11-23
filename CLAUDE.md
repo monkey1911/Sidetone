@@ -8,7 +8,19 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
 
 ## State at hand-off (2026-11-16)
 
-- Version **0.36.1** on `main` (set once, in `src/Directory.Build.props`): fixes from an audit. Logs are
+- Version **0.36.2** on `main` (set once, in `src/Directory.Build.props`): calls are named
+  `SYSTEM:CHANNEL:RADIOID/ALIAS` (the owner's choice; the tab doesn't matter): `RecalledCall.Label` and
+  `RecalledCall.Caller` (just the ID without an alias), shown in Recent calls (`DispatchConsole.CallLabel`,
+  the whole label in the Chan column, Who null), Instant recall and the Recordings list. Recording names are
+  `HHmmss_SYSTEM_CHANNEL_RADIOID[_ALIAS][-n]` with '-' inside parts (`Safe(text, '-')`), so '_' only separates;
+  the radio ID part is always there (0 if none); the SYSTEM folder keeps the old '_' form so a system's
+  files stay in one folder. `RecordingFile.Parse` reads both that and the old `HHmmss_CHANNEL_TGnnn_RX_WHO`.
+  The history file is version 2: calls keyed `SYSTEM:CHANNEL` (`HistoryKey`; it was `ChanKey`,
+  zone/name/tg, which mixed up a same-named channel with the same TG on two FNEs); a version 1 file loads
+  onto the first system's channels. Channel settings still use `ChanKey`. The self-test checks the transmit
+  time limit on a live transmission (`StartTx` checks `FneLink.CanSend` and sends through `FneLink.Sink`,
+  the same as `Peer` in real use, so the self-test's stand-in sink can transmit).
+  0.36.1: fixes from an audit. Logs are
   UTC (the console's log lines and files, debug logs, `listen`'s output), as the FNE's and dvmhost's are
   (the owner's choice); the transmit clock (`P25Transmitter.StartedAt`, the time limit) and the channel
   marker's timer are UTC too, so a clock change can't stretch the time limit or stop the marker. Cards,
@@ -16,9 +28,6 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
   30 s (`WebStreamPlayer.QuietTimeout`: a half-open connection after a phone changes networks) is given
   up on and connected again. Open folder (recordings, logs) uses Avalonia's launcher, so it works on
   macOS and Windows (it ran `xdg-open`).
-  After 0.36.1: the self-test checks the transmit time limit on a live transmission (`StartTx` now
-  checks `FneLink.CanSend` and sends through `FneLink.Sink`, the same as `Peer` in real use, so the
-  self-test's stand-in sink can transmit).
   0.36.0: Android improvements. Sharing
   recordings: Instant recall's button is **Recordings…** on a device (`RecordingsOverlay`: days newest
   first, Share and Share day; `Recordings.List` reads the files back from the names `RecordingPath`

@@ -124,7 +124,6 @@ namespace Sidetone.Gui
             headings.Clear();
             lines.Clear();
             shares.Clear();
-            bool systems = files.Select(f => f.System).Distinct().Count() > 1;
             if (files.Count == 0)
             {
                 TextBlock empty = new TextBlock { FontSize = 13, TextWrapping = TextWrapping.Wrap, Text = "No recordings yet. Turn on Record on a channel's card or in Instant recall." };
@@ -143,13 +142,12 @@ namespace Sidetone.Gui
                 foreach (RecordingFile f in day)
                 {
                     int index = files.IndexOf(f);
-                    string channel = f.Channel.Replace('_', ' ');
                     TextBlock line = new TextBlock
                     {
                         FontSize = 13,
                         TextWrapping = TextWrapping.Wrap,
                         VerticalAlignment = VerticalAlignment.Center,
-                        Text = $"{f.Started:HH:mm}   {(f.Tx ? "TX" : "RX")}   TG {f.Talkgroup} {channel}   {f.Who.Replace('_', ' ')}" + (systems ? $"   ({f.System.Replace('_', ' ')})" : string.Empty)
+                        Text = $"{f.Started:HH:mm}   {f.Label}"
                     };
                     Tap share = new Tap("Share", () => ShareFile(index), fontSize: 12, padX: 12, padY: 6);
                     lines.Add(line);

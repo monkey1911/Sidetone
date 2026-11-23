@@ -1206,12 +1206,14 @@ B: MSC=10
                           "recall: a call heard on a channel is kept (recording started listening)");
 
                     string wav = rt.lastRecording;
-                    bool named = wav != null && Path.GetFileName(wav).Contains("_TG" + calling.Tg + "_RX_") && wav.StartsWith(recDir) &&
+                    string[] nameParts = wav != null ? Path.GetFileNameWithoutExtension(wav).Split('_') : Array.Empty<string>();
+                    bool named = wav != null && nameParts.Length >= 4 && nameParts[0] == kept[0].Started.ToString("HHmmss") &&
+                                 nameParts[3] == kept[0].Source.ToString() && wav.StartsWith(recDir) &&
                                  Path.GetFileName(Path.GetDirectoryName(wav)) == kept[0].Started.ToString("yyyy-MM-dd");
                     long size = wav != null && File.Exists(wav) ? new FileInfo(wav).Length : 0;
                     UnixFileMode mode = wav != null && File.Exists(wav) && !OperatingSystem.IsWindows() ? File.GetUnixFileMode(wav) : 0;     // Windows: the user's own folders
                     Check(rt.RecordingsWritten == 1 && named && size == 44 + 18 * 160 * 2 && (mode & (UnixFileMode.GroupRead | UnixFileMode.OtherRead)) == 0,
-                          $"recording: the call is saved as a WAV named for its time, talkgroup and talker, readable only by the user ({size} bytes)");
+                          $"recording: the call is saved as a WAV named TIME_SYSTEM_CHANNEL_RADIOID[_ALIAS], readable only by the user ({size} bytes, {Path.GetFileName(wav)})");
 
 
                     rt.ReplayLast(calling);
@@ -2781,7 +2783,7 @@ zones:
             Check(back.Count == 1 && back[0].Length == h1.RecalledCalls(hClear)[0].Length && back[0].Who == h1.RecalledCalls(hClear)[0].Who &&
                   replayed.Count == 27 && h2.SnapshotRecent(10).Count == 2 && h2.SnapshotLog(10).Any(l => l.Contains("history: 2 recent calls and 1 calls")),
                   "history: after a restart, Recent calls and the kept calls come back, and a call from before replays in full");
-            Check(h2.RecalledCalls(h2Secure).Count == 0 && h2.SnapshotRecent(10).Any(r => r.Chan == hSecure.Cfg.Name),
+            Check(h2.RecalledCalls(h2Secure).Count == 0 && h2.SnapshotRecent(10).Any(r => r.Chan.Contains($":{hSecure.Cfg.Name}:")),
                   "history: a secure call's audio isn't saved unless chosen, but its Recent calls entry is");
 
             h1.Settings.HistoryKeepSecure = true;
@@ -3309,6 +3311,46 @@ zones:
             mc.Shutdown();
             mc2.Shutdown();
 
+            // call history: a channel of the same name on two FNEs keeps its own calls after a restart (filed as SYSTEM:CHANNEL)
+            {
+                string twinPath = Path.Combine(tmp, "twins.yml");
+                File.WriteAllText(twinPath, MultiCodeplug.Replace(@"  - name: ""Bravo""", @"  - name: ""Twins""
+    channels:
+      - { name: ""Dispatch"", system: ""Main FNE"", tgid: ""610"", mode: ""p25"" }
+      - { name: ""Dispatch"", system: ""DMR FNE"", tgid: ""610"", mode: ""p25"" }
+  - name: ""Bravo"""));
+                Codeplug tcp = Program.LoadCodeplug(twinPath);
+                string twinHist = Path.Combine(tmp, "twin-history"), twinSettings = Path.Combine(tmp, "twin-settings.json");
+                DispatchConsole NewTwins() => new DispatchConsole(tcp, CodeplugLoader.SystemsToConnect(tcp, new AppSettings(), null), TimeSpan.FromSeconds(120), null, null, twinSettings)
+                                              { NoAudio = true, HistoryFolder = twinHist };
+                DispatchConsole t1 = NewTwins();
+                ConsoleChannel dMain = t1.Channels.First(c => c.Cfg.Name == "Dispatch" && c.Link == t1.Links[0]), dOther = t1.Channels.First(c => c.Cfg.Name == "Dispatch" && c.Link == t1.Links[1]);
+                t1.AddDemoCall(dMain, 1111, "Medic 1", 1, false, "clear", DateTime.Now.AddMinutes(-2));
+                t1.AddDemoCall(dOther, 2222, "2222", 1, false, "clear", DateTime.Now.AddMinutes(-1));
+                t1.SaveHistory();
+                t1.Shutdown();
+                DispatchConsole t2 = NewTwins();
+                t2.LoadHistory();
+                List<RecalledCall> backMain = t2.RecalledCalls(t2.Channels.First(c => c.Cfg.Name == "Dispatch" && c.Link == t2.Links[0]));
+                List<RecalledCall> backOther = t2.RecalledCalls(t2.Channels.First(c => c.Cfg.Name == "Dispatch" && c.Link == t2.Links[1]));
+                Check(backMain.Count == 1 && backMain[0].Source == 1111 && backMain[0].Label == "Main FNE:Dispatch:1111/Medic 1" &&
+                      backOther.Count == 1 && backOther[0].Source == 2222 && backOther[0].Label == "DMR FNE:Dispatch:2222",
+                      $"history: a channel of the same name on two FNEs keeps its own calls after a restart ({backMain.Count}: {backMain.FirstOrDefault()?.Label}; {backOther.Count}: {backOther.FirstOrDefault()?.Label})");
+                t2.Shutdown();
+
+                // a history file from before 0.36.2 (version 1: "zone/name/tg", the first system's only) still loads
+                DispatchConsole t3 = NewTwins();
+                string frames = Convert.ToBase64String(new byte[P25VoiceReceiver.ImbeLength * 50]);
+                File.WriteAllText(t3.HistoryPath, "{\"Version\":1,\"Recent\":[],\"Calls\":[{\"Key\":\"Twins/Dispatch/610\",\"Channel\":\"Dispatch\",\"Talkgroup\":610," +
+                                                  "\"Source\":3333,\"Who\":\"3333\",\"Started\":\"2026-11-20T08:00:00\",\"Tx\":false,\"Crypt\":\"clear\",\"Cut\":false,\"Frames\":\"" + frames + "\"}]}");
+                t3.LoadHistory();
+                List<RecalledCall> v1Main = t3.RecalledCalls(t3.Channels.First(c => c.Cfg.Name == "Dispatch" && c.Link == t3.Links[0]));
+                List<RecalledCall> v1Other = t3.RecalledCalls(t3.Channels.First(c => c.Cfg.Name == "Dispatch" && c.Link == t3.Links[1]));
+                Check(v1Main.Count == 1 && v1Main[0].Source == 3333 && v1Other.Count == 0,
+                      $"history: a file from before 0.36.2 still loads, onto the first system's channel ({v1Main.Count}, {v1Other.Count})");
+                t3.Shutdown();
+            }
+
             // the terminal console's title shows each system with its own dot
             Tui mt = new Tui(mcp, CodeplugLoader.SystemsToConnect(mcp, none, null), TimeSpan.FromSeconds(120), null) { NoAudio = true };
             string mTitle = mt.Render(200, 40).RowText(1);
@@ -3407,20 +3449,28 @@ zones:
                     return path;
                 }
                 DateTime d1 = new DateTime(2026, 11, 21, 23, 12, 5), d2 = new DateTime(2026, 11, 22, 17, 38, 40);
-                string a = Make("CTRS", new RecalledCall { Channel = "Fire_Dispatch 2", Talkgroup = 301, Who = "Engine-7", Started = d1 });
-                string b = Make("CTRS", new RecalledCall { Channel = "Tac 1", Talkgroup = 101, Who = "9000001", Started = d2, Tx = true }, DispatchConsole.FormatWav);
-                string c = Make("CTRS", new RecalledCall { Channel = "Tac 1", Talkgroup = 101, Who = "9000001", Started = d2, Tx = true }, DispatchConsole.FormatWav);  // same second: -2
-                string other = Make("Other FNE", new RecalledCall { Channel = "Link", Talkgroup = 100, Who = "Unit 12", Started = d2.AddMinutes(-30) });
+                string a = Make("CTRS", new RecalledCall { Channel = "Fire_Dispatch 2", Talkgroup = 301, Source = 7, Who = "Engine 7", Started = d1 });
+                string b = Make("CTRS", new RecalledCall { Channel = "Tac 1", Talkgroup = 101, Source = 9000001, Who = "9000001", Started = d2, Tx = true }, DispatchConsole.FormatWav);
+                string c = Make("CTRS", new RecalledCall { Channel = "Tac 1", Talkgroup = 101, Source = 9000001, Who = "9000001", Started = d2, Tx = true }, DispatchConsole.FormatWav);  // same second: -2
+                string other = Make("Other FNE", new RecalledCall { Channel = "Link", Talkgroup = 100, Source = 12, Who = "Unit 12", Started = d2.AddMinutes(-30) });
+                // one named the way before 0.36.2 still lists
+                string oldDay = Path.Combine(listRoot, "Old_FNE", "2026-11-20");
+                Directory.CreateDirectory(oldDay);
+                string old = Path.Combine(oldDay, "081500_Fire_Dispatch_TG301_RX_Engine_7.opus");
+                File.WriteAllText(old, "x");
                 File.WriteAllText(Path.Combine(Path.GetDirectoryName(b), "unfinished.opus.part"), "x");
                 File.WriteAllText(Path.Combine(Path.GetDirectoryName(b), "notes.txt"), "x");
                 File.WriteAllText(Path.Combine(Path.GetDirectoryName(b), "random_name.opus"), "x");
                 List<RecordingFile> listed = Recordings.List(listRoot);
-                RecordingFile first = listed.FirstOrDefault(), fire = listed.FirstOrDefault(r => r.Path == a);
-                Check(listed.Count == 4 && listed.Select(r => r.Path).Take(2).OrderBy(x => x).SequenceEqual(new[] { b, c }.OrderBy(x => x)) && listed[2].Path == other && listed[3].Path == a &&
-                      first.Started == d2 && first.Tx && first.Talkgroup == 101 && first.Channel == "Tac_1" && first.System == "CTRS" &&
-                      fire != null && fire.Channel == "Fire_Dispatch_2" && fire.Who == "Engine-7" && !fire.Tx && fire.Talkgroup == 301 && fire.Started == d1 &&
-                      listed[2].System == "Other_FNE" && listed[2].Who == "Unit_12" && Recordings.List(Path.Combine(tmp, "no-such-folder")).Count == 0,
-                      $"recordings list: read back from their names, newest first, across systems and days; unfinished and other files left out ({listed.Count})");
+                RecordingFile first = listed.FirstOrDefault(), fire = listed.FirstOrDefault(r => r.Path == a), was = listed.LastOrDefault();
+                Check(listed.Count == 5 && listed.Select(r => r.Path).Take(2).OrderBy(x => x).SequenceEqual(new[] { b, c }.OrderBy(x => x)) && listed[2].Path == other && listed[3].Path == a &&
+                      Path.GetFileName(a) == "231205_CTRS_Fire-Dispatch-2_7_Engine-7.opus" && Path.GetFileName(c) == "173840_CTRS_Tac-1_9000001-2.wav" &&
+                      first.Started == d2 && first.RadioId == 9000001 && first.Who == null && first.Channel == "Tac-1" && first.System == "CTRS" && first.Label == "CTRS:Tac-1:9000001" &&
+                      fire != null && fire.Channel == "Fire-Dispatch-2" && fire.Who == "Engine-7" && fire.RadioId == 7 && fire.Started == d1 && fire.Label == "CTRS:Fire-Dispatch-2:7/Engine-7" &&
+                      listed[2].System == "Other-FNE" && listed[2].Who == "Unit-12" &&
+                      was.Path == old && was.Talkgroup == 301 && !was.Tx && was.Channel == "Fire_Dispatch" && was.Who == "Engine_7" && was.System == "Old_FNE" &&
+                      Recordings.List(Path.Combine(tmp, "no-such-folder")).Count == 0,
+                      $"recordings list: read back from their names (TIME_SYSTEM_CHANNEL_RADIOID_ALIAS, and the old way), newest first, across systems and days; unfinished and other files left out ({listed.Count}: {string.Join(", ", listed.Select(r => Path.GetFileName(r.Path)))})");
             }
 
             // old recordings: only Sidetone's audio files in date-named day folders are deleted

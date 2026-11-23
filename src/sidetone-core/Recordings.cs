@@ -64,7 +64,8 @@ namespace Sidetone.Core
         }
         /// <summary>
         /// The finished recordings in a folder (FOLDER/SYSTEM/yyyy-MM-dd/file), newest first, read back from the names
-        /// RecordingPath gives them: HHmmss_CHANNEL_TGnnn_RX|TX_WHO[-n].opus|wav. Anything else is left out.
+        /// RecordingPath gives them: HHmmss_SYSTEM_CHANNEL_RADIOID[_ALIAS][-n].opus|wav, or before 0.36.2
+        /// HHmmss_CHANNEL_TGnnn_RX|TX_WHO[-n]. Anything else is left out.
         /// </summary>
         public static List<RecordingFile> List(string folder)
         {
@@ -92,14 +93,22 @@ namespace Sidetone.Core
     public sealed class RecordingFile
     {
         public string Path { get; init; }
-        /// <summary>The system's folder name (as RecordingPath made it safe for a file name).</summary>
+        /// <summary>The system, as its file name has it (the folder's name for one named the old way).</summary>
         public string System { get; init; }
         public DateTime Started { get; init; }
         /// <summary>The channel's name as in the file name (spaces and other signs became underscores).</summary>
         public string Channel { get; init; }
+        /// <summary>0 for a recording named the current way (its name doesn't carry it).</summary>
         public uint Talkgroup { get; init; }
+        /// <summary>Only known for a recording named the old way.</summary>
         public bool Tx { get; init; }
+        /// <summary>The radio ID, or 0 when the name doesn't carry one (the old way).</summary>
+        public uint RadioId { get; init; }
+        /// <summary>The alias (or, named the old way, whoever it was as the aliases put it).</summary>
         public string Who { get; init; }
+
+        /// <summary>SYSTEM:CHANNEL:RADIOID/ALIAS, as the console shows calls.</summary>
+        public string Label => $"{System}:{Channel}:{RecalledCall.Caller(RadioId, Who)}";
 
         /// <summary>A file's details, or null when it isn't a finished recording of Sidetone's.</summary>
         internal static RecordingFile Parse(string path, string system, DateTime day)
@@ -108,6 +117,24 @@ namespace Sidetone.Core
             if (ext != ".opus" && ext != ".wav")
                 return null;
             string[] parts = global::System.IO.Path.GetFileNameWithoutExtension(path).Split('_');
+            if (parts[0].Length != 6 || !TimeSpan.TryParseExact(parts[0], "hhmmss", CultureInfo.InvariantCulture, out TimeSpan at))
+                return null;
+            // the current way: TIME_SYSTEM_CHANNEL_RADIOID[_ALIAS] ('_' only between the parts; a second call in the same
+            // second has "-2" on the end)
+            if ((parts.Length == 4 || parts.Length == 5) && parts[3].Length > 0)
+            {
+                string[] rid = parts[3].Split('-');
+                if (rid.Length <= 2 && rid.All(x => x.Length > 0 && x.All(char.IsAsciiDigit)) && uint.TryParse(rid[0], NumberStyles.None, CultureInfo.InvariantCulture, out uint radio))
+                    return new RecordingFile
+                    {
+                        Path = path,
+                        System = parts[1],
+                        Started = day.Date + at,
+                        Channel = parts[2],
+                        RadioId = radio,
+                        Who = parts.Length == 5 ? parts[4] : null
+                    };
+            }
             // the TGnnn part followed by RX or TX: everything between the time and it is the channel (which may hold underscores)
             int tg = -1;
             for (int i = 2; i < parts.Length - 2; i++)
@@ -116,7 +143,7 @@ namespace Sidetone.Core
                     tg = i;
                     break;
                 }
-            if (tg < 0 || parts[0].Length != 6 || !TimeSpan.TryParseExact(parts[0], "hhmmss", CultureInfo.InvariantCulture, out TimeSpan at))
+            if (tg < 0)
                 return null;
             // (a second call in the same second gets "-2" after the talker; it's left on, as "Engine-7" is a name)
             string who = string.Join("_", parts.Skip(tg + 2));

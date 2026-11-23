@@ -1917,7 +1917,8 @@ namespace Sidetone.Gui
                 row.Children.Add(new TextBlock { Text = call.Time, FontSize = 12, FontFamily = mono, Foreground = p.Dim });
                 row.Children.Add(new TextBlock { Text = call.Tx ? "TX" : "RX", FontSize = 12, FontFamily = mono, FontWeight = FontWeight.Bold, Foreground = call.Tx ? p.Tx : p.Rx });
                 row.Children.Add(new TextBlock { Text = call.Chan, FontSize = 12, FontWeight = FontWeight.SemiBold, Foreground = p.Text, MinWidth = 86 });
-                row.Children.Add(new TextBlock { Text = call.Who, FontSize = 12, Foreground = p.Text });
+                if (!string.IsNullOrEmpty(call.Who))
+                    row.Children.Add(new TextBlock { Text = call.Who, FontSize = 12, Foreground = p.Text });
                 row.Children.Add(new TextBlock { Text = call.Detail, FontSize = 12, Foreground = p.Dim });
                 recentRows.Children.Add(row);
             }
@@ -2049,8 +2050,8 @@ zones:
             c.AddLog("Tac 1: TX start as 9000001 (clear)");
             c.AddLog("Tac 1: TX end, 3.4 s, 170 frames");
             c.AddLog("warning: this is what a warning looks like");
-            c.AddRecent("Tac 1", "9000001", "3 s, clear", tx: true);
-            c.AddRecent("Tac 1", "Unit 12", "6 s, clear", tx: false);
+            c.AddRecent("Demo System:Tac 1:9000001", null, "3 s, clear", tx: true);
+            c.AddRecent("Demo System:Tac 1:3012/Unit 12", null, "6 s, clear", tx: false);
             DateTime now = DateTime.Now;
             c.AddDemoCall(c.Channels[1], 3007, "Engine 7", 4, false, "clear", now.AddMinutes(-41));
             c.AddDemoCall(c.Channels[1], 9000001, "9000001", 3, true, "clear", now.AddMinutes(-12));

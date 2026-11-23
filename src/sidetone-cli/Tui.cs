@@ -1021,7 +1021,8 @@ namespace Sidetone.Cli
                 used += screen.Text(x, y, $"{call.Time} ", Style.Of(Ansi.Grey), w);
                 used += screen.Text(x + used, y, call.Tx ? "TX " : "RX ", call.Tx ? Style.Of(Ansi.BrightRed, bold: true) : Style.Of(Ansi.BrightGreen, bold: true), w - used);
                 used += screen.Text(x + used, y, $"{call.Chan,-10} ", Style.Of(Ansi.BrightWhite), w - used);
-                used += screen.Text(x + used, y, $"{call.Who,-8} ", Style.Plain, w - used);
+                if (!string.IsNullOrEmpty(call.Who))
+                    used += screen.Text(x + used, y, $"{call.Who,-8} ", Style.Plain, w - used);
                 screen.Text(x + used, y, call.Detail, Style.Of(Ansi.Grey), w - used);
             }
         }

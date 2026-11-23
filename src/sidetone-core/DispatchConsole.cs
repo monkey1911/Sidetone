@@ -526,7 +526,7 @@ namespace Sidetone.Core
         {
             c.Active = false;
             c.LastCall = $"{c.Link.Aliases.Label(c.ActiveSrc)} at {DateTime.Now:HH:mm}";
-            AddRecent(c.Cfg.Name, c.Link.Aliases.Label(c.ActiveSrc), "not listening", tx: false);
+            AddRecent(CallLabel(c, c.ActiveSrc), null, "not listening", tx: false);
         }
 
         /// <summary>How long a call may go without frames before its end is taken as lost (as recall does).</summary>
@@ -581,7 +581,7 @@ namespace Sidetone.Core
             {
                 c.LastCall = $"{aliases.Label(src)} at {DateTime.Now:HH:mm} ({secs:F0} s)";
                 AddLog($"{c.Cfg.Name}: end {aliases.Describe(src)}, {secs:F1} s, {crypt}{(muted > 0 ? $", {muted} frames muted" : string.Empty)}");
-                AddRecent(c.Cfg.Name, aliases.Label(src), $"{secs:F0} s, {crypt}{(muted > 0 ? ", partly muted" : string.Empty)}", tx: false);
+                AddRecent(CallLabel(c, src), null, $"{secs:F0} s, {crypt}{(muted > 0 ? ", partly muted" : string.Empty)}", tx: false);
             };
             rx.Codeword += imbe => PatchCodeword(c, rx, imbe);
             rx.Codeword += imbe => RecallCodeword(c, rx, imbe);
@@ -866,7 +866,7 @@ namespace Sidetone.Core
             if (was)
             {
                 AddLog($"{txChan?.Cfg.Name}: TX end, {secs:F1} s, {t.FramesSent} frames{(reason != null ? $" ({reason})" : string.Empty)}");
-                AddRecent(txChan?.Cfg.Name, (txChan?.Link.Aliases ?? aliases).Label(t.SourceId), $"{secs:F0} s, {(t.Encrypted ? KeyStore.AlgorithmName(t.AlgorithmId) : "clear")}", tx: true);
+                AddRecent(txChan != null ? CallLabel(txChan, t.SourceId) : "?", null, $"{secs:F0} s, {(t.Encrypted ? KeyStore.AlgorithmName(t.AlgorithmId) : "clear")}", tx: true);
             }
 
             tx = null;
@@ -1678,6 +1678,10 @@ namespace Sidetone.Core
         /// <summary>Channel marker on (self-test hook).</summary>
         public bool MarkerOn => markerOn;
 
+        /// <summary>A call in Recent calls: SYSTEM:CHANNEL:RADIOID/ALIAS.</summary>
+        private static string CallLabel(Chan c, uint rid) => $"{c.Link.Name}:{c.Cfg.Name}:{RecalledCall.Caller(rid, c.Link.Aliases.Label(rid))}";
+
+        /// <summary>Adds a line to Recent calls (who may be null when chan already says it).</summary>
         public void AddRecent(string chan, string who, string detail, bool tx)
         {
             lock (uiLock)

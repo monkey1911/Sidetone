@@ -637,9 +637,9 @@ Replays play at the channel's volume, even when the channel or the console is mu
 
 ### Call history
 
-The Recent calls list and each channel's last ten calls (with their audio) are saved when Sidetone closes, and a minute after calls come in, and come back when it starts, so Replay and Recall work on calls from before a restart. Entries from an earlier day show their date.
+The Recent calls list and each channel's last ten calls (with their audio) are saved when Sidetone closes, and a minute after calls come in, and come back when it starts, so Replay and Recall work on calls from before a restart. Entries from an earlier day show their date. Calls show as `SYSTEM:CHANNEL:RADIOID/ALIAS` (`CTRS:Fire Dispatch:1234/Engine 7`, or just the radio ID when it has no alias), in Recent calls, Instant recall and the Recordings list; the tab a channel is in doesn't matter.
 
-- One file per system, `~/.local/state/sidetone/history/SYSTEM.json`, readable only by you. It holds the calls' voice frames (about 0.5 kB a second), up to 20 MB; past that the oldest calls are left out.
+- One file, named for the first system, `~/.local/state/sidetone/history/SYSTEM.json`, readable only by you. Each call is filed under its own system and channel, so two FNEs with a channel of the same name keep their calls apart. It holds the calls' voice frames (about 0.5 kB a second), up to 20 MB; past that the oldest calls are left out.
 - **Secure calls' audio is left out** unless **Call history → Secure calls → Keep their audio too** is chosen in Settings, because it is kept decrypted. Their Recent calls entries are always kept.
 - **Call history → Between runs → Don't keep** stops saving it and deletes the saved file.
 - The terminal console uses the same file and choices. The demo, `--no-settings` and the self-tests keep no history.
@@ -647,7 +647,7 @@ The Recent calls list and each channel's last ten calls (with their audio) are s
 **Recording.** A channel set to record also saves every call to a file when it ends:
 
 - **Rec** on a card, **Record** in Instant recall, `W` (GUI) or `w` (TUI) turns it on and off. Recording a channel starts listening to it, and a channel that stops listening stops recording.
-- Files go to `~/.local/share/sidetone/recordings/SYSTEM/YYYY-MM-DD/`, named like `143107_CT-OPS_TG500_RX_Kara-M.opus`. Choose another folder in Settings or with `--record-dir DIR` (both programs).
+- Files go to `~/.local/share/sidetone/recordings/SYSTEM/YYYY-MM-DD/`, named `TIME_SYSTEM_CHANNEL_RADIOID_ALIAS`, like `143107_CTRS_Fire-Dispatch_1234_Engine-7.opus` (no alias: `143107_CTRS_Fire-Dispatch_1234.opus`). Spaces and other signs inside a name become `-`, so `_` only separates the parts; a recording you share keeps saying which system it came from. Recordings made before 0.36.2 keep their old names (`143107_CT-OPS_TG500_RX_Engine-7.opus`) and still show in the Recordings list. Choose another folder in Settings or with `--record-dir DIR` (both programs).
 - Recording is remembered per channel, so it carries on after a restart.
 - Files are **Opus** (`.opus`), about 120 kB a minute of speech; any media player plays them, and each file's title, artist and date say which channel, who spoke and when. **Format** in Settings can switch to 8 kHz mono WAV instead (about 1 MB a minute).
 - **Delete after** in Settings deletes recordings older than 7 to 365 days, when a console starts and every hour after; the default is to keep them. Only Sidetone's own `.opus` and `.wav` files in the `SYSTEM/YYYY-MM-DD` folders are deleted (and a day's folder once it's empty), so nothing else is touched even if the recordings folder is shared. The log says how many went.

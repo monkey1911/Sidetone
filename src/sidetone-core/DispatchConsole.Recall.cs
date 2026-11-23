@@ -23,7 +23,7 @@ namespace Sidetone.Core
     public sealed class RecalledCall
     {
         public string Channel { get; init; }
-        /// <summary>The system it was on (its recordings go in that system's folder); not saved in the history.</summary>
+        /// <summary>The system it was on (its recordings go in that system's folder).</summary>
         internal string SystemName { get; init; }
         public uint Talkgroup { get; init; }
         public uint Source { get; init; }
@@ -40,6 +40,13 @@ namespace Sidetone.Core
         internal DateTime Last;
         /// <summary>Some of the call went past the length kept.</summary>
         public bool Cut { get; internal set; }
+
+        /// <summary>The call as the owner reads it: SYSTEM:CHANNEL:RADIOID/ALIAS.</summary>
+        public string Label => $"{SystemName ?? "?"}:{Channel}:{Caller(Source, Who)}";
+
+        /// <summary>RADIOID/ALIAS, or just the radio ID when it has no alias.</summary>
+        public static string Caller(uint rid, string who) =>
+            rid == 0 ? who ?? "?" : string.IsNullOrEmpty(who) || who == rid.ToString() ? rid.ToString() : $"{rid}/{who}";
 
         public TimeSpan Length => TimeSpan.FromMilliseconds(Frames.Count * 20);
         public string Describe() => $"{Started:HH:mm:ss} {(Tx ? "TX" : "RX")} {Who}, {Length.TotalSeconds:F0} s, {Crypt}";
@@ -343,13 +350,19 @@ namespace Sidetone.Core
         }
 
         /// <summary>
-        /// Where a call's recording goes: FOLDER/SYSTEM/YYYY-MM-DD/HHMMSS_CHANNEL_TGnnn_RX_WHO.opus (or
-        /// .wav), with anything that doesn't belong in a file name replaced.
+        /// Where a call's recording goes: FOLDER/SYSTEM/YYYY-MM-DD/HHMMSS_SYSTEM_CHANNEL_RADIOID[_ALIAS].opus (or .wav).
+        /// Inside each part anything that doesn't belong in a file name becomes '-', so '_' only separates the parts
+        /// (Recordings.List reads them back). Before 0.36.2 it was HHMMSS_CHANNEL_TGnnn_RX_WHO; those still list.
         /// </summary>
         public static string RecordingPath(string folder, string systemName, RecalledCall call, string format = FormatOpus)
         {
             string ext = format == FormatWav ? ".wav" : ".opus";
-            string name = $"{call.Started:HHmmss}_{Safe(call.Channel)}_TG{call.Talkgroup}_{(call.Tx ? "TX" : "RX")}_{Safe(call.Who)}";
+            // the radio ID always (0 when there was none), so the list can tell the parts apart
+            string caller = call.Source.ToString(CultureInfo.InvariantCulture);
+            if (!string.IsNullOrEmpty(call.Who) && call.Who != caller)
+                caller += "_" + Safe(call.Who, '-');
+            string name = $"{call.Started:HHmmss}_{Safe(systemName, '-')}_{Safe(call.Channel, '-')}_{caller}";
+            // the folder keeps the old '_' form, so a system's recordings stay in one folder across versions
             string day = Path.Combine(folder, Safe(systemName), call.Started.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
             string path = Path.Combine(day, name + ext);
             for (int n = 2; File.Exists(path) || File.Exists(path + ".part"); n++)
@@ -357,14 +370,15 @@ namespace Sidetone.Core
             return path;
         }
 
-        private static string Safe(string text)
+        private static string Safe(string text, char other = '_')
         {
             if (string.IsNullOrWhiteSpace(text))
                 return "unknown";
-            char[] chars = text.Trim().Select(ch => char.IsLetterOrDigit(ch) || ch == '-' || ch == '.' ? ch : '_').ToArray();
-            string s = new string(chars).Trim('.', '_');
-            while (s.Contains("__"))
-                s = s.Replace("__", "_");
+            char[] chars = text.Trim().Select(ch => char.IsLetterOrDigit(ch) || ch == '-' || ch == '.' ? ch : other).ToArray();
+            string s = new string(chars).Trim('.', '_', other);
+            string twice = new string(other, 2);
+            while (s.Contains(twice))
+                s = s.Replace(twice, other.ToString());
             return s.Length == 0 ? "unknown" : s.Length > 48 ? s.Substring(0, 48) : s;
         }
 
@@ -555,7 +569,7 @@ namespace Sidetone.Core
         /// <summary>Adds a made-up call to a channel's recall list (silent), for the demo system.</summary>
         public void AddDemoCall(ConsoleChannel c, uint source, string who, int seconds, bool tx, string crypt, DateTime started)
         {
-            RecalledCall call = new RecalledCall { Channel = c.Cfg.Name, Talkgroup = c.Tg, Source = source, Who = who, Started = started, Tx = tx, Crypt = crypt };
+            RecalledCall call = new RecalledCall { Channel = c.Cfg.Name, SystemName = c.Link.Name, Talkgroup = c.Tg, Source = source, Who = who, Started = started, Tx = tx, Crypt = crypt };
             byte[] silence = new byte[P25VoiceReceiver.ImbeLength];
             for (int i = 0; i < seconds * 50; i++)
                 call.Frames.Add(silence);
