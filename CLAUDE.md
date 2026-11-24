@@ -8,7 +8,9 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
 
 ## State at hand-off (2026-11-16)
 
-- Version **0.39.0** on `main` (set once, in `src/Directory.Build.props`): tone and DTMF presets, and folding
+- Version **0.39.1** on `main` (set once, in `src/Directory.Build.props`): the whole title row folds the bottom
+  panels (a transparent background makes the TextBlock take clicks across its width; the owner asked), and a
+  folded panel opens on a click anywhere. 0.39.0: tone and DTMF presets, and folding
   the bottom panels. `TonePresets.cs` (`TonePreset`/`ToneStep`, `DtmfPreset`; `ParseSteps`/`FormatSteps` for the
   editor's `Hz:seconds` text; `ImportMidi` through the Windows console's `TonePresetFileImporter`, linked, with a
   two-constant `dvmconsole.SettingsManager` stand-in in the same file since the real one is WPF). Kept in

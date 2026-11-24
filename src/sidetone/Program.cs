@@ -679,6 +679,25 @@ namespace Sidetone.Gui
             Check(folded && !w.View.BottomCollapsed && w.View.BottomTitles.Recent == "▾ Recent calls" && c.Settings?.BottomCollapsed == null,
                   $"bottom panels: a title folds Recent calls and the log to one line each (the newest of each), and back ({foldedRecent})");
 
+            // a click anywhere along the title row folds them (not only on its letters); folded, a click on the panel opens them
+            w.View.RefreshNow();
+            Dispatcher.UIThread.RunJobs();
+            Control titleRow = w.View.RecentTitleRow;
+            Point farEnd = titleRow.TranslatePoint(new Point(titleRow.Bounds.Width - 4, titleRow.Bounds.Height / 2), w) ?? new Point(-1, -1);
+            w.MouseDown(farEnd, MouseButton.Left);
+            w.MouseUp(farEnd, MouseButton.Left);
+            Dispatcher.UIThread.RunJobs();
+            bool rowFolds = w.View.BottomCollapsed;
+            w.View.RefreshNow();
+            Dispatcher.UIThread.RunJobs();
+            Control logBox = w.View.LogPanel;
+            Point onPanel = logBox.TranslatePoint(new Point(logBox.Bounds.Width - 6, logBox.Bounds.Height / 2), w) ?? new Point(-1, -1);
+            w.MouseDown(onPanel, MouseButton.Left);
+            w.MouseUp(onPanel, MouseButton.Left);
+            Dispatcher.UIThread.RunJobs();
+            Check(rowFolds && !w.View.BottomCollapsed,
+                  $"bottom panels: clicking the far end of a title row folds them, and clicking a folded panel anywhere opens them (title row {titleRow.Bounds.Width:F0} px wide)");
+
             // web streams: the demo's one is a card after the Dispatch tab's channels, off until Play
             c.ShowZone(c.Zones[0]);
             w.View.RefreshNow();

@@ -450,7 +450,14 @@ namespace Sidetone.Gui
             recentDock.Children.Add(recentScroll);
             // a title folds both panels down to one line (or opens them again), on a desktop or tablet
             foreach (TextBlock t in new[] { recentTitle, logTitle })
+            {
+                t.Background = Brushes.Transparent;     // the whole title row takes the click, not just its letters
+                t.Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand);
                 t.PointerPressed += (s, e) => { if (!narrow) { e.Handled = true; ToggleBottom(); } };
+            }
+            // folded, each panel is just its one line: a click anywhere on it opens them again
+            foreach (Border panel in new[] { recentPanel, logPanel })
+                panel.PointerPressed += (s, e) => { if (!narrow && BottomCollapsed) { e.Handled = true; ToggleBottom(); } };
             recentPanel.Child = recentDock;
 
             DockPanel logDock = new DockPanel();
@@ -2062,6 +2069,8 @@ namespace Sidetone.Gui
 
         /// <summary>The newest entries the folded titles show (self-check hook).</summary>
         internal (string Recent, string Log) BottomTitles => (recentTitle.Text, logTitle.Text);
+        internal Control RecentTitleRow => recentTitle;
+        internal Control LogPanel => logPanel;
 
         private void RefreshRecent(DispatchConsole c, Palette p)
         {

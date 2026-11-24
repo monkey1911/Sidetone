@@ -398,7 +398,7 @@ What it has so far:
   - **Channel marker** turns the periodic beep on idle listening channels on and off
   - **Patch…** opens the Patches box (see [Patching](#patching))
   - **Recall…** opens Instant recall (see [Instant recall and recording](#instant-recall-and-recording))
-- a transmit bar, recent calls and the log. Click either panel's title (▾) to fold both down to one line, showing the newest call and the newest log line, so the cards get the room; click again (▸) to open them. Remembered between runs.
+- a transmit bar, recent calls and the log. Click anywhere on either panel's title row (▾) to fold both down to one line, showing the newest call and the newest log line, so the cards get the room; click anywhere on a folded panel (▸) to open them. Remembered between runs.
 - **Auto / Light / Dark** in the top right. Auto follows your desktop's light or dark setting. The choice is remembered. `--theme light|dark|system` sets it from the command line.
 
 ### Settings
