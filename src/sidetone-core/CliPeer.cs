@@ -34,6 +34,24 @@ namespace Sidetone.Core
         /// <summary>Raised on the network thread for every P25 frame from the FNE (all talkgroups).</summary>
         public event Action<P25DataReceivedEvent> P25Frame;
 
+        /// <summary>
+        /// The talkgroups the FNE announced for this peer (its rules: active, and deactivated ones marked Invalid), or
+        /// an empty list before any arrived. A copy: fnecore changes its list on the network thread.
+        /// </summary>
+        public IReadOnlyList<TalkgroupEntry> AnnouncedTalkgroups
+        {
+            get
+            {
+                for (int tries = 0; tries < 3; tries++)
+                {
+                    try { return fne.AnnouncedTGs?.ToArray() ?? Array.Empty<TalkgroupEntry>(); }
+                    catch (InvalidOperationException) { /* changed while read; again */ }
+                    catch (ArgumentException) { }
+                }
+                return Array.Empty<TalkgroupEntry>();     // couldn't read it: as if none arrived (allowed, as the Windows console)
+            }
+        }
+
         /// <summary>A DMR packet from the network (group or private; the console picks what it listens to).</summary>
         public event Action<DMRDataReceivedEvent> DmrFrame;
 

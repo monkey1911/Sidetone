@@ -825,6 +825,9 @@ namespace Sidetone.Core
                 return Refuse($"{c.Cfg.Name}: receive-only channel");
             if (!c.Link.CanSend)      // connected (the self-test's stand-in sink counts)
                 return Refuse(links.Count > 1 ? $"not connected to {c.Link.Name} yet" : "not connected to the FNE yet");
+            string tgWhy = TalkgroupBlocker(c);
+            if (tgWhy != null)
+                return Refuse($"{c.Cfg.Name}: not transmitting: {tgWhy}");
             if (PatchTransmitText(c) != null)
                 return Refuse($"{c.Cfg.Name}: a patch is transmitting here");
 
@@ -847,6 +850,8 @@ namespace Sidetone.Core
 
             tx = t;
             txChan = c;
+            lastLimitWarning = -1;
+            PttLetGo();
             if (t is P25Transmitter p25)
                 StartPatchTx(c, p25);     // the rest of its patch hears the console too
             RecallTxStarted(c, t);
@@ -884,6 +889,8 @@ namespace Sidetone.Core
                 OnDevicePtt(false);
                 return;
             }
+            if (HeldPttRefused())
+                return;
             if (toneJob != null)
             {
                 AddLog("tones are being sent; PTT ignored");
@@ -1049,6 +1056,8 @@ namespace Sidetone.Core
         {
             if (down)
             {
+                if (HeldPttRefused())
+                    return;
                 if (toneJob != null)
                 {
                     AddLog("tones are being sent; PTT ignored");
@@ -1059,6 +1068,7 @@ namespace Sidetone.Core
                 return;
             }
 
+            PttLetGo();
             if (deviceHold && Transmitting)
                 StopTx("PTT released");
             deviceHold = false;
@@ -1362,8 +1372,8 @@ namespace Sidetone.Core
                 StopTx(stop);
             }
 
-            if (Transmitting && DateTime.UtcNow - tx.StartedAt > txLimit)
-                StopTx($"{txLimit.TotalSeconds:F0} s transmit limit reached");
+            TxLimitHousekeeping();
+            ConnectionHousekeeping();
 
             if (Transmitting && !noAudioWarned && !NoAudio &&
                 NoAudioDue(DateTime.UtcNow, tx.StartedAt, new DateTime(Interlocked.Read(ref lastVoiceTicks), DateTimeKind.Utc), micMuted))
@@ -1692,6 +1702,13 @@ namespace Sidetone.Core
             HashSet<Chan> sending = new HashSet<Chan>();
             foreach (Chan c in targets)
             {
+                string tgWhy = TalkgroupBlocker(c);
+                if (tgWhy != null)
+                {
+                    if (!quiet)
+                        AddLog($"{c.Cfg.Name}: no {plan.Name}: {tgWhy}");
+                    continue;
+                }
                 P25Transmitter t = new P25Transmitter(c.Link.Sink, c.Link.Keys, c.Link.ConsoleRid, c.Tg, c.ActiveTxAlg, c.ActiveKeyId);
                 if (t.Start(out string error))
                 {

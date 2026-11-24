@@ -142,6 +142,8 @@ namespace Sidetone.Core
         public int? RecordingKeepDays { get; set; }
         /// <summary>Show a desktop notification when the console is paged (null means yes).</summary>
         public bool? Notifications { get; set; }
+        /// <summary>Play a chime when a system connects or drops (null means yes).</summary>
+        public bool? ConnectionChimes { get; set; }
         /// <summary>Display scale for the graphical console (1.0 = 100%), or null to work it out.</summary>
         public double? UiScale { get; set; }
         /// <summary>Local key file (.ekc) chosen in Settings, or null to use the codeplug's, if it names one.</summary>

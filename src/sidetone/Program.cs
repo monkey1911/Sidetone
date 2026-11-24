@@ -477,7 +477,7 @@ namespace Sidetone.Gui
             set.TxLimit.Text = "90";
             set.Output.SelectedIndex = 2;
             Press(PhysicalKey.Escape);
-            Check(!set.IsOpen && w.View.TxLimitSeconds == 120, "Esc closes Settings without saving");
+            Check(!set.IsOpen && w.View.TxLimitSeconds == 180, "Esc closes Settings without saving (the limit stays the codeplug's: 180 s when it doesn't say, as the Windows console)");
 
             // the Systems row: only for a codeplug with several systems; each can be turned off, but not the last one on
             Press(PhysicalKey.Comma, RawInputModifiers.Control);
@@ -497,6 +497,17 @@ namespace Sidetone.Gui
             set.TxLimit.Text = "90";
             set.Save();
             Check(!set.IsOpen && w.View.TxLimitSeconds == 90, "Save keeps the new time limit");
+            Press(PhysicalKey.Comma, RawInputModifiers.Control);
+            bool chimesShownOn = set.IsOpen && set.Chimes;
+            set.PressChimes(false);
+            set.Save();
+            bool chimesOff = c.Settings?.ConnectionChimes == false && !c.ConnectionChimes;
+            Press(PhysicalKey.Comma, RawInputModifiers.Control);
+            bool chimesShownOff = set.IsOpen && !set.Chimes;
+            set.PressChimes(true);
+            set.Save();
+            Check(chimesShownOn && chimesOff && chimesShownOff && c.Settings?.ConnectionChimes == null && c.ConnectionChimes,
+                  "Settings: connection chimes are on by default, and turn off and on again");
             Press(PhysicalKey.Comma, RawInputModifiers.Control);
             bool defaults = set.Processing == (true, true, false, true, false);
             set.FlipProcessing(2);

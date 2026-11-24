@@ -225,7 +225,9 @@ namespace Sidetone.Gui
         internal double? SavedScale => appSettings.UiScale;
 
         /// <summary>The transmit time limit in effect, in seconds.</summary>
-        internal int TxLimitSeconds => StartupChoices.TxLimit(opt.TxLimit, appSettings);
+        internal int TxLimitSeconds => StartupChoices.TxLimit(opt.TxLimit, appSettings, currentCodeplug);
+        /// <summary>The limit when Settings doesn't set one: the codeplug's, else 120.</summary>
+        private int DefaultTxLimitSeconds => StartupChoices.TxLimit(null, null, currentCodeplug);
 
         /// <summary>Opens a box by name: page, digital or radio (for screenshots).</summary>
         internal void OpenBox(string which)
@@ -592,7 +594,7 @@ namespace Sidetone.Gui
                     try { appSettings.Save(settingsPath); } catch { /* not worth stopping for */ }
                 }
 
-                DispatchConsole c = new DispatchConsole(cp, systems, TimeSpan.FromSeconds(TxLimitSeconds),
+                DispatchConsole c = new DispatchConsole(cp, systems, TimeSpan.FromSeconds(StartupChoices.TxLimit(opt.TxLimit, appSettings, cp)),
                                                         string.IsNullOrWhiteSpace(opt.LogFile) ? null : Path.GetFullPath(opt.LogFile),
                                                         null, settingsPath)
                 {
@@ -916,9 +918,10 @@ namespace Sidetone.Gui
                 PttButton = appSettings.PttButton,
                 MuteButton = appSettings.MuteButton,
                 Scale = appSettings.UiScale,
-                TxLimit = StartupChoices.TxLimit(null, appSettings),
+                TxLimit = StartupChoices.TxLimit(null, appSettings, currentCodeplug),
                 SpaceToggle = appSettings.SpaceToggle,
                 Notifications = appSettings.Notifications != false,
+                ConnectionChimes = appSettings.ConnectionChimes != false,
                 LowCut = appSettings.MicLowCut ?? VoiceProcessing.MicDefault.LowCut,
                 AutoLevel = appSettings.MicAutoLevel ?? VoiceProcessing.MicDefault.AutoLevel,
                 NoiseGate = appSettings.MicNoiseGate ?? VoiceProcessing.MicDefault.NoiseGate,
@@ -961,7 +964,7 @@ namespace Sidetone.Gui
             static bool Same(string a, string b) => string.Equals(a ?? string.Empty, b ?? string.Empty, StringComparison.Ordinal);
             bool reconnect = !Same(appSettings.AudioOutput, v.Output) || !Same(appSettings.AudioInput, v.Input) ||
                              !Same(appSettings.PttDeviceName, v.PttDevice) || !Same(appSettings.PttButton, v.PttButton) ||
-                             !Same(appSettings.MuteButton, v.MuteButton) || StartupChoices.TxLimit(null, appSettings) != v.TxLimit;
+                             !Same(appSettings.MuteButton, v.MuteButton) || StartupChoices.TxLimit(null, appSettings, currentCodeplug) != v.TxLimit;
 
             bool systemsChanged = v.Systems != null && v.Systems.Any(x => (appSettings.Systems.TryGetValue(x.Name, out SystemSettings was) && was.Off == true) == x.On);
             reconnect |= systemsChanged;
@@ -976,9 +979,10 @@ namespace Sidetone.Gui
                 s.PttDeviceName = v.PttDevice;
                 s.PttButton = v.PttButton;
                 s.MuteButton = v.MuteButton;
-                s.TxLimitSeconds = v.TxLimit == StartupChoices.DefaultTxLimit ? null : v.TxLimit;
+                s.TxLimitSeconds = v.TxLimit == DefaultTxLimitSeconds ? null : v.TxLimit;     // the codeplug's (or 120) isn't saved, so it follows the codeplug
                 s.SpaceToggle = v.SpaceToggle;
                 s.Notifications = v.Notifications ? null : false;
+                s.ConnectionChimes = v.ConnectionChimes ? null : false;
                 VoiceProcessing d = VoiceProcessing.MicDefault;
                 s.MicLowCut = v.LowCut == d.LowCut ? null : v.LowCut;
                 s.MicAutoLevel = v.AutoLevel == d.AutoLevel ? null : v.AutoLevel;

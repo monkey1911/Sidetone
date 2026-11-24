@@ -14,38 +14,30 @@ Roughly in the order that makes sense to do them.
    - The CI script writes the FNE's config, talkgroup rules, peer list, RID list, key container and both codeplugs each run, with made-up passwords and a test key; nothing is committed. The RID list must allow both consoles' radio IDs to request keys, or the FNE silently ignores their key requests.
    - An FNE alone would not have caught the missing grant encrypt flag fixed in 0.24.2: the dvmhost site denied that grant, not the FNE. Catching that would need a dvmhost in the test too (not yet checked whether one runs without a modem).
 
-2. **The codeplug's transmit timeout, with warning beeps** (as the Windows console). Read the codeplug's `transmitTimeoutSeconds` (the Windows console's default is 180; 0 turns it off). Use it unless `--tx-limit` or Settings say otherwise; Sidetone's own setting is 120 s by default today.
-   - A countdown warning before the cut-off: short beeps, heard locally, at most one a second, in the last seconds.
-   - After a timeout, PTT has to be released before it keys again (a held key or desk mic doesn't key straight back up).
-
-3. **Check the talkgroup before PTT** (as the Windows console). The FNE sends its talkgroup table at login ("Activated 217 TGs"). Refuse to transmit on a talkgroup that isn't in it, saying "talkgroup N isn't available on this FNE", instead of keying up into nothing. Tones and announcements check the same way. If a system never sent a table, allow it as today.
-
-4. **Analog** (`mode: analog`), for DVM networks that carry it (CTRS doesn't today). As the Windows console's `Docs/Getting Started/03-Configurations/08-Analog.md` describes, group voice is 8 kHz G.711 mu-law in 20 ms frames, routed by talkgroup. The FNE needs `allowAnalogTraffic: true`, and each talkgroup set up in its rules.
+2. **Analog** (`mode: analog`), for DVM networks that carry it (CTRS doesn't today). As the Windows console's `Docs/Getting Started/03-Configurations/08-Analog.md` describes, group voice is 8 kHz G.711 mu-law in 20 ms frames, routed by talkgroup. The FNE needs `allowAnalogTraffic: true`, and each talkgroup set up in its rules.
    - Most of it exists: fnecore's `AnalogVoicePacketCodec` (framing and mu-law), the Windows console's `AnalogTxCall` (paced 20 ms sending; queued audio finishes before the terminator), and `AnalogVoiceInversion` (already compiled into the core).
    - Sidetone's side, following DMR (0.37): a receiver and a transmitter behind `IVoiceReceiver`/`IVoiceTransmitter`, and a third codec for Instant recall, recordings and the history.
    - `scrambler_code` 2–16: Kenwood-style voice inversion, basic obfuscation, not encryption. `selectable_encryption: true` gives the card's scrambled/clear switch, saved per channel.
    - Being plain audio, tones and announcements can go out on analog too (unlike DMR so far).
    - Testing: the self-test, and two Sidetones through an FNE that allows analog. Hearing it on a radio needs an analog gateway or hotspot; the Windows console's scrambler codes are also still waiting for an over-the-air test.
 
-5. **NXDN**, for networks that carry it (CTRS doesn't). The same work as DMR (libvocoder has the codec; the Windows console's `MainWindow.NXDN.cs` and `FneSystemBase.NXDN.cs` show the framing), but with nobody to test it against a radio.
+3. **NXDN**, for networks that carry it (CTRS doesn't). The same work as DMR (libvocoder has the codec; the Windows console's `MainWindow.NXDN.cs` and `FneSystemBase.NXDN.cs` show the framing), but with nobody to test it against a radio.
 
-6. **TMS (text messaging) and Location, over MQTT.** Waiting on others: what the FNE side will publish and accept.
+4. **TMS (text messaging) and Location, over MQTT.** Waiting on others: what the FNE side will publish and accept.
    - ~~**SMPP** (2026-11-22, from the FNE's maintainers): the console will talk to a TMS server over SMPP.~~ Dropped on 2026-11-22: SMPP can't do secure authentication. Both TMS and the new **Location** feature will go over **MQTT** instead.
    - **Client: MQTTnet** (MIT, a .NET Foundation project, 5.2 with a net10.0 build, July 2026). MQTT 3.1.1 and 5.0, TLS including client certificates, user name and password, MQTT 5 enhanced authentication (the extensible part, if the FNE side wants more than a password), WebSockets. Plain C#, so the same on Linux, macOS, Windows and Android. Sidetone is only a client; the broker is on the FNE or server side. MQTTnet's own broker can stand in for it in the self-test, as a local HTTP server does for web streams.
    - Still to learn from the FNE's maintainers: the broker's address and how a console logs in (likely new codeplug keys per system: host, port, TLS, user name, password or certificate); the topic layout and message format (JSON?) for messages, delivery receipts and locations; how radio IDs map to topics; whether location is pushed regularly or asked for.
    - What it would likely take, once known: one MQTT connection per system in the core (connecting and reconnecting with the FNE link, `FneLink`); a messages panel in the GUI and TUI, and notifications for incoming messages (Android's, and the desktop ones); for Location, the last known position per radio in the call list and radio box at first, with a map later if wanted. Secrets (passwords, a client certificate's key) are never logged, as for FNE passwords.
 
-7. **Custom tone presets** (as the Windows console). Your own tone sequences (frequency, length, holds) beside alert tones 1–6, QCII pages and the marker, with an importer for tone preset files (the Windows console's `TonePresetFileImporter` shows the format). Sent the way alert tones are.
+5. **Custom tone presets** (as the Windows console). Your own tone sequences (frequency, length, holds) beside alert tones 1–6, QCII pages and the marker, with an importer for tone preset files (the Windows console's `TonePresetFileImporter` shows the format). Sent the way alert tones are.
 
-8. **DTMF presets** (as the Windows console). Stored DTMF sequences sent on a talkgroup, as IMBE tone frames like the other tones.
+6. **DTMF presets** (as the Windows console). Stored DTMF sequences sent on a talkgroup, as IMBE tone frames like the other tones.
 
-9. **Clocks for other time zones** (as the Windows console's toolbar clocks). A few clocks in the header, each with its own label and zone; the TUI's title line could show one.
+7. **Clocks for other time zones** (as the Windows console's toolbar clocks). A few clocks in the header, each with its own label and zone; the TUI's title line could show one.
 
-10. **FNE connection chimes** (as the Windows console). A short sound when a system connects or drops, so a lost connection is heard and not only seen. On by default? To decide.
+8. **Export and import settings** (as the Windows console). One file to move settings to another machine: tabs, outputs, announcements, tone presets. Never key-file passwords; codeplugs stay separate.
 
-11. **Export and import settings** (as the Windows console). One file to move settings to another machine: tabs, outputs, announcements, tone presets. Never key-file passwords; codeplugs stay separate.
-
-12. **Choosing which panels show** (as the Windows console's widget selection). Hide Recent calls, the log, alert tones or the transmit bar to give the cards more room.
+9. **Choosing which panels show** (as the Windows console's widget selection). Hide Recent calls, the log, alert tones or the transmit bar to give the cards more room.
 
 ## Partially implemented
 
@@ -57,7 +49,7 @@ Roughly in the order that makes sense to do them.
   - Still to do: DMR channels in patches (P25 to DMR needs transcoding between IMBE and AMBE).
   - Still to do: alert tones, QCII pages, the channel marker and announcements on DMR channels.
   - Still to do: radio commands and digital pages over DMR.
-  - ~~**Analog** too, once we've confirmed how DVM carries it (the Windows console has `MainWindow.Analog.cs`). It may be the simplest.~~ Moved to its own entry (item 4) on 2026-11-23, now that the Windows console documents how DVM carries it.
+  - ~~**Analog** too, once we've confirmed how DVM carries it (the Windows console has `MainWindow.Analog.cs`). It may be the simplest.~~ Moved to its own entry (item 2 since 0.38; item 4 when moved) on 2026-11-23, now that the Windows console documents how DVM carries it.
 - ~~**Windows 10/11 and macOS.**~~ (macOS: done in 0.34; Windows: done in 0.35.) Avalonia and most of the core are already cross-platform, and audio goes through one backend interface (0.23). The Linux-only parts are the audio backend (PipeWire), PTT devices (evdev) and the control socket, so each platform needs its own version of those.
   - ~~macOS is new ground.~~ Done in 0.34: PortAudio over Core Audio, macOS's own speech (`say`), Keychain and notifications, Cmd for Ctrl. Windows already has the upstream console, so the gain there is smaller.
   - ~~**Windows next (0.35):**~~ Done in 0.35: an Inno Setup installer for x64 and ARM64 (per user, no admin), NAudio WASAPI audio (the Windows console's library), SAPI speech, Credential Manager, the TUI through the console's VT mode, CI on `windows-latest` and `windows-11-arm` (both suites natively, then install, the installed self-test and uninstall on both; Windows builds keep .NET's globalization for IANA time zones). The owner tests on Windows 10 and 11 x64 and Windows 11 ARM.
@@ -106,6 +98,14 @@ Roughly in the order that makes sense to do them.
   - Still to do: sending audio to another machine's sound system, for when the TUI is run over SSH (today audio stays on the machine Sidetone runs on).
 
 ## Fully implemented
+
+- ~~**The codeplug's transmit timeout, with warning beeps**~~ (as the Windows console). Read the codeplug's `transmitTimeoutSeconds` (the Windows console's default is 180; 0 turns it off). Use it unless `--tx-limit` or Settings say otherwise; Sidetone's own setting is 120 s by default today. Done in 0.38 (`StartupChoices.TxLimit`, `DispatchConsole.Alerts.cs`): as planned here; the codeplug's 0 is Sidetone's longest, 900 s, since a stuck PTT must still stop.
+  - ~~A countdown warning before the cut-off: short beeps, heard locally, at most one a second, in the last seconds.~~ Done in 0.38: the last 10 seconds, 1 kHz, and a 1 s tone at the cut-off.
+  - ~~After a timeout, PTT has to be released before it keys again (a held key or desk mic doesn't key straight back up).~~ Done in 0.38.
+
+- ~~**Check the talkgroup before PTT**~~ (as the Windows console). The FNE sends its talkgroup table at login ("Activated 217 TGs"). Refuse to transmit on a talkgroup that isn't in it, saying "talkgroup N isn't available on this FNE", instead of keying up into nothing. Tones and announcements check the same way. If a system never sent a table, allow it as today. Done in 0.38 (`DispatchConsole.TalkgroupBlocker`), as planned here; DMR matches the timeslot when the FNE's entries carry one.
+
+- ~~**FNE connection chimes**~~ (as the Windows console). A short sound when a system connects or drops, so a lost connection is heard and not only seen. On by default? To decide. Done in 0.38: a G major chord (G5, B5, D6) rising to connect, the same notes falling for a drop, which is also logged; on unless turned off in Settings (decided: on, as the Windows console).
 
 - ~~**Web streams.**~~ Done in 0.32: the codeplug's `web_streams` per zone, as cards after the tab's channels (a Streams box in the TUI), MP3 decoded by NLayer on every platform, played to the tab's output; the Windows console's 3 attempts and RX hold. AAC, Ogg and HLS streams are refused with a reason.
 

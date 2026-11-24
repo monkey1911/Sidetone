@@ -27,6 +27,8 @@ namespace Sidetone.Gui
             public double? Scale;
             /// <summary>Desktop notifications when the console is paged.</summary>
             public bool Notifications = true;
+            /// <summary>A chime when a system connects or drops.</summary>
+            public bool ConnectionChimes = true;
             /// <summary>Microphone processing stages, and receive leveling.</summary>
             public bool LowCut = true, AutoLevel = true, NoiseGate, Limiter = true, RxLevel;
             /// <summary>Recording format ("opus" or "wav"), and the days after which recordings are deleted (null: kept).</summary>
@@ -112,7 +114,7 @@ namespace Sidetone.Gui
         private readonly List<TextBlock> headings = new List<TextBlock>();
         private readonly TextBlock keyFileText = new TextBlock { FontSize = 12, TextWrapping = TextWrapping.Wrap };
         private readonly TextBlock recordingsText = new TextBlock { FontSize = 12, TextWrapping = TextWrapping.Wrap };
-        private Tap recChoose, recOpen, recDefault, notifyOn, notifyOff, logCopy, logOpen, logSave;
+        private Tap recChoose, recOpen, recDefault, notifyOn, notifyOff, chimeOn, chimeOff, logCopy, logOpen, logSave;
         private readonly List<Tap> routingTaps = new List<Tap>();
         private readonly TextBlock logText = new TextBlock { FontSize = 12, TextWrapping = TextWrapping.Wrap };
         private readonly TextBlock logResult = new TextBlock { FontSize = 12, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
@@ -163,6 +165,10 @@ namespace Sidetone.Gui
         }
         /// <summary>Desktop notifications, as chosen in the box.</summary>
         public bool Notify { get; private set; } = true;
+        /// <summary>Connection chimes on (self-check hook).</summary>
+        public bool Chimes { get; private set; } = true;
+        /// <summary>Presses connection chimes' On or Off (self-check hook).</summary>
+        internal void PressChimes(bool on) => Chimes = on;
         private readonly Tap spaceHold, spaceToggle, openCodeplug, launcherTap, cancel, saveTap, keyChoose, keyNone, keyUnlock;
 
         private List<InputDeviceInfo> inputDevices = new List<InputDeviceInfo>();
@@ -211,6 +217,8 @@ namespace Sidetone.Gui
             recRow.Children.Add(recDefault.Root);
             notifyOn = new Tap("On", () => { Notify = true; message.Text = string.Empty; }, fontSize: 12, padX: 12, padY: 5);
             notifyOff = new Tap("Off", () => { Notify = false; message.Text = string.Empty; }, fontSize: 12, padX: 12, padY: 5);
+            chimeOn = new Tap("On", () => { Chimes = true; message.Text = string.Empty; }, fontSize: 12, padX: 12, padY: 5);
+            chimeOff = new Tap("Off", () => { Chimes = false; message.Text = string.Empty; }, fontSize: 12, padX: 12, padY: 5);
             formatOpus = new Tap("Opus (small files)", () => SetFormat(DispatchConsole.FormatOpus), fontSize: 12, padX: 10, padY: 5);
             formatWav = new Tap("WAV", () => SetFormat(DispatchConsole.FormatWav), fontSize: 12, padX: 12, padY: 5);
             WrapPanel formatRow = new WrapPanel { ItemSpacing = 4, LineSpacing = 4 };
@@ -232,6 +240,10 @@ namespace Sidetone.Gui
             WrapPanel notifyRow = new WrapPanel { ItemSpacing = 4, LineSpacing = 4 };
             notifyRow.Children.Add(notifyOn.Root);
             notifyRow.Children.Add(notifyOff.Root);
+            WrapPanel chimeRow = new WrapPanel { ItemSpacing = 4, LineSpacing = 4 };
+            chimeRow.Children.Add(chimeOn.Root);
+            chimeRow.Children.Add(chimeOff.Root);
+            chimeRow.Children.Add(new TextBlock { Text = "a rising chime when a system connects, falling when it drops", FontSize = 12, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap });
 
             logCopy = new Tap("Copy log", PressCopyLog, fontSize: 12, padX: 10, padY: 5);
             logOpen = new Tap("Open folder", () => OpenLogFolder?.Invoke(), fontSize: 12, padX: 10, padY: 5);
@@ -333,6 +345,7 @@ namespace Sidetone.Gui
             stack.Children.Add(Field("Format", formatRow));
             stack.Children.Add(Field("Delete after", KeepDays));
             stack.Children.Add(Field("When paged", notifyRow));
+            stack.Children.Add(Field("Connection chimes", chimeRow));
             stack.Children.Add(Heading("Call history"));
             stack.Children.Add(historyText);
             stack.Children.Add(Field("Between runs", historyRow));
@@ -427,6 +440,7 @@ namespace Sidetone.Gui
             filling = false;
             recDefault.Root.IsVisible = recordingsChosen;
             Notify = current.Notifications;
+            Chimes = current.ConnectionChimes;
             (lowCut, autoLevel, gate, limiter, rxLevel) = (current.LowCut, current.AutoLevel, current.NoiseGate, current.Limiter, current.RxLevel);
             keyFileText.Text = keyFile;
             ShowDeviceValues(current);
@@ -578,6 +592,7 @@ namespace Sidetone.Gui
                 TxLimit = limit,
                 SpaceToggle = SpaceToggle,
                 Notifications = Notify,
+                ConnectionChimes = Chimes,
                 LowCut = lowCut,
                 AutoLevel = autoLevel,
                 NoiseGate = gate,
@@ -660,6 +675,8 @@ namespace Sidetone.Gui
             Paint(limiterTap, limiter, p);
             Paint(rxLevelTap, rxLevel, p);
             Paint(notifyOff, !Notify, p);
+            Paint(chimeOn, Chimes, p);
+            Paint(chimeOff, !Chimes, p);
             keyChoose.Paint(Brushes.Transparent, p.Text, p.Edge);
             keyNone.Paint(Brushes.Transparent, p.Text, p.Edge);
             keyUnlock.Paint(p.Accent, p.OnStrong);

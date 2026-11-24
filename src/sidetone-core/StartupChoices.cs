@@ -19,9 +19,18 @@ namespace Sidetone.Core
         /// <summary>The transmit time limit's range and default, in seconds (the same in both consoles).</summary>
         public const int MinTxLimit = 5, MaxTxLimit = 900, DefaultTxLimit = 120;
 
-        /// <summary>The transmit time limit: the option's, the saved one, or the default.</summary>
-        public static int TxLimit(int? option, AppSettings saved) =>
-            Math.Clamp(option ?? saved?.TxLimitSeconds ?? DefaultTxLimit, MinTxLimit, MaxTxLimit);
+        /// <summary>
+        /// The transmit time limit: the option's, else the one saved in Settings, else the codeplug's
+        /// <c>transmitTimeoutSeconds</c> (as the Windows console: 180 when the codeplug doesn't say), else 120.
+        /// Always 5 to 900 s: a codeplug's 0 ("no limit" on Windows) is Sidetone's longest, 900, since a stuck PTT
+        /// must still stop.
+        /// </summary>
+        public static int TxLimit(int? option, AppSettings saved, Codeplug codeplug = null) =>
+            Math.Clamp(option ?? saved?.TxLimitSeconds ?? CodeplugTxLimit(codeplug) ?? DefaultTxLimit, MinTxLimit, MaxTxLimit);
+
+        /// <summary>The codeplug's transmit timeout in seconds (0 → <see cref="MaxTxLimit"/>), or null without a codeplug.</summary>
+        public static int? CodeplugTxLimit(Codeplug codeplug) =>
+            codeplug == null ? null : codeplug.TransmitTimeoutSeconds == 0 ? MaxTxLimit : codeplug.TransmitTimeoutSeconds;
 
         /// <summary>
         /// The audio devices: the options', or the saved ones when they are connected (a warning goes

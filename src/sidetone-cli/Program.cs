@@ -359,7 +359,7 @@ namespace Sidetone.Cli
 
             string logFile = string.IsNullOrWhiteSpace(opt.LogFile) ? null : Path.GetFullPath(opt.LogFile);
             string socket = opt.NoSocket ? null : opt.Socket != null ? Path.GetFullPath(opt.Socket) : ControlServer.DefaultPath;
-            Tui tui = new Tui(cp, systems, TimeSpan.FromSeconds(StartupChoices.TxLimit(opt.TxLimitSeconds, saved)), logFile,
+            Tui tui = new Tui(cp, systems, TimeSpan.FromSeconds(StartupChoices.TxLimit(opt.TxLimitSeconds, saved, cp)), logFile,
                               TimeSpan.FromSeconds(opt.MarkerSeconds), settingsPath)
             {
                 Audio = audio,

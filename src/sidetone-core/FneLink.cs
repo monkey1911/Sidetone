@@ -34,7 +34,14 @@ namespace Sidetone.Core
         /// <summary>Builds DMR packets in the self-test (an unconnected peer; it only formats them).</summary>
         internal fnecore.FneSystemBase DmrFactoryForTest;
 
-        public bool Connected => Peer?.Connected == true;
+        public bool Connected => ConnectedForTest ?? Peer?.Connected == true;
+        /// <summary>Stands in for the connection state in the self-test.</summary>
+        internal bool? ConnectedForTest;
+        /// <summary>Stands in for the FNE's talkgroup table in the self-test.</summary>
+        internal List<fnecore.TalkgroupEntry> TalkgroupsForTest;
+        /// <summary>The FNE's talkgroup table for this peer (empty until it arrives).</summary>
+        internal IReadOnlyList<fnecore.TalkgroupEntry> Talkgroups =>
+            Peer != null ? Peer.AnnouncedTalkgroups : (IReadOnlyList<fnecore.TalkgroupEntry>)TalkgroupsForTest ?? Array.Empty<fnecore.TalkgroupEntry>();
         /// <summary>The console's radio ID on this system (its codeplug rid).</summary>
         public uint ConsoleRid => Peer?.ConsoleRid ?? RidForTest;
         /// <summary>Where this system's traffic is sent: the peer, or the self-test's stand-in.</summary>

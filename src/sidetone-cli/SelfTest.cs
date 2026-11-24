@@ -1081,6 +1081,78 @@ B: MSC=10
                           lt.SnapshotLog(20).Any(l => l.Contains("1 s transmit limit reached")),
                           $"transmit limit: a transmission still on after the limit is stopped and ended on the network (started: {limitStart ?? "yes"}, TDUs {limitOut.TduCount})");
                     lt.Shutdown();
+
+                    // the countdown: a beep a second for the last seconds, a long one at the cut-off; then a held PTT has to be let go
+                    Tui wt = new Tui(cp, sys, TimeSpan.FromSeconds(3), null);
+                    CaptureSink warnOut = new CaptureSink(new CliPeer(sys, new KeyStore(), verbose: false));
+                    wt.sinkForTest = warnOut;
+                    wt.consoleRidForTest = 9000003;
+                    List<string> sounds = new List<string>();
+                    wt.localSoundForTest = name => sounds.Add(name);
+                    ConsoleChannel wch = wt.Channels.First(x => x.IsP25 && !x.Encrypted && !x.Cfg.RxOnly);
+                    wt.SetFocus(wt.chans.IndexOf(wch));
+                    wt.HoldToTalk(true);
+                    bool heldOn = wt.Transmitting;
+                    DateTime until = DateTime.UtcNow.AddSeconds(3.5);
+                    while (DateTime.UtcNow < until && (wt.Transmitting || sounds.Count == 0))
+                    {
+                        wt.Housekeeping();
+                        Thread.Sleep(40);
+                    }
+                    string order = string.Join(",", sounds);
+                    wt.HoldToTalk(true);     // the key is still down (or repeats): not again
+                    bool refusedWhileHeld = !wt.Transmitting && wt.SnapshotLog(5).Any(l => l.Contains("let go of PTT first"));
+                    wt.HoldToTalk(false);
+                    wt.HoldToTalk(true);     // let go and pressed again: keys up
+                    bool keysAgain = wt.Transmitting;
+                    wt.StopTx(null);
+                    Check(heldOn && order == "warning,warning,warning,timeout" && refusedWhileHeld && keysAgain,
+                          $"transmit limit: a beep each second for the last seconds and a long one at the cut-off ({order}), heard locally; a held PTT has to be let go before it keys up again");
+                    wt.Shutdown();
+
+                    // the talkgroup check: only on a talkgroup the FNE announced (any, when it hasn't announced one)
+                    Tui gt = new Tui(cp, sys, TimeSpan.FromSeconds(120), null);
+                    gt.sinkForTest = new CaptureSink(new CliPeer(sys, new KeyStore(), verbose: false));
+                    gt.consoleRidForTest = 9000004;
+                    ConsoleChannel gch = gt.Channels.First(x => x.IsP25 && !x.Encrypted && !x.Cfg.RxOnly);
+                    gt.Links[0].TalkgroupsForTest = new List<fnecore.TalkgroupEntry> { new fnecore.TalkgroupEntry { ID = 1, Slot = 1 }, new fnecore.TalkgroupEntry { ID = gch.Tg + 1000, Slot = 1 } };
+                    string notThere = gt.StartTx(gch);
+                    bool toneRefused = gt.TalkgroupBlocker(gch) != null;
+                    gt.Links[0].TalkgroupsForTest.Add(new fnecore.TalkgroupEntry { ID = gch.Tg, Slot = 1, Invalid = true });
+                    string turnedOff = gt.StartTx(gch);
+                    gt.Links[0].TalkgroupsForTest.Add(new fnecore.TalkgroupEntry { ID = gch.Tg, Slot = 2 });
+                    string allowed = gt.StartTx(gch);
+                    gt.StopTx(null);
+                    gt.Links[0].TalkgroupsForTest = new List<fnecore.TalkgroupEntry>();
+                    string noTable = gt.StartTx(gch);
+                    gt.StopTx(null);
+                    var dmrRules = new List<fnecore.TalkgroupEntry> { new fnecore.TalkgroupEntry { ID = 9, Slot = 2 } };
+                    Check(notThere != null && notThere.Contains($"talkgroup {gch.Tg} isn't available on") && toneRefused &&
+                          turnedOff != null && turnedOff.Contains("is turned off") && allowed == null && noTable == null &&
+                          DispatchConsole.TalkgroupBlocker(dmrRules, 9, true, 1, "DMR FNE")?.Contains("isn't available on TS1") == true &&
+                          DispatchConsole.TalkgroupBlocker(dmrRules, 9, true, 2, "DMR FNE") == null &&
+                          DispatchConsole.TalkgroupBlocker(new List<fnecore.TalkgroupEntry> { new fnecore.TalkgroupEntry { ID = 9, Slot = 0 } }, 9, true, 1, "x") == null,
+                          $"talkgroup check: PTT is refused on a talkgroup the FNE didn't announce or turned off, allowed when it did or announced none; DMR matches the timeslot ({notThere}; {turnedOff})");
+                    gt.Shutdown();
+
+                    // connection chimes: rising when a system connects, falling when it drops; a drop is logged; Settings turns the chimes off
+                    Tui ct = new Tui(cp, sys, TimeSpan.FromSeconds(120), null) { NoAudio = true };
+                    List<string> chimes = new List<string>();
+                    ct.localSoundForTest = name => chimes.Add(name);
+                    ct.Links[0].ConnectedForTest = true;
+                    ct.Housekeeping();
+                    ct.Housekeeping();
+                    ct.Links[0].ConnectedForTest = false;
+                    ct.Housekeeping();
+                    bool dropLogged = ct.SnapshotLog(5).Any(l => l.Contains("lost the connection to the FNE"));
+                    ct.Settings.ConnectionChimes = false;
+                    ct.Links[0].ConnectedForTest = true;
+                    ct.Housekeeping();
+                    short[] up = DispatchConsole.ChimePcm(true), downPcm = DispatchConsole.ChimePcm(false);
+                    bool mirrored = up.Length == downPcm.Length && up.Length == 3 * 800 + 2 * 240;
+                    Check(string.Join(",", chimes) == "connect,disconnect" && dropLogged && mirrored && !ct.ConnectionChimes,
+                          $"connection chimes: one when a system connects, the same notes falling when it drops (logged), none once turned off ({string.Join(",", chimes)})");
+                    ct.Shutdown();
                 }
                 finally
                 {
@@ -3783,6 +3855,11 @@ zones:
             catch (ArgumentException) { optionPttRefused = true; }
             try { StartupChoices.PttDevice(null, "BTN_THUMB", null, chosen, new List<string>()); }
             catch (ArgumentException) { buttonsAlone = true; }
+            Codeplug limit60 = new Codeplug { TransmitTimeoutSeconds = 60 }, limit0 = new Codeplug { TransmitTimeoutSeconds = 0 };
+            Check(StartupChoices.TxLimit(null, new AppSettings(), limit60) == 60 && StartupChoices.TxLimit(null, chosen, limit60) == 300 &&
+                  StartupChoices.TxLimit(45, chosen, limit60) == 45 && StartupChoices.TxLimit(null, null, limit0) == StartupChoices.MaxTxLimit &&
+                  StartupChoices.TxLimit(null, null, new Codeplug()) == 180 && StartupChoices.TxLimit(null, null) == 120,
+                  "transmit limit: the codeplug's transmitTimeoutSeconds is used unless an option or Settings say otherwise (180 when it doesn't say, as the Windows console; its 0 is 900 s)");
             Check(StartupChoices.TxLimit(null, chosen) == 300 && StartupChoices.TxLimit(60, chosen) == 60 && StartupChoices.TxLimit(null, new AppSettings()) == 120 &&
                   StartupChoices.TxLimit(5000, chosen) == StartupChoices.MaxTxLimit && StartupChoices.MaxTxLimit == 900,
                   "start-up: the time limit is the option's, else the saved one, else 120 s; 5 to 900 s in both consoles");

@@ -364,7 +364,9 @@ The microphone level meter sits in the bottom edge of the title box. It shows wh
 
 Settings are remembered per system in `~/.config/sidetone/settings.json`: which channels you're listening to, the focused card, volumes, mutes, global mute, the talk permit tone and the last page / radio values. Use `--settings FILE` for a different file or `--no-settings` to start fresh without saving. The channel marker always starts off. The file holds no passwords or keys.
 
-Transmit uses the system's `rid` as the source ID, and the default microphone unless you start the TUI with `--input` (see [Audio devices](#audio-devices)). A secure channel never transmits in the clear by accident: without its key, transmit is refused. The one exception is a channel the codeplug marks as selectable, which you can switch to clear yourself (see [Encryption keys](#encryption-keys)). Transmissions stop automatically after 120 seconds; change that with `--tx-limit SECONDS` (5 to 900) or in the graphical console's Settings. The log is also written to a file each day (see [Log files](#log-files)).
+Transmit uses the system's `rid` as the source ID, and the default microphone unless you start the TUI with `--input` (see [Audio devices](#audio-devices)). A secure channel never transmits in the clear by accident: without its key, transmit is refused. The one exception is a channel the codeplug marks as selectable, which you can switch to clear yourself (see [Encryption keys](#encryption-keys)). Transmissions stop automatically after the codeplug's `transmitTimeoutSeconds` (180 seconds when it doesn't say, as in the Windows console; its `0`, "no limit" there, is Sidetone's longest, 900 seconds); `--tx-limit SECONDS` (5 to 900) or the graphical console's Settings override it. In the last 10 seconds a short beep each second warns you, and a long beep sounds when it cuts off; both play only on your speaker, never on the air. After a cut-off, a PTT key, button or desk mic still held down doesn't key up again until you let go and press it again (as the Windows console).
+
+Before keying up, Sidetone checks that the FNE carries the channel's talkgroup: the FNE announces its talkgroup list at login ("Activated 217 TGs" in the log). Transmit, tones and announcements on a talkgroup that isn't in it, or that the FNE has turned off, are refused with the reason (on DMR the timeslot has to match too), instead of keying up into nothing. Until the FNE has announced a list, nothing is refused, as in the Windows console. The log is also written to a file each day (see [Log files](#log-files)).
 
 **The graphical console's Settings apply here too.** When no option says otherwise, the TUI uses the audio output and microphone, PTT device and buttons, time limit, key file, recordings folder, notifications and audio processing chosen there. A saved audio device or PTT device that can't be used right now (unplugged, or a button it doesn't have) is skipped with a warning in the log; one given on the command line is an error.
 
@@ -413,8 +415,9 @@ What it has so far:
 | Format | Opus (small files, the default) or WAV for new recordings |
 | Delete after | Keep recordings, or delete them after 7 to 365 days |
 | When paged | Desktop notifications when the console is paged, on or off |
+| Connection chimes | A rising chime when a system connects and the same notes falling when it drops, on or off (on unless turned off). A drop is also logged |
 | Key file | A local key file to use, and its unlock state (see [Encryption keys](#encryption-keys)) |
-| Time limit | How long a transmission can last, 5 to 900 seconds |
+| Time limit | How long a transmission can last, 5 to 900 seconds (left as it is, the codeplug's `transmitTimeoutSeconds`) |
 | Log | Where the log files are, **Copy log** (puts this run's log on the clipboard, to paste into a message) and **Open folder** |
 | Codeplug | Shows the open codeplug, and opens another one |
 | App launcher | Adds Sidetone to, or removes it from, your desktop's app launcher |

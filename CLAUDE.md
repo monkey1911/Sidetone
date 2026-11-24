@@ -8,7 +8,19 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
 
 ## State at hand-off (2026-11-16)
 
-- Version **0.37.0** on `main` (set once, in `src/Directory.Build.props`): **DMR** receive and clear
+- Version **0.38.0** on `main` (set once, in `src/Directory.Build.props`): three Windows-console features
+  (`DispatchConsole.Alerts.cs`). The codeplug's `transmitTimeoutSeconds` is the time limit unless an option
+  or Settings say otherwise (`StartupChoices.TxLimit(option, saved, codeplug)`; dvmconsole's Codeplug defaults
+  it to 180, so every codeplug without it now gets 180, not 120; its 0 becomes 900); a 1 kHz beep each second
+  for the last 10 s and a 1 s one at the cut-off, played locally on the channel's sink (`PlayLocal`,
+  `localSoundForTest`); after a cut-off a held PTT (device, key, Android key: `HoldToTalk`/`OnDevicePtt`) is
+  refused until let go (`limitLatched`). The talkgroup check (`TalkgroupBlocker`): StartTx and SendTone refuse a
+  TG not in the FNE's announced list (`CliPeer.AnnouncedTalkgroups`, fnecore's `AnnouncedTGs`; `Invalid` =
+  turned off; DMR matches slot when entries carry 1/2), allow all when none announced, as `PeerSystem.
+  IsTalkgroupAvailable`. Connection chimes (`ConnectionHousekeeping`): G5-B5-D6 rising on connect, falling on a
+  drop (also logged "lost the connection to the FNE"), one per pass, `AppSettings.ConnectionChimes` (null = on),
+  Settings row. Test stand-ins: `FneLink.ConnectedForTest`, `TalkgroupsForTest`. Untested on the air.
+  0.37.0: **DMR** receive and clear
   transmit, following the owner's dvmconsole fork (fnecore's `DMRFrame`/`DMRCallData` do the framing;
   libvocoder's `MBE_MODE.DMR_AMBE`, 9-byte codewords, 3 per burst). `ConsoleChannel.IsDmr`, `Slot` (codeplug
   `slot`, 1 when unset), `IsVoice` (P25 or DMR: listen, record, cards; `IsP25` stays where it means P25 only:
@@ -190,7 +202,8 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
   file box; from 0.26: Opus recordings and Delete after; from 0.28: one-way patches, outputs per
   tab and channel, the call history between runs; from 0.29: announcements, `listen --key-file`; from 0.30: the scheduled time announcement, the new announcement level (0.30.3); from 0.31:
   on Android, hardware PTT keys on the Sonim XP Pro; the LEX L11's PTT key was reported not working (how far it got not known yet); from 0.32: web streams (a real feed, and
-  one with a password); from 0.37: DMR receive and transmit on the air (CTRS's DMR FNE); from 0.34: macOS on Apple silicon (only CI so far), and on the
+  one with a password); from 0.37: DMR receive and transmit on the air (CTRS's DMR FNE); from 0.38: the time limit's beeps and
+  latch, the talkgroup check against CTRS's real talkgroup list, and the chimes on a real drop; from 0.34: macOS on Apple silicon (only CI so far), and on the
   owner's Intel Mac whatever their "it worked" didn't cover (ask before listing parts as tested); from
   0.36: the boxes on a real tablet; from
   0.35: on Windows 10 and 11 x64 the rest (receive audio, Credential Manager, the taskbar flash, the
@@ -199,10 +212,9 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
   (Piper is installed on the owner's Surface, through `uv tool install piper-tts`, with the
   en_US-lessac-medium voice).
 - Next on the wishlist ("To be implemented"): a CI test against a real dvmfne (waiting for dvmhost's
-  `r05a06_dev` to merge into `master`); the codeplug's transmit timeout with warning beeps; the talkgroup
-  check before PTT; analog (`mode: analog`, G.711 mu-law; for any DVM network, though CTRS doesn't carry it);
+  `r05a06_dev` to merge into `master`); analog (`mode: analog`, G.711 mu-law; for any DVM network, though CTRS doesn't carry it);
   NXDN; TMS and Location over MQTT (waiting on details); then Windows-console parity items (tone and DTMF
-  presets, extra clocks, connection chimes, settings export, choosing panels). Sidetone is for any DVM
+  presets, extra clocks, settings export, choosing panels). Sidetone is for any DVM
   network, not only CTRS (the owner's word). DMR's leftovers (encryption, patches, tones and
   announcements, radio commands) are under "Partially implemented". The TUI's only remaining gap is audio over SSH.
 
