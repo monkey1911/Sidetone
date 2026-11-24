@@ -85,7 +85,7 @@ Roughly in the order that makes sense to do them.
   - ~~Spoken announcements: text said by a text-to-speech engine.~~ Done in 0.30: Piper or espeak-ng, installed separately; "Hear it" plays them through the vocoder without sending.
   - ~~A time announcement, played when asked or by itself on the clock.~~ Done in 0.30: words before and after, 12- or 24-hour, a time zone (said as its abbreviation or your own words), every 15, 30 or 60 minutes, waiting for quiet channels.
   - Still to do: scheduling WAV files and spoken texts too (once, or repeating), like the Windows console's timed announcements.
-  - Still to do: text to speech on macOS (its own `say` would do), with the macOS port.
+  - ~~Text to speech on macOS (its own `say`).~~ Done in 0.34: `SayEngine` runs `/usr/bin/say`, text on stdin into a 16-bit WAV, levelled like any announcement.
 
 - ~~**Packaging.**~~ Done in 0.27: an AppImage and an Arch package (`sidetone-bin` PKGBUILD) with each release, next to the tarballs; the PKGBUILD is built, installed and run on Arch in CI.
   - Still to do: publish it on the AUR, once AUR sign-ups open again (or someone with an account publishes it with us as co-maintainers).
