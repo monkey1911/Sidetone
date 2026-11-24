@@ -3452,7 +3452,8 @@ zones:
                     back2.Handle(DmrEvent(p, dtx?.StreamId ?? 1));
                 List<RecalledCall> txKept = tc.RecalledCalls(txc);
                 Check(started == null && done && got.Count >= 12 && Type(got[0].Packet) == 0x21 && Type(got[^1].Packet) == 0x22 && voiceOut.Count == 12 && addressed &&
-                      gap > 45 && gap < 120 && decoded.Count == 36 && Rms(decoded.Take(30)) > 300 && !back2.InCall,
+                      gap > 45 && gap < 300 &&     // paced, not sent in a burst; a slow CI runner stretches it (127 ms seen on the Intel Mac)
+                       decoded.Count == 36 && Rms(decoded.Take(30)) > 300 && !back2.InCall,
                       $"DMR transmit: header, {voiceOut.Count} voice bursts {gap:F0} ms apart, terminator, as the console's RID on the TG and TS1; it decodes back to the audio ({decoded.Count} frames)");
                 Check(txKept.Count == 1 && txKept[0].Tx && txKept[0].Codec == VoiceCodec.Ambe && txKept[0].Frames.Count == 30 &&
                       tc.SnapshotRecent(5).Any(r => r.Chan == "DMR FNE:Wide:3100001" && r.Tx),
