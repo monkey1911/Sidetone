@@ -300,6 +300,11 @@ jobs:
             echo "SIGNED=debug" >> "$GITHUB_ENV"
           fi
 
+      - name: Sanitise the tag for filenames
+        run: |
+          tag="${TAG//\//-}"
+          echo "TAG_FILE=$tag" >> "$GITHUB_ENV"
+
       - name: Build the APK and the Play Store bundle
         env:
           STORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -316,8 +321,8 @@ jobs:
           aab=$(ls out/android/*-Signed.aab 2>/dev/null | head -1 || true)
           test -s "$apk" || { echo "::error::no APK"; exit 1; }
           mkdir -p out/release
-          cp "$apk" "out/release/Sidetone-$TAG-android.apk"
-          if [ -n "$aab" ]; then cp "$aab" "out/release/Sidetone-$TAG-android.aab"; fi
+          cp "$apk" "out/release/Sidetone-$TAG_FILE-android.apk"
+          if [ -n "$aab" ]; then cp "$aab" "out/release/Sidetone-$TAG_FILE-android.aab"; fi
           (cd out/release && sha256sum * > SHA256SUMS)
           unzip -l "$apk" | grep -E "lib/.*\.so" | awk '{print $4}' | sort | sed 's/^/  /'
 
@@ -349,7 +354,7 @@ jobs:
           profile: pixel_6
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: tools/android-check.sh "out/release/Sidetone-${{ env.TAG }}-android.apk" out/android-check
+          script: tools/android-check.sh "out/release/Sidetone-${{ env.TAG_FILE }}-android.apk" out/android-check
 
       - name: Upload the Android build
         if: always()
@@ -365,7 +370,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release upload "$TAG" out/release/Sidetone-$TAG-android.* --repo "$GITHUB_REPOSITORY" --clobber
+          gh release upload "$TAG" out/release/Sidetone-$TAG_FILE-android.* --repo "$GITHUB_REPOSITORY" --clobber
 
   # macOS: one universal Sidetone.app (both complete builds and a universal launcher, packaging/macos), built and
   # tested on Apple silicon; the Intel half is tested on an Intel runner by the next job. Runners have no sound
