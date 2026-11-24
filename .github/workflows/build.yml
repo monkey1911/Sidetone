@@ -328,7 +328,7 @@ jobs:
 
       - name: Every native library suits 16 KB memory pages
         run: |
-          apk="out/release/Sidetone-$TAG-android.apk"
+          apk="out/release/Sidetone-$TAG_FILE-android.apk"
           "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 16 -v 4 "$apk" | tail -1
           readelf="$ANDROID_NDK_LATEST_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
           rm -rf out/apk-libs && mkdir -p out/apk-libs && unzip -q -o "$apk" 'lib/arm64-v8a/*' 'lib/x86_64/*' -d out/apk-libs
