@@ -89,6 +89,7 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
   and `macos-intel` (macos-15-intel: the Intel half through the launcher); runners have a virtual
   sound device only. The owner reported the 0.34.0 build working on their Intel MacBook (macOS 15),
   including the time announcement spoken by macOS's own voice (`say`).
+  A tester's MacBook Pro M1 (macOS 26.6.2) got keys from CTRS's FNE (after the peer-list delay below).
   0.33.0: several FNE systems at
   once. `FneLink` (one per system: peer, `KeyStore`, `RadioAliasBook`, and `SinkForTest`/`RidForTest`
   for the self-test); `ConsoleChannel.Link`. The console's `system`, `peer`, `keys`, `aliases`,
@@ -395,6 +396,10 @@ every release on the air and on their hardware after publishing it.
   whichever talkgroup is granted first holds the channel, and the other's grant is denied. dvmhost
   grants a network grant demand without checking affiliations (the FNE decides what reaches a
   site). The FNE doesn't tell the peer about a denied grant.
+- **A new peer ID gets no keys until CTRS's FNE has pulled its peer list from myCTRS.** Until then the
+  FNE ignores the peer's key requests without a reply (Sidetone logs "requested … key" and nothing comes
+  back). Found 2026-11-23 with a tester's Mac (peer 63007, RID 99508): the next try got its keys. Ask how
+  new the peer is before suspecting Sidetone.
 - **The FNE version CTRS runs does not pass extended-function replies (radio check acks) back to
   the peer that sent them.** The radio does answer over the air. Don't ask the owner about it again;
   Sidetone already decodes and logs replies if a newer FNE sends them.
