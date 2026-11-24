@@ -21,6 +21,7 @@
     <Compile Include="$(DvmConsoleSrc)AnalogVoiceInversion.cs" Link="dvmconsole\AnalogVoiceInversion.cs" />
     <Compile Include="$(DvmConsoleSrc)ResourceIdentity.cs" Link="dvmconsole\ResourceIdentity.cs" />
     <Compile Include="$(DvmConsoleSrc)VocoderInterop.cs" Link="dvmconsole\VocoderInterop.cs" />
+    <Compile Include="$(DvmConsoleSrc)DMR/DmrTxCall.cs" Link="dvmconsole\DMR\DmrTxCall.cs" />
     <Compile Include="$(DvmConsoleSrc)VocoderToneLookupTable.cs" Link="dvmconsole\VocoderToneLookupTable.cs" />
     <Compile Include="$(DvmConsoleSrc)Log.cs" Link="dvmconsole\Log.cs" />
     <Compile Include="$(DvmConsoleSrc)AliasTools.cs" Link="dvmconsole\AliasTools.cs" />

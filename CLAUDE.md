@@ -8,7 +8,21 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
 
 ## State at hand-off (2026-11-16)
 
-- Version **0.36.2** on `main` (set once, in `src/Directory.Build.props`): calls are named
+- Version **0.37.0** on `main` (set once, in `src/Directory.Build.props`): **DMR** receive and clear
+  transmit, following the owner's dvmconsole fork (fnecore's `DMRFrame`/`DMRCallData` do the framing;
+  libvocoder's `MBE_MODE.DMR_AMBE`, 9-byte codewords, 3 per burst). `ConsoleChannel.IsDmr`, `Slot` (codeplug
+  `slot`, 1 when unset), `IsVoice` (P25 or DMR: listen, record, cards; `IsP25` stays where it means P25 only:
+  patches, tones, announcements, keys), `DmrSecure` (an `algo` on a DMR channel: TX refused, never clear).
+  `IVoiceReceiver` (P25VoiceReceiver, new `DmrVoiceReceiver`: group calls on its TG and slot, a late terminator
+  never starts a call, encrypted calls muted and logged once, as Windows) and `IVoiceTransmitter`
+  (P25Transmitter, new `DmrTransmitter` around the fork's `DmrTxCall`, linked into the core: 60 ms bursts,
+  superframe filled with silence, terminator). `CliPeer.DmrFrame` → `DispatchConsole.OnDmrFrame(link, e)` (fnecore's
+  slot is 0/1, the codeplug's 1/2). `RecalledCall.Codec` (Imbe/Ambe) for replay, recordings and the history
+  (`SavedCall.Codec` "ambe", left out for IMBE, so old files load). DMR sends through `FneLink.SendDmr`
+  (`DmrSendForTest`/`DmrFactoryForTest` in the self-test). Not on DMR yet, each refused with a message: patches,
+  tones/pages/marker, announcements, radio commands and digital pages from a focused DMR channel.
+  `ConsoleChannel.TgText`/`TxDescription` describe the target for both modes. Untested on the air.
+  0.36.2: calls are named
   `SYSTEM:CHANNEL:RADIOID/ALIAS` (the owner's choice; the tab doesn't matter): `RecalledCall.Label` and
   `RecalledCall.Caller` (just the ID without an alias), shown in Recent calls (`DispatchConsole.CallLabel`,
   the whole label in the Chan column, Who null), Instant recall and the Recordings list. Recording names are
@@ -175,7 +189,7 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
   file box; from 0.26: Opus recordings and Delete after; from 0.28: one-way patches, outputs per
   tab and channel, the call history between runs; from 0.29: announcements, `listen --key-file`; from 0.30: the scheduled time announcement, the new announcement level (0.30.3); from 0.31:
   on Android, hardware PTT keys on the Sonim XP Pro; the LEX L11's PTT key was reported not working (how far it got not known yet); from 0.32: web streams (a real feed, and
-  one with a password); from 0.34: macOS on Apple silicon (only CI so far), and on the
+  one with a password); from 0.37: DMR receive and transmit on the air (CTRS's DMR FNE); from 0.34: macOS on Apple silicon (only CI so far), and on the
   owner's Intel Mac whatever their "it worked" didn't cover (ask before listing parts as tested); from
   0.36: the boxes on a real tablet; from
   0.35: on Windows 10 and 11 x64 the rest (receive audio, Credential Manager, the taskbar flash, the
@@ -184,9 +198,9 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
   (Piper is installed on the owner's Surface, through `uv tool install piper-tts`, with the
   en_US-lessac-medium voice).
 - Next on the wishlist ("To be implemented"): a CI test against a real dvmfne (waiting for dvmhost's
-  `r05a06_dev` to merge into `master`), then DMR (several FNEs at once is done in 0.33; CTRS
-  carries DMR on a second FNE); NXDN is further down (CTRS doesn't carry it, and there's no hardware to test
-  it). The TUI's only remaining gap is audio over SSH.
+  `r05a06_dev` to merge into `master`); NXDN (CTRS doesn't carry it, and there's no hardware to test it);
+  TMS and Location over MQTT (waiting on details). DMR's leftovers (encryption, patches, tones and
+  announcements, radio commands) are under "Partially implemented". The TUI's only remaining gap is audio over SSH.
 
 ## Layout
 

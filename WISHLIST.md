@@ -14,15 +14,9 @@ Roughly in the order that makes sense to do them.
    - The CI script writes the FNE's config, talkgroup rules, peer list, RID list, key container and both codeplugs each run, with made-up passwords and a test key; nothing is committed. The RID list must allow both consoles' radio IDs to request keys, or the FNE silently ignores their key requests.
    - An FNE alone would not have caught the missing grant encrypt flag fixed in 0.24.2: the dvmhost site denied that grant, not the FNE. Catching that would need a dvmhost in the test too (not yet checked whether one runs without a modem).
 
-2. **DMR**, ~~**and more than one FNE system at a time.**~~ (Several systems at once: done in 0.33.) libvocoder already has the codec, the cards already show modes that aren't supported yet, and the Windows console in the submodule handles DMR (`MainWindow.DMR.cs`, `FneSystemBase.DMR.cs`, `DMR/DmrTxCall.cs`) to follow, so the work is a receiver and a transmitter. CTRS can carry DMR, but on a second FNE of its own (what setting it up last time required), so for a dispatcher DMR goes with connecting to several FNEs at once, as the Windows console can: one console with the P25 and DMR channels together.
-   - ~~Until then, a second Sidetone with a codeplug for the DMR FNE works, in its own window.~~ Done in 0.33: one console connects to every system in the codeplug (each turned off in Settings if wanted), so DMR channels on the DMR FNE will sit beside the P25 ones once DMR itself is done.
-   - Testing without radios: two Sidetones through the network test's FNE (item 1). On the air needs someone on CTRS with a DMR radio; until then the release notes say DMR is untested on the air.
-   - Ask the FNE's maintainers whether the `r05a06_dev` merge (DMR grant work on 2026-11-10) still needs a separate FNE for DMR.
-   - **Analog** too, once we've confirmed how DVM carries it (the Windows console has `MainWindow.Analog.cs`). It may be the simplest.
+2. **NXDN**, for networks that carry it (CTRS doesn't). The same work as DMR (libvocoder has the codec; the Windows console's `MainWindow.NXDN.cs` and `FneSystemBase.NXDN.cs` show the framing), but with nobody to test it against a radio.
 
-3. **NXDN**, for networks that carry it (CTRS doesn't). The same work as DMR (libvocoder has the codec; the Windows console's `MainWindow.NXDN.cs` and `FneSystemBase.NXDN.cs` show the framing), but with nobody to test it against a radio.
-
-4. **TMS (text messaging) and Location, over MQTT.** Waiting on others: what the FNE side will publish and accept.
+3. **TMS (text messaging) and Location, over MQTT.** Waiting on others: what the FNE side will publish and accept.
    - ~~**SMPP** (2026-11-22, from the FNE's maintainers): the console will talk to a TMS server over SMPP.~~ Dropped on 2026-11-22: SMPP can't do secure authentication. Both TMS and the new **Location** feature will go over **MQTT** instead.
    - **Client: MQTTnet** (MIT, a .NET Foundation project, 5.2 with a net10.0 build, July 2026). MQTT 3.1.1 and 5.0, TLS including client certificates, user name and password, MQTT 5 enhanced authentication (the extensible part, if the FNE side wants more than a password), WebSockets. Plain C#, so the same on Linux, macOS, Windows and Android. Sidetone is only a client; the broker is on the FNE or server side. MQTTnet's own broker can stand in for it in the self-test, as a local HTTP server does for web streams.
    - Still to learn from the FNE's maintainers: the broker's address and how a console logs in (likely new codeplug keys per system: host, port, TLS, user name, password or certificate); the topic layout and message format (JSON?) for messages, delivery receipts and locations; how radio IDs map to topics; whether location is pushed regularly or asked for.
@@ -30,6 +24,15 @@ Roughly in the order that makes sense to do them.
 
 ## Partially implemented
 
+- ~~**DMR**~~, ~~**and more than one FNE system at a time.**~~ (Several systems at once: done in 0.33; DMR receive and clear transmit: done in 0.37.) libvocoder already has the codec, the cards already show modes that aren't supported yet, and the Windows console in the submodule handles DMR (`MainWindow.DMR.cs`, `FneSystemBase.DMR.cs`, `DMR/DmrTxCall.cs`) to follow, so the work is a receiver and a transmitter. CTRS can carry DMR, but on a second FNE of its own (what setting it up last time required), so for a dispatcher DMR goes with connecting to several FNEs at once, as the Windows console can: one console with the P25 and DMR channels together.
+  - ~~Until then, a second Sidetone with a codeplug for the DMR FNE works, in its own window.~~ Done in 0.33: one console connects to every system in the codeplug (each turned off in Settings if wanted), so DMR channels on the DMR FNE will sit beside the P25 ones once DMR itself is done.
+  - Testing without radios: two Sidetones through the network test's FNE (item 1). On the air needs someone on CTRS with a DMR radio; until then the release notes say DMR is untested on the air.
+  - Ask the FNE's maintainers whether the `r05a06_dev` merge (DMR grant work on 2026-11-10) still needs a separate FNE for DMR.
+  - Still to do: encrypted DMR. Received encrypted calls show and are muted, and an encrypted DMR channel refuses to transmit, as in the Windows console.
+  - Still to do: DMR channels in patches (P25 to DMR needs transcoding between IMBE and AMBE).
+  - Still to do: alert tones, QCII pages, the channel marker and announcements on DMR channels.
+  - Still to do: radio commands and digital pages over DMR.
+  - **Analog** too, once we've confirmed how DVM carries it (the Windows console has `MainWindow.Analog.cs`). It may be the simplest.
 - ~~**Windows 10/11 and macOS.**~~ (macOS: done in 0.34; Windows: done in 0.35.) Avalonia and most of the core are already cross-platform, and audio goes through one backend interface (0.23). The Linux-only parts are the audio backend (PipeWire), PTT devices (evdev) and the control socket, so each platform needs its own version of those.
   - ~~macOS is new ground.~~ Done in 0.34: PortAudio over Core Audio, macOS's own speech (`say`), Keychain and notifications, Cmd for Ctrl. Windows already has the upstream console, so the gain there is smaller.
   - ~~**Windows next (0.35):**~~ Done in 0.35: an Inno Setup installer for x64 and ARM64 (per user, no admin), NAudio WASAPI audio (the Windows console's library), SAPI speech, Credential Manager, the TUI through the console's VT mode, CI on `windows-latest` and `windows-11-arm` (both suites natively, then install, the installed self-test and uninstall on both; Windows builds keep .NET's globalization for IANA time zones). The owner tests on Windows 10 and 11 x64 and Windows 11 ARM.

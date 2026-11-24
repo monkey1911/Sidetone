@@ -10,7 +10,7 @@ There are two front ends over the same console:
 - **`sidetone`**: a graphical console (Avalonia), with light and dark themes. See [Graphical console (sidetone)](#graphical-console-sidetone).
 - **Sidetone for Android**: the same graphical console as an Android app, with a phone layout. See [Android](#android).
 
-**What works** (Linux, macOS, Windows and Android)**:** FNE login (several systems at once), P25 receive and transmit (clear, AES-256, DES, ADP/ARC4 with keys from the FNE or a KFDtool key file), PipeWire audio, channel cards in tabs for the codeplug's zones, push-to-talk from the keyboard, a hotkey or a PTT device, alert tones, pages, radio commands, the channel marker, radio aliases, patching (two-way and one-way), instant recall with a call history kept between runs, audio outputs per tab and channel, recording to Opus or WAV, announcements (WAV files, or text spoken by Piper or espeak-ng, played onto talkgroups), a time announcement that can play by itself on the clock, web streams (MP3 feeds on a tab), and log files.
+**What works** (Linux, macOS, Windows and Android)**:** FNE login (several systems at once), P25 receive and transmit (clear, AES-256, DES, ADP/ARC4 with keys from the FNE or a KFDtool key file), DMR receive and transmit (clear, both timeslots), PipeWire audio, channel cards in tabs for the codeplug's zones, push-to-talk from the keyboard, a hotkey or a PTT device, alert tones, pages, radio commands, the channel marker, radio aliases, patching (two-way and one-way), instant recall with a call history kept between runs, audio outputs per tab and channel, recording to Opus or WAV, announcements (WAV files, or text spoken by Piper or espeak-ng, played onto talkgroups), a time announcement that can play by itself on the clock, web streams (MP3 feeds on a tab), and log files.
 
 **Not yet:** DMR/NXDN/analog. What we'd like to add next is in [WISHLIST.md](WISHLIST.md).
 
@@ -30,6 +30,7 @@ There are two front ends over the same console:
   - [When something goes wrong on Android](#when-something-goes-wrong-on-android)
 - [Codeplug](#codeplug)
   - [Several FNE systems](#several-fne-systems)
+  - [DMR](#dmr)
 - [Use](#use)
 - [Terminal console (TUI)](#terminal-console-tui)
 - [Graphical console (sidetone)](#graphical-console-sidetone)
@@ -233,6 +234,19 @@ A codeplug can list several systems (FNEs) under `systems:`, and each channel na
 - A **patch** can join channels on different systems. On the other system it's sent as the console's own radio ID there, since a radio ID from one FNE means nothing on another.
 - **Turning a system off:** Settings, **Systems** (shown when the codeplug has more than one system with channels) has a button per system; a system that's off isn't connected the next time the codeplug opens (a change reconnects at once). At least one stays on. `--system NAME` connects to only that system for the run (both consoles).
 - Settings are kept per system as before: each channel's under its own system. What belongs to the whole console (hidden tabs, tab outputs, the time announcement, call history) is kept under the first system, so a codeplug with one system works exactly as before.
+
+### DMR
+
+A channel with `mode: dmr` is a DMR talkgroup (0.37 and later). Its timeslot is `slot: 1` or `slot: 2`; without one it's timeslot 1, as in the Windows console. CTRS carries DMR on an FNE of its own, so the codeplug lists that FNE as a second system and its DMR channels name it (see [Several FNE systems](#several-fne-systems)).
+
+```yaml
+      - { name: "DMR Local", system: "CTRS DMR", tgid: "9", mode: "dmr", slot: 2 }
+```
+
+- **Receive:** a DMR card works like a P25 one: Listen, Mute, volume, the busy indicator, Recent calls, the log, radio aliases, Instant recall, recording and the call history. Its talkgroup line shows the timeslot (`TG 9 · TS2`), and the same talkgroup on the other timeslot is a different channel.
+- **Transmit:** PTT sends clear DMR group voice on the channel's talkgroup and timeslot, as the system's `rid`, with the same time limit.
+- **Encrypted DMR** isn't decoded yet (nor by the Windows console). An encrypted call shows as encrypted and its audio is muted, and the log says so once per call. A channel with an `algo` set says "DMR encrypted" and refuses to transmit; it never sends in the clear instead.
+- **Not on DMR yet:** patches (P25 to DMR would need converting between the two voice codecs), alert tones, QCII pages, the channel marker, announcements, and radio commands or digital pages from a focused DMR channel. Each says so when tried.
 
 ## Use
 

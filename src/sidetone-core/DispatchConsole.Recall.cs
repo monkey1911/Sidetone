@@ -34,6 +34,14 @@ namespace Sidetone.Core
         public bool Tx { get; init; }
         /// <summary>"clear", or the algorithm.</summary>
         public string Crypt { get; init; }
+        /// <summary>The codec of <see cref="Frames"/>: IMBE (P25) or AMBE (DMR).</summary>
+        public VoiceCodec Codec { get; init; }
+
+        /// <summary>The length of one of <see cref="Frames"/> in a codec.</summary>
+        public static int FrameLength(VoiceCodec codec) => codec == VoiceCodec.Ambe ? DmrVoiceReceiver.CodewordLength : P25VoiceReceiver.ImbeLength;
+
+        /// <summary>A decoder for a codec's frames.</summary>
+        internal static MBEDecoder NewDecoder(VoiceCodec codec) => new MBEDecoder(codec == VoiceCodec.Ambe ? MBE_MODE.DMR_AMBE : MBE_MODE.IMBE_88BIT);
         /// <summary>The clear IMBE codewords, 20 ms each.</summary>
         internal readonly List<byte[]> Frames = new List<byte[]>();
         internal uint StreamId;
@@ -104,7 +112,7 @@ namespace Sidetone.Core
         ** Collecting calls (network thread for receive, UI thread for transmit)
         */
 
-        private void RecallCodeword(Chan c, P25VoiceReceiver rx, byte[] imbe)
+        private void RecallCodeword(Chan c, IVoiceReceiver rx, byte[] imbe)
         {
             lock (recallLock)
             {
@@ -122,7 +130,8 @@ namespace Sidetone.Core
                         Source = rx.CurrentSource,
                         Who = c.Link.Aliases.Label(rx.CurrentSource),
                         Started = DateTime.Now,
-                        Crypt = alg == 0 || alg == fnecore.P25.P25Defines.P25_ALGO_UNENCRYPT ? "clear" : KeyStore.AlgorithmName(alg),
+                        Crypt = alg == 0 || alg == fnecore.P25.P25Defines.P25_ALGO_UNENCRYPT || rx.Codec == VoiceCodec.Ambe ? "clear" : KeyStore.AlgorithmName(alg),
+                        Codec = rx.Codec,
                         StreamId = stream
                     };
                     openRx[c] = call;
@@ -141,7 +150,7 @@ namespace Sidetone.Core
         }
 
         /// <summary>The console keyed up: keep what it sends, as it went out.</summary>
-        private void RecallTxStarted(Chan c, P25Transmitter t)
+        private void RecallTxStarted(Chan c, IVoiceTransmitter t)
         {
             RecalledCall call = new RecalledCall
             {
@@ -153,6 +162,7 @@ namespace Sidetone.Core
                 Started = DateTime.Now,
                 Tx = true,
                 Crypt = t.Encrypted ? KeyStore.AlgorithmName(t.AlgorithmId) : "clear",
+                Codec = t.Codec,
                 StreamId = t.StreamId
             };
             lock (recallLock)
@@ -229,7 +239,7 @@ namespace Sidetone.Core
         {
             if (c.Record == on)
                 return;
-            if (on && !c.IsP25)
+            if (on && !c.IsVoice)
             {
                 AddLog($"{c.Cfg.Name}: {c.Cfg.Mode} channels can't be recorded yet");
                 return;
@@ -315,7 +325,7 @@ namespace Sidetone.Core
                     {
                         if (!OperatingSystem.IsWindows())
                             File.SetUnixFileMode(partial, UnixFileMode.UserRead | UnixFileMode.UserWrite);
-                        MBEDecoder decoder = new MBEDecoder(MBE_MODE.IMBE_88BIT);
+                        MBEDecoder decoder = RecalledCall.NewDecoder(call.Codec);
                         foreach (byte[] imbe in call.Frames.ToList())
                         {
                             short[] samples = new short[P25VoiceReceiver.FrameSamples];
@@ -526,7 +536,7 @@ namespace Sidetone.Core
             {
                 try
                 {
-                    MBEDecoder decoder = new MBEDecoder(MBE_MODE.IMBE_88BIT);
+                    MBEDecoder decoder = RecalledCall.NewDecoder(call.Codec);
                     for (int i = 0; i < frames.Count && !job.Stop.IsCancellationRequested; i++)
                     {
                         if (!fast)

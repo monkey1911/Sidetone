@@ -85,6 +85,7 @@ namespace Sidetone.Gui
         internal ZoneOverlay ZoneBox => zoneBox;
 
         /// <summary>Whether a channel's card is on show (self-check hook).</summary>
+        internal ChannelCard CardFor(ConsoleChannel ch) => cards.FirstOrDefault(k => k.Channel == ch);
         internal bool CardShown(int index) => index >= 0 && index < cards.Count && cards[index].Root.IsVisible;
 
         /// <summary>The web stream cards (self-check hook).</summary>
@@ -1460,14 +1461,14 @@ namespace Sidetone.Gui
                 return;
             }
 
-            P25Transmitter t = c.Transmitter;
+            IVoiceTransmitter t = c.Transmitter;
             ConsoleChannel on = c.TxChannel;
             if (tx && t != null)
             {
                 string warn = c.MicMuted ? "     MIC MUTED" : c.NoAudioWarning ? "     NO AUDIO FROM THE MICROPHONE" : string.Empty;
                 txBar.Background = p.Tx;
                 txText.Foreground = p.OnStrong;
-                txText.Text = $"● TRANSMITTING   {on?.Cfg.Name}   tg {t.Talkgroup}   {(t.Encrypted ? KeyStore.AlgorithmName(t.AlgorithmId) : "clear")}   " +
+                txText.Text = $"● TRANSMITTING   {on?.Cfg.Name}   {on?.TgText ?? $"tg {t.Talkgroup}"}   {(t.Encrypted ? KeyStore.AlgorithmName(t.AlgorithmId) : "clear")}   " +
                               $"{DateTime.UtcNow - t.StartedAt:mm\\:ss} / {c.TxLimit:mm\\:ss}{warn}";
                 keyHints.Foreground = p.OnStrong;
                 return;
@@ -1477,8 +1478,8 @@ namespace Sidetone.Gui
             txBar.Background = p.Panel;
             keyHints.Foreground = p.Dim;
             txText.Foreground = c.MicMuted ? p.Tx : p.Dim;
-            txText.Text = (focus.IsP25
-                ? $"PTT transmits on {focus.Cfg.Name} (tg {focus.Tg}, {(focus.TxSecure ? KeyStore.AlgorithmName(focus.TxAlg) : "clear")})"
+            txText.Text = (focus.IsVoice
+                ? $"PTT transmits on {focus.Cfg.Name} ({focus.TxDescription})"
                 : $"{focus.Cfg.Name}: no transmit on {focus.Cfg.Mode}") + (c.MicMuted ? "     MIC MUTED" : string.Empty);
         }
 

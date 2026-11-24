@@ -29,7 +29,7 @@ namespace Sidetone.Core
     /// <summary>
     /// Transmits voice on one P25 talkgroup.
     /// </summary>
-    public sealed class P25Transmitter : IDisposable
+    public sealed class P25Transmitter : IVoiceTransmitter
     {
         /// <summary>Highest RTP sequence used for voice (the FNE reserves 65535 for call end).</summary>
         private const ushort MaxVoiceSequence = Constants.RtpCallEndSeq - 1;
@@ -48,6 +48,9 @@ namespace Sidetone.Core
         private ushort packetSequence;
 
         /// <summary>Source radio ID (the console RID).</summary>
+        /// <summary>P25 voice is IMBE.</summary>
+        public VoiceCodec Codec => VoiceCodec.Imbe;
+
         public uint SourceId { get; }
 
         /// <summary>Talkgroup.</summary>
@@ -284,7 +287,7 @@ namespace Sidetone.Core
             sink.SendP25Voice(frame, packetSequence, StreamId);
         }
 
-        private static uint NewStreamId()
+        internal static uint NewStreamId()
         {
             Span<byte> b = stackalloc byte[4];
             uint id;

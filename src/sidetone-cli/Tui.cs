@@ -841,7 +841,7 @@ namespace Sidetone.Cli
             Chan c = chans[idx];
             bool focused = idx == cursor;
             bool txHere = (Transmitting && txChan == c) || toneChans.Contains(c);
-            P25VoiceReceiver rx = c.Rx;
+            IVoiceReceiver rx = c.Rx;
             bool rxHere = c.Selected && rx != null && rx.InCall;
 
             Style border = txHere ? Style.Of(Ansi.BrightRed, bold: true)
@@ -865,7 +865,7 @@ namespace Sidetone.Cli
             // title and listen toggle
             string toggle = c.Selected ? "[●]" : "[ ]";
             int toggleX = right - 3;
-            Style nameStyle = !c.IsP25 ? dim : focused ? Style.Of(Ansi.Black, Ansi.BrightCyan, bold: true)
+            Style nameStyle = !c.IsVoice ? dim : focused ? Style.Of(Ansi.Black, Ansi.BrightCyan, bold: true)
                 : c.Selected ? Style.Of(Ansi.BrightWhite, bold: true) : Style.Of(Ansi.White);
             screen.Text(ix, box.Y, focused ? $" ▶ {c.Cfg.Name} " : $" {c.Cfg.Name} ", nameStyle, toggleX - ix - 1);
             screen.Text(toggleX, box.Y, toggle, c.Selected ? Style.Of(Ansi.BrightGreen, bold: true) : dim);
@@ -876,7 +876,7 @@ namespace Sidetone.Cli
             });
 
             int y = box.Y + 1;
-            if (!c.IsP25)
+            if (!c.IsVoice)
             {
                 screen.Text(ix, y, c.Tg != 0 ? $"TG {c.Tg}" : $"TG {c.Cfg.Tgid}", dim, iw);
                 screen.Text(ix, y + 1, $"{c.Cfg.Mode} · not supported yet", dim, iw);
@@ -885,10 +885,10 @@ namespace Sidetone.Cli
 
             // line 1: talkgroup and crypto
             string patch = PatchName(c);
-            screen.Text(ix, y, $"TG {c.Tg}{(patch != null ? $" {PatchMark(c)} {patch}" : string.Empty)}", patch != null ? Style.Of(Ansi.BrightCyan, bold: true) : Style.Of(Ansi.BrightWhite), iw);
+            screen.Text(ix, y, $"TG {c.Tg}{(c.IsDmr ? $" TS{c.Slot}" : string.Empty)}{(patch != null ? $" {PatchMark(c)} {patch}" : string.Empty)}", patch != null ? Style.Of(Ansi.BrightCyan, bold: true) : Style.Of(Ansi.BrightWhite), iw);
             // a selectable channel switched to clear still decrypts what it receives, so say which half is clear
-            string crypt = !c.Encrypted ? "clear" : c.TxSecure ? $"{KeyStore.AlgorithmName(c.TxAlg)} 🔒" : "TX CLEAR 🔓";
-            screen.TextRight(right, y, crypt, !c.Encrypted ? dim : c.TxSecure ? Style.Of(Ansi.BrightYellow) : Style.Of(Ansi.BrightRed, bold: true));
+            string crypt = c.DmrSecure ? "DMR encrypted" : !c.Encrypted ? "clear" : c.TxSecure ? $"{KeyStore.AlgorithmName(c.TxAlg)} 🔒" : "TX CLEAR 🔓";
+            screen.TextRight(right, y, crypt, c.DmrSecure ? Style.Of(Ansi.BrightYellow) : !c.Encrypted ? dim : c.TxSecure ? Style.Of(Ansi.BrightYellow) : Style.Of(Ansi.BrightRed, bold: true));
 
             // line 2: key
             if (c.Encrypted)
@@ -965,7 +965,7 @@ namespace Sidetone.Cli
             return x + w;
         }
 
-        private void DrawStatus(Chan c, P25VoiceReceiver rx, bool txHere, bool rxHere, int x, int y, int w)
+        private void DrawStatus(Chan c, IVoiceReceiver rx, bool txHere, bool rxHere, int x, int y, int w)
         {
             ToneJob job = toneJob;
             if (txHere && job != null && toneChans.Contains(c))
@@ -1069,13 +1069,13 @@ namespace Sidetone.Cli
                 Style s = Style.Of(Ansi.BrightWhite, Ansi.Red, bold: true);
                 screen.Fill(new Rect(0, y, width, 1), s);
                 string warn = micMuted ? "   ■ MIC MUTED (u to unmute)" : noAudioWarned ? "   ■ NO AUDIO FROM THE MICROPHONE" : string.Empty;
-                screen.Text(1, y, $"● TRANSMITTING  {txChan?.Cfg.Name}  tg {tx.Talkgroup}  {(tx.Encrypted ? KeyStore.AlgorithmName(tx.AlgorithmId) : "clear")}  " +
+                screen.Text(1, y, $"● TRANSMITTING  {txChan?.Cfg.Name}  {txChan?.TgText ?? $"tg {tx.Talkgroup}"}  {(tx.Encrypted ? KeyStore.AlgorithmName(tx.AlgorithmId) : "clear")}  " +
                                   $"{held:mm\\:ss} / {txLimit:mm\\:ss}   (Space, Esc or PTT to stop){warn}", s, width - 2);
             }
             else
             {
                 Chan c = chans[cursor];
-                string target = c.IsP25 ? $"PTT → {c.Cfg.Name} (tg {c.Tg}, {(c.TxSecure ? KeyStore.AlgorithmName(c.TxAlg) : "clear")})" : $"{c.Cfg.Name}: no transmit on {c.Cfg.Mode}";
+                string target = c.IsVoice ? $"PTT → {c.Cfg.Name} ({c.TxDescription})" : $"{c.Cfg.Name}: no transmit on {c.Cfg.Mode}";
                 // the key file waiting for its password: on the right, click (or K) to unlock it
                 int right = width - 1;
                 if (KeyFileLocked)

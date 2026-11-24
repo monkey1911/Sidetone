@@ -163,6 +163,10 @@ namespace Sidetone.Gui
 
         private readonly DispatchConsole console;
         private readonly ConsoleChannel chan;
+        /// <summary>The talkgroup line and whether its PTT button shows (self-check hooks).</summary>
+        internal string TgLine => tg.Text;
+        internal bool PttShown => pttTap.Root.IsVisible;
+        internal ConsoleChannel Channel => chan;
         private readonly int index;
         private readonly TextBlock name, tg, crypt, keyLine, status, last, vol;
         private readonly Border statusPill;
@@ -304,14 +308,14 @@ namespace Sidetone.Gui
             Root.BorderBrush = tx ? p.Tx : rx ? p.Rx : focused ? p.Accent : p.Edge;
 
             Set(name, chan.Cfg.Name);
-            name.Foreground = chan.IsP25 ? p.Text : p.Dim;
+            name.Foreground = chan.IsVoice ? p.Text : p.Dim;
 
             string patch = console.PatchName(chan);
-            Set(tg, (chan.Tg != 0 ? $"TG {chan.Tg}" : $"TG {chan.Cfg.Tgid}") + (console.MultiSystem ? $" · {chan.Link.Name}" : string.Empty) +
+            Set(tg, (chan.Tg != 0 ? $"TG {chan.Tg}" : $"TG {chan.Cfg.Tgid}") + (chan.IsDmr ? $" · TS{chan.Slot}" : string.Empty) + (console.MultiSystem ? $" · {chan.Link.Name}" : string.Empty) +
                     (patch != null ? $"   {DispatchConsole.PatchMark(chan)} {patch}" : string.Empty));
             tg.Foreground = patch != null ? p.Accent : p.Text;
 
-            if (!chan.IsP25)
+            if (!chan.IsVoice)
             {
                 Set(crypt, string.Empty);
                 Set(keyLine, string.Empty);
@@ -339,6 +343,16 @@ namespace Sidetone.Gui
                 keyLine.Foreground = have ? p.Rx : p.Warn;
                 keyTap.Root.IsVisible = !have;
                 keyTap.Paint(Brushes.Transparent, p.Warn, p.Warn);
+            }
+            else if (chan.DmrSecure)
+            {
+                Set(crypt, "DMR encrypted");
+                crypt.Foreground = p.Warn;
+                crypt.IsVisible = true;
+                secureTap.Root.IsVisible = false;
+                Set(keyLine, "can't be played or sent yet");
+                keyLine.Foreground = p.Warn;
+                keyTap.Root.IsVisible = false;
             }
             else
             {
@@ -380,8 +394,8 @@ namespace Sidetone.Gui
                 Set(last, string.IsNullOrEmpty(chan.LastCall) ? string.Empty : $"last: {chan.LastCall}");
                 last.Foreground = p.Dim;
             }
-            replayTap.Root.IsVisible = chan.IsP25;
-            recTap.Root.IsVisible = chan.IsP25;
+            replayTap.Root.IsVisible = chan.IsVoice;
+            recTap.Root.IsVisible = chan.IsVoice;
             replayTap.Text = replaying ? "Stop" : "Replay";
             if (replaying)
                 replayTap.Paint(p.Accent, p.OnStrong);
@@ -404,7 +418,7 @@ namespace Sidetone.Gui
             vol.Foreground = chan.Selected ? p.Text : p.Dim;
             quieter.Paint(Brushes.Transparent, p.Text, p.Edge);
             louder.Paint(Brushes.Transparent, p.Text, p.Edge);
-            pttTap.Root.IsVisible = chan.IsP25 && !chan.Cfg.RxOnly;
+            pttTap.Root.IsVisible = chan.IsVoice && !chan.Cfg.RxOnly && !chan.DmrSecure;
             if (st.Activity == ChannelActivity.Transmitting)
                 pttTap.Paint(p.Tx, p.OnStrong);
             else
@@ -430,15 +444,15 @@ namespace Sidetone.Gui
             if (narrow)
             {
                 line2.IsVisible = focused || keyTap.Root.IsVisible;
-                lastRow.IsVisible = focused && chan.IsP25;
-                bottomRow.IsVisible = focused && chan.IsP25;
+                lastRow.IsVisible = focused && chan.IsVoice;
+                bottomRow.IsVisible = focused && chan.IsVoice;
                 pttTap.Root.IsVisible = false;
             }
             else
             {
                 line2.IsVisible = true;
                 lastRow.IsVisible = true;
-                bottomRow.IsVisible = chan.IsP25;
+                bottomRow.IsVisible = chan.IsVoice;
             }
         }
 

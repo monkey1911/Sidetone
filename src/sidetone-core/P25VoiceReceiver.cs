@@ -16,7 +16,7 @@ namespace Sidetone.Core
     /// <summary>
     /// Receives P25 voice for a single talkgroup and produces decoded PCM.
     /// </summary>
-    public sealed class P25VoiceReceiver : IDisposable
+    public sealed class P25VoiceReceiver : IVoiceReceiver
     {
         /// <summary>Length of one IMBE codeword (88 bits).</summary>
         public const int ImbeLength = 11;
@@ -102,6 +102,9 @@ namespace Sidetone.Core
 
         /// <summary>Number of calls seen on the talkgroup.</summary>
         public int CallsSeen { get; private set; }
+
+        /// <summary>P25 voice is IMBE.</summary>
+        public VoiceCodec Codec => VoiceCodec.Imbe;
 
         /// <summary>True while a call is in progress.</summary>
         public bool InCall => streamId != 0;

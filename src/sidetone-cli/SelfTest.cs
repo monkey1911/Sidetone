@@ -10,6 +10,7 @@
 
 using System.Runtime.InteropServices;
 using dvmconsole;
+using fnecore.DMR;
 using fnecore.P25;
 
 namespace Sidetone.Cli
@@ -245,6 +246,9 @@ namespace Sidetone.Cli
 
                 // 19c. several FNE systems at once
                 MultiSystemTests(tmp);
+
+                // 19d. DMR: receive, clear transmit, recall, recording and history
+                DmrTests(tmp);
 
                 // 20. call history kept between runs
                 HistoryTests(tmp, cp, sys);
@@ -863,9 +867,9 @@ B: MSC=10
                       "patch: joining starts listening, and a patch of secure and clear channels is warned about");
 
                 foreach (var v in onAir.Voice)
-                    calling.Rx.Handle(calling.Tg, radio, (P25DUID)v.Frame[22], v.Stream, v.Frame);
+                    calling.P25Rx.Handle(calling.Tg, radio, (P25DUID)v.Frame[22], v.Stream, v.Frame);
                 bool during = pt.GetStatus(secureCh).Activity == ChannelActivity.Transmitting && pt.GetStatus(secureCh).Text.Contains("patch");
-                calling.Rx.Handle(calling.Tg, radio, P25DUID.TDU, airStream, new byte[24]);
+                calling.P25Rx.Handle(calling.Tg, radio, P25DUID.TDU, airStream, new byte[24]);
                 for (int ms = 0; ms <= 2000; ms += 10)
                     pt.PatchPump(TimeSpan.FromMilliseconds(ms));       // what was buffered drains out
 
@@ -888,7 +892,7 @@ B: MSC=10
                 // the FNE sending our own patch traffic back must not start it going the other way
                 int before = sentOut.Voice.Count, tdusBefore = sentOut.Tdus.Count;
                 foreach (var v in sentOut.Voice.Take(before).ToList())
-                    secureCh.Rx.Handle(secureCh.Tg, consoleRid, (P25DUID)v.Frame[22], v.Stream, v.Frame);
+                    secureCh.P25Rx.Handle(secureCh.Tg, consoleRid, (P25DUID)v.Frame[22], v.Stream, v.Frame);
                 for (int ms = 3000; ms <= 5000; ms += 10)
                     pt.PatchPump(TimeSpan.FromMilliseconds(ms));
                 Check(sentOut.Voice.Count == before && sentOut.Tdus.Count == tdusBefore, "patch: its own traffic coming back is not patched again");
@@ -931,7 +935,7 @@ B: MSC=10
                 for (int i = 0; i < 6 * 9; i++) paceTalker.PushAudio(VoicedFrame(i));      // six LDUs
                 uint paceStream = paceTalker.StreamId;
                 paceTalker.Stop();
-                void Feed(int ldu) => paceFrom.Rx.Handle(paceFrom.Tg, paceRadio, (P25DUID)paceAir.Voice[ldu].Frame[22], paceStream, paceAir.Voice[ldu].Frame);
+                void Feed(int ldu) => paceFrom.P25Rx.Handle(paceFrom.Tg, paceRadio, (P25DUID)paceAir.Voice[ldu].Frame[22], paceStream, paceAir.Voice[ldu].Frame);
 
                 // one LDU in: the talkgroup is asked for at once, but nothing is sent until two are waiting
                 Feed(0);
@@ -959,7 +963,7 @@ B: MSC=10
                 for (int ms = 1110; ms <= 1500; ms += 10)
                     pace.PatchPump(TimeSpan.FromMilliseconds(ms));
                 bool heldBack = paceOut.Voice.Count == 5;
-                paceFrom.Rx.Handle(paceFrom.Tg, paceRadio, P25DUID.TDU, paceStream, new byte[24]);
+                paceFrom.P25Rx.Handle(paceFrom.Tg, paceRadio, P25DUID.TDU, paceStream, new byte[24]);
                 bool stillSending = paceOut.Tdus.Count == 1 && pace.GetStatus(paceTo).Text.Contains("patch");
                 for (int ms = 1510; ms <= 2500; ms += 10)
                     pace.PatchPump(TimeSpan.FromMilliseconds(ms));
@@ -1003,8 +1007,8 @@ B: MSC=10
 
                 System.Diagnostics.Stopwatch liveClock = System.Diagnostics.Stopwatch.StartNew();
                 foreach (var v in liveAir.Voice)
-                    liveFrom.Rx.Handle(liveFrom.Tg, 4321, (P25DUID)v.Frame[22], liveStream, v.Frame);
-                liveFrom.Rx.Handle(liveFrom.Tg, 4321, P25DUID.TDU, liveStream, new byte[24]);
+                    liveFrom.P25Rx.Handle(liveFrom.Tg, 4321, (P25DUID)v.Frame[22], liveStream, v.Frame);
+                liveFrom.P25Rx.Handle(liveFrom.Tg, 4321, P25DUID.TDU, liveStream, new byte[24]);
                 long firstAt = -1, lastAt = -1;
                 int seen = 0;
                 while (liveClock.ElapsedMilliseconds < 5000 && Volatile.Read(ref liveOut.TduCount) < 5)
@@ -1189,8 +1193,8 @@ B: MSC=10
                     uint stream = talker.StreamId;
                     talker.Stop();
                     foreach (var v in air.Voice)
-                        calling.Rx.Handle(calling.Tg, radio, (P25DUID)v.Frame[22], v.Stream, v.Frame);
-                    calling.Rx.Handle(calling.Tg, radio, P25DUID.TDU, stream, new byte[24]);
+                        calling.P25Rx.Handle(calling.Tg, radio, (P25DUID)v.Frame[22], v.Stream, v.Frame);
+                    calling.P25Rx.Handle(calling.Tg, radio, P25DUID.TDU, stream, new byte[24]);
                 }
 
                 try
@@ -2753,8 +2757,8 @@ zones:
                 uint stream = talker.StreamId;
                 talker.Stop();
                 foreach (var v in air.Voice)
-                    ch.Rx.Handle(ch.Tg, 4321, (P25DUID)v.Frame[22], stream, v.Frame);
-                ch.Rx.Handle(ch.Tg, 4321, P25DUID.TDU, stream, new byte[24]);
+                    ch.P25Rx.Handle(ch.Tg, 4321, (P25DUID)v.Frame[22], stream, v.Frame);
+                ch.P25Rx.Handle(ch.Tg, 4321, P25DUID.TDU, stream, new byte[24]);
             }
 
             Tui h1 = NewConsole();
@@ -3183,6 +3187,249 @@ zones:
             Check(pieces.Count > whole.Length - 100 && worst < 1e-4, $"web streams: resampling in pieces matches resampling in one go (worst {worst:E1})");
         }
 
+        private const string DmrCodeplug = @"
+systems:
+  - { name: ""DMR FNE"", identity: ""DMR"", address: ""127.0.0.1"", port: 62061, peerId: 9000005, rid: ""3100001"", password: ""PASSWORD"" }
+zones:
+  - name: ""Talk""
+    channels:
+      - { name: ""Local TS1"", system: ""DMR FNE"", tgid: ""9"", mode: ""dmr"", slot: 1 }
+      - { name: ""Local TS2"", system: ""DMR FNE"", tgid: ""9"", mode: ""dmr"", slot: 2 }
+      - { name: ""Wide"", system: ""DMR FNE"", tgid: ""3100"", mode: ""dmr"" }
+      - { name: ""Secret"", system: ""DMR FNE"", tgid: ""31"", mode: ""dmr"", algo: ""arc4"" }
+      - { name: ""P25 side"", system: ""DMR FNE"", tgid: ""500"", mode: ""p25"" }
+";
+
+        /// <summary>A whole clear DMR group call as the network carries it: header, voice bursts (speech-like), filler, terminator.</summary>
+        private static List<byte[]> DmrCallPackets(uint src, uint tg, byte slot, uint stream, int voiceBursts, List<byte[]> codewords = null, bool release = true)
+        {
+            DMRCallData call = new DMRCallData { SrcId = src, DstId = tg, Slot = slot, TxStreamID = stream };
+            MBEEncoder enc = new MBEEncoder(MBE_MODE.DMR_AMBE);
+            List<byte[]> packets = new List<byte[]> { DMRFrame.EncodeHeader(call) };
+            for (int b = 0; b < voiceBursts; b++)
+            {
+                byte[] voice = new byte[DMRFrame.VoiceBytes];
+                for (int n = 0; n < 3; n++)
+                {
+                    byte[] cw = new byte[DMRFrame.CodewordBytes];
+                    enc.encode(VoicedFrame(b * 3 + n), cw);
+                    codewords?.Add(cw);
+                    Buffer.BlockCopy(cw, 0, voice, n * DMRFrame.CodewordBytes, DMRFrame.CodewordBytes);
+                }
+                packets.Add(DMRFrame.EncodeVoice(call, voice));
+            }
+            while (call.PendingVoiceBursts > 0)
+                packets.Add(DMRFrame.EncodeSilence(call));
+            if (release)
+                packets.Add(DMRFrame.EncodeRelease(call));
+            return packets;
+        }
+
+        /// <summary>A DMR packet as fnecore hands it on (FnePeer's own reading of the header byte).</summary>
+        private static fnecore.DMRDataReceivedEvent DmrEvent(byte[] p, uint stream)
+        {
+            byte bits = p[15];
+            uint src = (uint)((p[5] << 16) | (p[6] << 8) | p[7]), dst = (uint)((p[8] << 16) | (p[9] << 8) | p[10]);
+            return new fnecore.DMRDataReceivedEvent(1, src, dst, (byte)((bits & 0x80) != 0 ? 1 : 0), (bits & 0x40) != 0 ? fnecore.CallType.PRIVATE : fnecore.CallType.GROUP,
+                                            (fnecore.FrameType)((bits & 0x30) >> 4), (bits & 0x20) != 0 ? (DMRDataType)(bits & 0x0F) : DMRDataType.IDLE,
+                                            (byte)(bits & 0x0F), p[4], stream, p);
+        }
+
+        private static double Rms(IEnumerable<short[]> blocks)
+        {
+            double sum = 0;
+            long n = 0;
+            foreach (short[] b in blocks)
+                foreach (short x in b) { sum += (double)x * x; n++; }
+            return n == 0 ? 0 : Math.Sqrt(sum / n);
+        }
+
+        private static void DmrTests(string tmp)
+        {
+            string dPath = Path.Combine(tmp, "dmr.yml");
+            File.WriteAllText(dPath, DmrCodeplug);
+            Codeplug dcp = Program.LoadCodeplug(dPath);
+            Codeplug.System dsys = dcp.Systems[0];
+            string dHist = Path.Combine(tmp, "dmr-history"), dSettings = Path.Combine(tmp, "dmr-settings.json"), dRec = Path.Combine(tmp, "dmr-recordings");
+            DispatchConsole NewDmr(TimeSpan? limit = null) =>
+                new DispatchConsole(dcp, dsys, limit ?? TimeSpan.FromSeconds(120), null, null, dSettings) { NoAudio = true, HistoryFolder = dHist, RecordingsFolder = dRec };
+
+            DispatchConsole dc = NewDmr();
+            dc.recordInline = true;
+            ConsoleChannel ts1 = dc.Channels.First(c => c.Cfg.Name == "Local TS1"), ts2 = dc.Channels.First(c => c.Cfg.Name == "Local TS2"),
+                           secret = dc.Channels.First(c => c.Cfg.Name == "Secret"), wide = dc.Channels.First(c => c.Cfg.Name == "Wide");
+            Check(ts1.IsDmr && ts1.IsVoice && !ts1.IsP25 && ts1.Slot == 1 && ts2.Slot == 2 && wide.Slot == 1 && secret.DmrSecure && !ts1.DmrSecure &&
+                  dc.GetStatus(ts1).Activity == ChannelActivity.Idle && ts1.TxDescription == "tg 9, TS1, clear" && secret.TxDescription.Contains("encrypted DMR"),
+                  $"DMR: channels read from the codeplug with their timeslot (no slot: TS1), an encrypted one marked ({ts1.TxDescription}; {secret.TxDescription})");
+
+            // receive: a call on TS1 is played on the TS1 channel only
+            dc.Select(ts1);
+            dc.SetRecord(ts1, true);
+            List<short[]> heard = new List<short[]>();
+            ts1.Rx.Audio += b => { lock (heard) heard.Add((short[])b.Clone()); };
+            List<byte[]> sentCodewords = new List<byte[]>();
+            List<byte[]> callA = DmrCallPackets(3105, 9, 1, 701, 4, sentCodewords);
+            for (int i = 0; i < callA.Count - 1; i++)
+                dc.OnDmrFrame(DmrEvent(callA[i], 701));
+            ChannelStatus during = dc.GetStatus(ts1);
+            dc.OnDmrFrame(DmrEvent(callA[^1], 701));
+            List<RecalledCall> keptA = dc.RecalledCalls(ts1);
+            bool sameCodewords = keptA.Count == 1 && keptA[0].Frames.Take(12).Zip(sentCodewords).All(z => z.First.SequenceEqual(z.Second));
+            Check(during.Activity == ChannelActivity.Receiving && during.Text.Contains("3105") && heard.Count == 18 && Rms(heard.Take(12)) > 300 &&
+                  !ts1.Rx.InCall && dc.SnapshotRecent(5).Any(r => r.Chan == "DMR FNE:Local TS1:3105") && dc.SnapshotLog(10).Any(l => l.Contains("Local TS1: end")),
+                  $"DMR receive: a TS1 group call is decoded and played (AMBE, {heard.Count} frames, rms {Rms(heard.Take(12)):F0}), shown as RX, then ended by its terminator into Recent calls");
+            Check(sameCodewords && keptA[0].Codec == VoiceCodec.Ambe && keptA[0].Frames.Count == 18 && !keptA[0].Tx,
+                  "DMR recall: the call is kept as its AMBE codewords (the same ones sent), marked as DMR");
+            string recFile = dc.lastRecording;
+            long recSize = recFile != null && File.Exists(recFile) ? new FileInfo(recFile).Length : 0;
+            Check(recFile != null && Path.GetFileName(recFile).StartsWith(keptA[0].Started.ToString("HHmmss") + "_DMR-FNE_Local-TS1_3105") && recSize > 200,
+                  $"DMR recording: the call is saved to a file like a P25 one ({Path.GetFileName(recFile ?? "none")}, {recSize} bytes)");
+            List<short[]> replayed = new List<short[]>();
+            dc.replaySinkForTest = () => new ListSink(replayed);
+            dc.Replay(ts1, keptA[0]);
+            WaitFor(() => dc.Replaying == null, 5);
+            Check(replayed.Count == 18 && Rms(replayed.Take(12)) > 300, $"DMR recall: the call replays from its AMBE codewords ({replayed.Count} frames)");
+
+            // the same TG on TS2 is another channel; one that isn't listening shows busy
+            List<byte[]> callB = DmrCallPackets(3106, 9, 2, 702, 2);
+            int heardBefore = heard.Count;
+            for (int i = 0; i < callB.Count - 1; i++)
+                dc.OnDmrFrame(DmrEvent(callB[i], 702));
+            bool busy = dc.GetStatus(ts2).Activity == ChannelActivity.Busy && dc.GetStatus(ts2).Text.Contains("3106");
+            dc.OnDmrFrame(DmrEvent(callB[^1], 702));
+            Check(busy && dc.GetStatus(ts2).Activity == ChannelActivity.Idle && heard.Count == heardBefore,
+                  "DMR receive: the same talkgroup on TS2 is a different channel (busy there, nothing played on TS1)");
+
+            // a call whose terminator is lost ends after 3 s without frames
+            List<byte[]> callC = DmrCallPackets(3107, 9, 1, 703, 2, release: false);
+            foreach (byte[] p in callC)
+                dc.OnDmrFrame(DmrEvent(p, 703));
+            bool open = ts1.Rx.InCall;
+            DateTime later = DateTime.UtcNow.AddSeconds(5);
+            dc.clockForTest = () => later;
+            dc.CallHousekeeping();
+            dc.clockForTest = null;
+            Check(open && !ts1.Rx.InCall && dc.SnapshotLog(10).Any(l => l.Contains("its end didn't arrive")),
+                  "DMR receive: a call whose terminator was lost is ended after 3 s without frames");
+
+            // encrypted DMR: shown, logged once, nothing played or kept
+            List<byte[]> callE = DmrCallPackets(3108, 9, 1, 704, 3);
+            byte[] pi = (byte[])callE[0].Clone();
+            byte[] piFrame = pi.AsSpan(DMRFrame.HeaderBytes, DMRFrame.FrameBytes).ToArray();
+            FullLC.EncodePI(new PrivacyLC { DstId = 9, AlgId = 0x21, KId = 1 }, ref piFrame);
+            new SlotType { ColorCode = 0, DataType = (byte)DMRDataType.VOICE_PI_HEADER }.GetData(ref piFrame);
+            piFrame.CopyTo(pi, DMRFrame.HeaderBytes);
+            pi[15] = (byte)((pi[15] & 0xC0) | 0x20 | (byte)DMRDataType.VOICE_PI_HEADER);
+            callE.Insert(1, pi);
+            for (int i = 0; i < callE.Count; i++)
+                callE[i][4] = (byte)i;      // the packets' own sequence numbers, in order again
+            int heardBeforeE = heard.Count, keptBeforeE = dc.RecalledCalls(ts1).Count;
+            for (int i = 0; i < callE.Count - 1; i++)
+                dc.OnDmrFrame(DmrEvent(callE[i], 704));
+            ChannelStatus encStatus = dc.GetStatus(ts1);
+            dc.OnDmrFrame(DmrEvent(callE[^1], 704));
+            List<string> encLog = dc.SnapshotLog(20);
+            Check(encStatus.Activity == ChannelActivity.ReceivingNoKey && encStatus.Text.Contains("(encrypted)") && heard.Count == heardBeforeE &&
+                  dc.RecalledCalls(ts1).Count == keptBeforeE && encLog.Count(l => l.Contains("encrypted DMR, which can't be played yet")) == 1,
+                  $"DMR receive: an encrypted call shows as encrypted, is muted and logged once, and isn't kept ({encStatus.Text})");
+
+            // history: the DMR call comes back after a restart, as AMBE
+            dc.SaveHistory();
+            dc.Shutdown();
+            DispatchConsole dc2 = NewDmr();
+            dc2.LoadHistory();
+            List<RecalledCall> back = dc2.RecalledCalls(dc2.Channels.First(c => c.Cfg.Name == "Local TS1"));
+            string histText = File.ReadAllText(dc2.HistoryPath);
+            // the first call, and the one whose terminator was lost
+            Check(back.Count == 2 && back.All(b => b.Codec == VoiceCodec.Ambe) && back.Any(b => b.Frames.Count == 18 && b.Frames[0].SequenceEqual(sentCodewords[0])) &&
+                  histText.Contains("\"Codec\":\"ambe\""),
+                  $"DMR history: a DMR call is saved and comes back after a restart as AMBE ({back.Count})");
+            dc2.Shutdown();
+
+            // transmit: clear DMR, paced, as the console's RID on the channel's TG and slot
+            FakeAudio fake = new FakeAudio();
+            IAudioBackend realAudio = AudioBackend.Current;
+            try
+            {
+                AudioBackend.Current = fake;
+                DispatchConsole tc = NewDmr();
+                tc.NoAudio = false;
+                tc.consoleRidForTest = 3100001;
+                List<(byte[] Packet, long At)> sent = new List<(byte[], long)>();
+                System.Diagnostics.Stopwatch clock = System.Diagnostics.Stopwatch.StartNew();
+                tc.Links[0].DmrSendForTest = (call, packet, seq) => { lock (sent) sent.Add(((byte[])packet.Clone(), clock.ElapsedMilliseconds)); };
+                tc.Links[0].DmrFactoryForTest = new CliPeer(dsys, new KeyStore(), verbose: false);
+                ConsoleChannel txc = tc.Channels.First(c => c.Cfg.Name == "Wide");
+                string started = tc.StartTx(txc);
+                DmrTransmitter dtx = tc.Transmitter as DmrTransmitter;
+                for (int i = 0; i < 30; i++)
+                    fake.Input?.Raise(VoicedFrame(i));
+                tc.StopTx(null);
+                bool done = dtx != null && dtx.WaitSentForTest(TimeSpan.FromSeconds(10));
+                List<(byte[] Packet, long At)> got;
+                lock (sent) got = sent.ToList();
+                int Type(byte[] p) => p[15] & 0x3F;
+                List<(byte[] Packet, long At)> voiceOut = got.Where(x => (Type(x.Packet) & 0x20) == 0).ToList();
+                bool addressed = got.All(x => ((x.Packet[5] << 16) | (x.Packet[6] << 8) | x.Packet[7]) == 3100001 && ((x.Packet[8] << 16) | (x.Packet[9] << 8) | x.Packet[10]) == 3100 &&
+                                              (x.Packet[15] & 0xC0) == 0);
+                double gap = voiceOut.Count > 1 ? (voiceOut[^1].At - voiceOut[0].At) / (double)(voiceOut.Count - 1) : 0;
+                DmrVoiceReceiver back2 = new DmrVoiceReceiver(3100, 1);
+                List<short[]> decoded = new List<short[]>();
+                back2.Audio += b => decoded.Add(b);
+                foreach ((byte[] p, long _) in got)
+                    back2.Handle(DmrEvent(p, dtx?.StreamId ?? 1));
+                List<RecalledCall> txKept = tc.RecalledCalls(txc);
+                Check(started == null && done && got.Count >= 12 && Type(got[0].Packet) == 0x21 && Type(got[^1].Packet) == 0x22 && voiceOut.Count == 12 && addressed &&
+                      gap > 45 && gap < 120 && decoded.Count == 36 && Rms(decoded.Take(30)) > 300 && !back2.InCall,
+                      $"DMR transmit: header, {voiceOut.Count} voice bursts {gap:F0} ms apart, terminator, as the console's RID on the TG and TS1; it decodes back to the audio ({decoded.Count} frames)");
+                Check(txKept.Count == 1 && txKept[0].Tx && txKept[0].Codec == VoiceCodec.Ambe && txKept[0].Frames.Count == 30 &&
+                      tc.SnapshotRecent(5).Any(r => r.Chan == "DMR FNE:Wide:3100001" && r.Tx),
+                      "DMR transmit: what was sent is kept for Instant recall (AMBE) and listed in Recent calls");
+
+                string refused = tc.StartTx(tc.Channels.First(c => c.Cfg.Name == "Secret"));
+                Check(refused != null && refused.Contains("encrypted DMR can't be sent yet") && !tc.Transmitting,
+                      $"DMR transmit: an encrypted DMR channel refuses to transmit, never sending in the clear ({refused})");
+                tc.Shutdown();
+
+                // the transmit time limit applies on DMR too
+                DispatchConsole lc = NewDmr(TimeSpan.FromSeconds(1));
+                lc.NoAudio = false;
+                lc.consoleRidForTest = 3100001;
+                lc.Links[0].DmrSendForTest = (call, packet, seq) => { };
+                lc.Links[0].DmrFactoryForTest = new CliPeer(dsys, new KeyStore(), verbose: false);
+                string lStart = lc.StartTx(lc.Channels.First(c => c.Cfg.Name == "Wide"));
+                bool lOn = lc.Transmitting;
+                Thread.Sleep(1300);
+                lc.Housekeeping();
+                Check(lStart == null && lOn && !lc.Transmitting && lc.SnapshotLog(10).Any(l => l.Contains("1 s transmit limit reached")),
+                      "DMR transmit: the transmit time limit stops a DMR transmission");
+                lc.Shutdown();
+            }
+            finally
+            {
+                AudioBackend.Current = realAudio;
+            }
+
+            // not on DMR yet: patches, tones, announcements, radio commands, each with a plain reason
+            DispatchConsole nc = NewDmr();
+            nc.Select(nc.Channels.First(c => c.Cfg.Name == "Local TS1"));
+            nc.Links[0].DmrSendForTest = (call, packet, seq) => { };
+            nc.SetFocus(nc.chans.FindIndex(c => c.Cfg.Name == "Local TS1"));
+            string toneWhy = nc.ToneBlocker(), cmdWhy = nc.SendRadioCommand(0, 1234), pageWhy = nc.SendDigitalPage(1234);
+            Check(!DispatchConsole.CanPatch(nc.Channels.First(c => c.Cfg.Name == "Local TS1")) && toneWhy != null && toneWhy.Contains("aren't sent on DMR") &&
+                  cmdWhy.Contains("over DMR aren't supported") && pageWhy.Contains("over DMR aren't supported"),
+                  $"DMR: patches, tones and radio commands aren't on DMR yet, and say so ({toneWhy}; {cmdWhy})");
+            nc.Shutdown();
+
+            // the terminal console shows DMR cards with their timeslot, and PTT's target says it too
+            Tui dt = new Tui(dcp, dsys, TimeSpan.FromSeconds(120), null) { NoAudio = true };
+            string dScreen = string.Join("\n", Enumerable.Range(0, 40).Select(y => dt.Render(160, 40).RowText(y)));
+            Check(dScreen.Contains("TG 9 TS1") && dScreen.Contains("TG 9 TS2") && dScreen.Contains("DMR encrypted") && dScreen.Contains("PTT → Local TS1 (tg 9, TS1, clear)") &&
+                  !dScreen.Contains("not supported yet"),
+                  "DMR: the TUI shows DMR cards with their timeslot (and an encrypted one as such), and PTT's target with its timeslot");
+            dt.Shutdown();
+        }
+
         private const string MultiCodeplug = @"
 systems:
   - { name: ""Main FNE"", identity: ""MAIN"", address: ""127.0.0.1"", port: 62031, peerId: 9000001, rid: ""9000001"", password: ""PASSWORD"" }
@@ -3285,8 +3532,8 @@ zones:
             uint radioStream = radio.StreamId;      // (Stop clears it)
             radio.Stop();
             foreach (var v in air.Voice)
-                m601.Rx.Handle(601, 4321, (P25DUID)v.Frame[22], v.Stream, v.Frame);
-            m601.Rx.Handle(601, 4321, P25DUID.TDU, radioStream, new byte[24]);
+                m601.P25Rx.Handle(601, 4321, (P25DUID)v.Frame[22], v.Stream, v.Frame);
+            m601.P25Rx.Handle(601, 4321, P25DUID.TDU, radioStream, new byte[24]);
             for (int ms = 0; ms <= 30000; ms += 10)
                 mc.PatchPump(TimeSpan.FromMilliseconds(ms));     // the frames are stamped by the patch's own clock, seconds in by now
             List<(uint Src, uint Dst, uint Stream, bool Grant)> patched = otherOut.Tdus.Skip(otherBefore).ToList();
@@ -3393,8 +3640,8 @@ zones:
                 talker.Stop();
                 int before = owOut.Tdus.Count;
                 foreach (var v in air.Voice)
-                    ch.Rx.Handle(ch.Tg, owRadio, (P25DUID)v.Frame[22], stream, v.Frame);
-                ch.Rx.Handle(ch.Tg, owRadio, P25DUID.TDU, stream, new byte[24]);
+                    ch.P25Rx.Handle(ch.Tg, owRadio, (P25DUID)v.Frame[22], stream, v.Frame);
+                ch.P25Rx.Handle(ch.Tg, owRadio, P25DUID.TDU, stream, new byte[24]);
                 for (int n = 0; n < 300; n++)
                     ow.PatchPump(TimeSpan.FromMilliseconds(owClock += 10));
                 return owOut.Tdus.Skip(before).Where(t => t.Grant).Select(t => t.Dst).ToList();

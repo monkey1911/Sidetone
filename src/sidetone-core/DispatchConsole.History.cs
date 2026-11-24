@@ -96,7 +96,10 @@ namespace Sidetone.Core
             public bool Tx { get; set; }
             public string Crypt { get; set; }
             public bool Cut { get; set; }
-            /// <summary>The clear IMBE codewords, 11 bytes each, one after another, in base64.</summary>
+            /// <summary>"ambe" for a DMR call (9-byte codewords); left out for P25's IMBE.</summary>
+            [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+            public string Codec { get; set; }
+            /// <summary>The clear codewords (IMBE 11 bytes or AMBE 9 bytes each), one after another, in base64.</summary>
             public string Frames { get; set; }
         }
 
@@ -125,17 +128,19 @@ namespace Sidetone.Core
                 {
                     if (!secureToo && call.Crypt != "clear")
                         continue;
-                    long size = (long)call.Frames.Count * P25VoiceReceiver.ImbeLength;
+                    int frameLength = RecalledCall.FrameLength(call.Codec);
+                    long size = (long)call.Frames.Count * frameLength;
                     if (bytes + size > MaxHistoryAudioBytes)
                         continue;
                     bytes += size;
                     byte[] frames = new byte[size];
                     for (int i = 0; i < call.Frames.Count; i++)
-                        Buffer.BlockCopy(call.Frames[i], 0, frames, i * P25VoiceReceiver.ImbeLength, P25VoiceReceiver.ImbeLength);
+                        Buffer.BlockCopy(call.Frames[i], 0, frames, i * frameLength, frameLength);
                     snapshot.Calls.Add(new SavedCall
                     {
                         Key = HistoryKey(c), Channel = call.Channel, Talkgroup = call.Talkgroup, Source = call.Source, Who = call.Who,
-                        Started = call.Started, Tx = call.Tx, Crypt = call.Crypt, Cut = call.Cut, Frames = Convert.ToBase64String(frames)
+                        Started = call.Started, Tx = call.Tx, Crypt = call.Crypt, Cut = call.Cut,
+                        Codec = call.Codec == VoiceCodec.Ambe ? "ambe" : null, Frames = Convert.ToBase64String(frames)
                     });
                 }
             }
@@ -227,15 +232,17 @@ namespace Sidetone.Core
                     byte[] frames;
                     try { frames = Convert.FromBase64String(s.Frames); }
                     catch (FormatException) { continue; }
-                    if (frames.Length == 0 || frames.Length % P25VoiceReceiver.ImbeLength != 0)
+                    VoiceCodec codec = s.Codec == "ambe" ? VoiceCodec.Ambe : VoiceCodec.Imbe;
+                    int frameLength = RecalledCall.FrameLength(codec);
+                    if (frames.Length == 0 || frames.Length % frameLength != 0 || (codec == VoiceCodec.Ambe) != c.IsDmr)
                         continue;
                     RecalledCall call = new RecalledCall
                     {
-                        Channel = s.Channel ?? c.Cfg.Name, SystemName = c.Link.Name, Talkgroup = s.Talkgroup, Source = s.Source, Who = s.Who,
+                        Codec = codec, Channel = s.Channel ?? c.Cfg.Name, SystemName = c.Link.Name, Talkgroup = s.Talkgroup, Source = s.Source, Who = s.Who,
                         Started = s.Started, Tx = s.Tx, Crypt = s.Crypt ?? "clear", Cut = s.Cut
                     };
-                    for (int i = 0; i < frames.Length; i += P25VoiceReceiver.ImbeLength)
-                        call.Frames.Add(frames.AsSpan(i, P25VoiceReceiver.ImbeLength).ToArray());
+                    for (int i = 0; i < frames.Length; i += frameLength)
+                        call.Frames.Add(frames.AsSpan(i, frameLength).ToArray());
                     if (!recalled.TryGetValue(c, out LinkedList<RecalledCall> list))
                         recalled[c] = list = new LinkedList<RecalledCall>();
                     if (list.Count >= RecallPerChannel)

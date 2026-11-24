@@ -630,6 +630,15 @@ namespace Sidetone.Gui
                   "tabs: Z opens the Tabs box; arrows and Space hide and show zones (hiding the tab on show moves to another); Esc closes it");
             c.SetFocus(1);
 
+            // DMR: the demo's DMR channel is a working card with its timeslot and PTT
+            ConsoleChannel dmrCh = c.Channels.First(x => x.IsDmr);
+            c.ShowZone(dmrCh.InZone);
+            w.View.RefreshNow();
+            ChannelCard dmrCard = w.View.CardFor(dmrCh);
+            Check(dmrCard != null && dmrCard.TgLine.Contains("TS1") && dmrCard.PttShown && c.GetStatus(dmrCh).Activity != ChannelActivity.Unsupported,
+                  $"DMR: the demo's DMR channel is a card like any other, with its timeslot and PTT ({dmrCard?.TgLine})");
+            c.SetFocus(1);
+
             // web streams: the demo's one is a card after the Dispatch tab's channels, off until Play
             c.ShowZone(c.Zones[0]);
             w.View.RefreshNow();

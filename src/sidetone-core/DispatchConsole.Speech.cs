@@ -204,6 +204,8 @@ namespace Sidetone.Core
             else
             {
                 Chan c = chans[cursor];
+                if (c.IsDmr)
+                    return $"{c.Cfg.Name}: announcements aren't sent on DMR channels yet";
                 if (!c.IsP25)
                     return $"{c.Cfg.Name}: can't transmit on a {c.Cfg.Mode} channel";
                 if (c.Cfg.RxOnly)
@@ -517,6 +519,8 @@ namespace Sidetone.Core
             Chan c = chans.FirstOrDefault(x => x.Cfg.Name == t.Channel);
             if (c == null)
                 return $"no channel called {t.Channel} in this system";
+            if (c.IsDmr)
+                return $"{c.Cfg.Name}: announcements aren't sent on DMR channels yet";
             if (!c.IsP25 || c.Cfg.RxOnly)
                 return $"{c.Cfg.Name} can't transmit";
             if (!c.Selected)

@@ -151,7 +151,7 @@ namespace Sidetone.Core
                 return;
             if (patch != 0 && !c.IsP25)
             {
-                AddLog($"{c.Cfg.Name}: {c.Cfg.Mode} channels can't be patched yet");
+                AddLog(c.IsDmr ? $"{c.Cfg.Name}: DMR channels can't be patched yet" : $"{c.Cfg.Name}: {c.Cfg.Mode} channels can't be patched yet");
                 return;
             }
             if (Transmitting && txChan != null && (txChan.Patch == was && was != 0 || txChan.Patch == patch && patch != 0))
@@ -292,7 +292,7 @@ namespace Sidetone.Core
         */
 
         /// <summary>One decrypted voice codeword arrived on a listening channel.</summary>
-        private void PatchCodeword(Chan c, P25VoiceReceiver rx, byte[] imbe)
+        private void PatchCodeword(Chan c, IVoiceReceiver rx, byte[] imbe)
         {
             int p = c.Patch;
             if (p == 0 || c.PatchRole == PatchRole.TargetOnly)

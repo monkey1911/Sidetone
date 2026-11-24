@@ -109,7 +109,7 @@ namespace Sidetone.Gui
 
             channelRow.Children.Clear();
             channelTaps.Clear();
-            foreach (ConsoleChannel ch in c.Channels.Where(ch => ch.IsP25))
+            foreach (ConsoleChannel ch in c.Channels.Where(ch => ch.IsVoice))
             {
                 ConsoleChannel target = ch;
                 Tap t = new Tap(ch.Cfg.Name, () => { shown = target; shownVersion = -1; changed(); }, fontSize: 12, padX: 10, padY: 4);
@@ -117,7 +117,7 @@ namespace Sidetone.Gui
                 channelTaps.Add((ch, t));
                 channelRow.Children.Add(t.Root);
             }
-            shown = chan ?? c.Channels.FirstOrDefault(ch => ch.IsP25);
+            shown = chan ?? c.Channels.FirstOrDefault(ch => ch.IsVoice);
             shownVersion = -1;
             Root.IsVisible = true;
         }

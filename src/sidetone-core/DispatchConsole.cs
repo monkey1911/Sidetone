@@ -16,6 +16,7 @@
 using System.Globalization;
 using dvmconsole;
 using fnecore;
+using fnecore.DMR;
 using fnecore.P25;
 using Chan = Sidetone.Core.ConsoleChannel;
 
@@ -37,6 +38,18 @@ namespace Sidetone.Core
         public bool Hidden => InZone != null && InZone.Hidden;
         public uint Tg;
         public bool IsP25;
+        /// <summary>A DMR channel (receive and clear transmit; no patches, tones or announcements yet).</summary>
+        public bool IsDmr;
+        /// <summary>The DMR timeslot, 1 or 2 (the codeplug's slot; 1 when it isn't set, as on Windows).</summary>
+        public byte Slot = 1;
+        /// <summary>A channel Sidetone can listen to and transmit on (P25 or DMR).</summary>
+        public bool IsVoice => IsP25 || IsDmr;
+        /// <summary>A DMR channel the codeplug encrypts: transmit is refused (never sent in the clear instead).</summary>
+        public bool DmrSecure;
+        /// <summary>"tg 100" on P25, "tg 100, TS1" on DMR.</summary>
+        public string TgText => IsDmr ? $"tg {Tg}, TS{Slot}" : $"tg {Tg}";
+        /// <summary>What PTT sends on this channel: "tg 100, clear", "tg 100, AES-256", "tg 9, TS2, clear".</summary>
+        public string TxDescription => $"{TgText}, {(DmrSecure ? "encrypted DMR, no transmit yet" : TxSecure ? KeyStore.AlgorithmName(TxAlg) : "clear")}";
         public bool Encrypted;
         public byte TxAlg;
         public byte KeyRequestAlg;
@@ -69,7 +82,9 @@ namespace Sidetone.Core
         public volatile bool Selected;
         public volatile bool Muted;
         public double Gain = 1.0;
-        public P25VoiceReceiver Rx;
+        public IVoiceReceiver Rx;
+        /// <summary>The receiver as a P25 one (self-test).</summary>
+        internal P25VoiceReceiver P25Rx => Rx as P25VoiceReceiver;
         public IAudioOutput Sink;
 
         // activity seen on channels that aren't selected
@@ -110,14 +125,14 @@ namespace Sidetone.Core
         internal int cursor;
         internal volatile bool globalMute;
 
-        internal P25Transmitter tx;
+        internal IVoiceTransmitter tx;
         internal Chan txChan;
         internal IAudioInput capture;
         internal volatile string pendingTxStop;
 
         // microphone: one capture shared by transmit and the level meter
         internal readonly LevelMeter micLevel = new LevelMeter();
-        internal volatile P25Transmitter txFeed;     // gets mic audio while transmitting
+        internal volatile IVoiceTransmitter txFeed;     // gets mic audio while transmitting
         internal bool micMonitor;                    // mic open just for the meter (v)
         internal volatile string pendingMicFail;
 
@@ -215,6 +230,7 @@ namespace Sidetone.Core
                         continue;
 
                     bool p25 = c.GetChannelMode() == Codeplug.ChannelMode.P25;
+                    bool dmr = c.GetChannelMode() == Codeplug.ChannelMode.DMR;
                     bool enc = p25 && !string.IsNullOrWhiteSpace(c.Algo) && !c.Algo.Equals("none", StringComparison.OrdinalIgnoreCase);
                     uint.TryParse(c.Tgid, out uint tg);
                     ConsoleZone inZone = ZoneFor(zone, zi);
@@ -226,6 +242,9 @@ namespace Sidetone.Core
                         InZone = inZone,
                         Tg = tg,
                         IsP25 = p25 && tg != 0,
+                        IsDmr = dmr && tg != 0 && tg <= 0xFFFFFF,
+                        Slot = (byte)(c.Slot == 2 ? 2 : 1),
+                        DmrSecure = dmr && c.GetDmrAlgorithmId() != 0,
                         Encrypted = enc,
                         Selectable = enc && c.SelectableEncryption,
                         TxAlg = enc ? c.GetAlgoId() : P25Defines.P25_ALGO_UNENCRYPT,
@@ -270,6 +289,7 @@ namespace Sidetone.Core
                 FneLink l = link;
                 link.Peer.Status += m => AddLog(Tagged(l, m));
                 link.Peer.P25Frame += e => OnFrame(l, e);
+                link.Peer.DmrFrame += e => OnDmrFrame(l, e);
                 link.Peer.P25Control += (lco, src, dst, tsbk) => OnP25Control(l, lco, src, dst, tsbk);
                 link.Peer.Aliases = link.Aliases;
             }
@@ -406,7 +426,7 @@ namespace Sidetone.Core
         /// <summary>The channel being transmitted on, or null.</summary>
         public ConsoleChannel TxChannel => txChan;
         /// <summary>The current transmission, or null.</summary>
-        public P25Transmitter Transmitter => tx;
+        public IVoiceTransmitter Transmitter => tx;
         /// <summary>The tone being sent (alert, page, marker beep), or null.</summary>
         public ToneJob ActiveTone => toneJob;
         /// <summary>Whether a tone is being sent on this channel.</summary>
@@ -448,21 +468,27 @@ namespace Sidetone.Core
         public ChannelStatus GetStatus(ConsoleChannel c)
         {
             bool muted = c.Muted || globalMute;
-            if (!c.IsP25)
+            if (!c.IsVoice)
                 return new ChannelStatus(ChannelActivity.Unsupported, $"{c.Cfg.Mode}: not supported yet", muted);
 
             ToneJob job = toneJob;
             if (job != null && toneChans.Contains(c))
                 return new ChannelStatus(ChannelActivity.SendingTone, $"sending {job.Plan.Name}", muted);
 
-            P25Transmitter t = tx;
+            IVoiceTransmitter t = tx;
             if (t != null && t.IsTransmitting && txChan == c)
                 return new ChannelStatus(ChannelActivity.Transmitting, $"TX {DateTime.UtcNow - t.StartedAt:mm\\:ss}", muted);
             string patched = PatchTransmitText(c);
             if (patched != null)
                 return new ChannelStatus(ChannelActivity.Transmitting, patched, muted);
 
-            P25VoiceReceiver rx = c.Rx;
+            IVoiceReceiver rx = c.Rx;
+            if (c.Selected && rx is DmrVoiceReceiver dmrRx && rx.InCall)
+            {
+                bool encrypted = dmrRx.CallEncrypted;
+                return new ChannelStatus(encrypted ? ChannelActivity.ReceivingNoKey : ChannelActivity.Receiving,
+                                         $"RX {c.Link.Aliases.Label(rx.CurrentSource)}{(encrypted ? " (encrypted)" : string.Empty)}", muted);
+            }
             if (c.Selected && rx != null && rx.InCall)
             {
                 byte alg = rx.CurrentAlgorithm;
@@ -495,8 +521,7 @@ namespace Sidetone.Core
             bool terminator = e.DUID == P25DUID.TDU || e.DUID == P25DUID.TDULC;
             foreach (Chan c in matching)
             {
-                P25VoiceReceiver rx = c.Rx;
-                if (c.Selected && rx != null)
+                if (c.Selected && c.Rx is P25VoiceReceiver rx)
                 {
                     rx.Handle(e.DstId, e.SrcId, e.DUID, e.StreamId, e.Data);
                     continue;
@@ -511,6 +536,47 @@ namespace Sidetone.Core
                             EndBusy(c);
                     }
                     else if (e.DUID == P25DUID.LDU1 || e.DUID == P25DUID.LDU2 || e.DUID == P25DUID.HDU)
+                    {
+                        c.Active = true;
+                        c.ActiveSrc = e.SrcId;
+                        c.ActiveStream = e.StreamId;
+                        c.ActiveLast = UtcNow;
+                    }
+                }
+            }
+        }
+
+        internal void OnDmrFrame(DMRDataReceivedEvent e) => OnDmrFrame(links[0], e);
+
+        /// <summary>A DMR packet from one system: only that system's DMR channels on its talkgroup and timeslot take it.</summary>
+        internal void OnDmrFrame(FneLink link, DMRDataReceivedEvent e)
+        {
+            if (e.CallType != CallType.GROUP || e.StreamId == 0 || !DMRFrame.IsVoicePacket(e.Data))
+                return;
+            if (tx is DmrTransmitter mine && mine.StreamId == e.StreamId)
+                return;     // our own transmission coming back
+            List<Chan> matching;
+            lock (uiLock)
+                matching = chans.Where(c => c.Link == link && c.IsDmr && c.Tg == e.DstId && c.Slot == e.Slot + 1 && !c.Hidden).ToList();
+
+            bool terminator = e.FrameType == FrameType.DATA_SYNC && e.DataType == DMRDataType.TERMINATOR_WITH_LC;
+            foreach (Chan c in matching)
+            {
+                if (c.Selected && c.Rx is DmrVoiceReceiver rx)
+                {
+                    rx.Handle(e);
+                    continue;
+                }
+
+                // not selected: just show that the channel is busy
+                lock (uiLock)
+                {
+                    if (terminator)
+                    {
+                        if (c.Active && e.StreamId == c.ActiveStream)
+                            EndBusy(c);
+                    }
+                    else
                     {
                         c.Active = true;
                         c.ActiveSrc = e.SrcId;
@@ -560,7 +626,7 @@ namespace Sidetone.Core
                 AddLog($"{c.Cfg.Name}: zone {c.InZone.Name} is hidden; show it again to listen here");
                 return;
             }
-            if (!c.IsP25)
+            if (!c.IsVoice)
             {
                 AddLog($"{c.Cfg.Name}: {c.Cfg.Mode} channels aren't supported yet");
                 return;
@@ -568,7 +634,8 @@ namespace Sidetone.Core
 
             FneLink link = c.Link;
             RadioAliasBook aliases = link.Aliases;
-            P25VoiceReceiver rx = new P25VoiceReceiver(c.Tg, link.Keys) { Clock = () => UtcNow };
+            IVoiceReceiver rx = c.IsDmr ? new DmrVoiceReceiver(c.Tg, c.Slot) { Clock = () => UtcNow }
+                                        : new P25VoiceReceiver(c.Tg, link.Keys) { Clock = () => UtcNow };
             rx.Status += s => { if (!s.StartsWith("CALL ")) AddLog($"{c.Cfg.Name}: {s}"); };
             rx.KeyNeeded += (alg, kid) => link.Peer?.RequestKey(alg, kid);
             rx.DescribeSource = aliases.Describe;
@@ -583,8 +650,9 @@ namespace Sidetone.Core
                 AddLog($"{c.Cfg.Name}: end {aliases.Describe(src)}, {secs:F1} s, {crypt}{(muted > 0 ? $", {muted} frames muted" : string.Empty)}");
                 AddRecent(CallLabel(c, src), null, $"{secs:F0} s, {crypt}{(muted > 0 ? ", partly muted" : string.Empty)}", tx: false);
             };
-            rx.Codeword += imbe => PatchCodeword(c, rx, imbe);
-            rx.Codeword += imbe => RecallCodeword(c, rx, imbe);
+            if (c.IsP25)
+                rx.Codeword += imbe => PatchCodeword(c, rx, imbe);     // patches are P25 only (DMR would need transcoding)
+            rx.Codeword += codeword => RecallCodeword(c, rx, codeword);
             rx.CallEnded += (src, secs, played, muted, crypt) => PatchCallEnded(c);
             rx.CallEnded += (src, secs, played, muted, crypt) => RecallCallEnded(c);
             rx.Audio += samples =>
@@ -614,7 +682,7 @@ namespace Sidetone.Core
             c.Rx = rx;
             c.Active = false;
             c.Selected = true;
-            AddLog($"{c.Cfg.Name}: listening (tg {c.Tg})");
+            AddLog($"{c.Cfg.Name}: listening (tg {c.Tg}{(c.IsDmr ? $", TS{c.Slot}" : string.Empty)})");
             MarkDirty();
 
             if (c.Encrypted && KeyStore.IsSupported(c.KeyRequestAlg) && !c.Link.Keys.TryGet(c.KeyRequestAlg, c.KeyId, out _))
@@ -634,7 +702,7 @@ namespace Sidetone.Core
             RecallCallEnded(c);
 
             c.Selected = false;
-            P25VoiceReceiver rx = c.Rx;
+            IVoiceReceiver rx = c.Rx;
             IAudioOutput sink = c.Sink;
             c.Rx = null;
             c.Sink = null;
@@ -749,8 +817,10 @@ namespace Sidetone.Core
             }
 
             Chan c = target ?? chans[cursor];
-            if (!c.IsP25)
+            if (!c.IsVoice)
                 return Refuse($"{c.Cfg.Name}: can't transmit on a {c.Cfg.Mode} channel");
+            if (c.DmrSecure)
+                return Refuse($"{c.Cfg.Name}: encrypted DMR can't be sent yet (and isn't sent in the clear instead)");
             if (c.Cfg.RxOnly)
                 return Refuse($"{c.Cfg.Name}: receive-only channel");
             if (!c.Link.CanSend)      // connected (the self-test's stand-in sink counts)
@@ -760,7 +830,8 @@ namespace Sidetone.Core
 
             Select(c);
 
-            P25Transmitter t = new P25Transmitter(c.Link.Sink, c.Link.Keys, c.Link.ConsoleRid, c.Tg, c.ActiveTxAlg, c.ActiveKeyId);
+            IVoiceTransmitter t = c.IsDmr ? new DmrTransmitter(c.Link, c.Link.ConsoleRid, c.Tg, c.Slot)
+                                          : new P25Transmitter(c.Link.Sink, c.Link.Keys, c.Link.ConsoleRid, c.Tg, c.ActiveTxAlg, c.ActiveKeyId);
             if (!t.Start(out string error))
             {
                 if (c.TxSecure && KeyStore.IsSupported(c.KeyRequestAlg))
@@ -776,12 +847,13 @@ namespace Sidetone.Core
 
             tx = t;
             txChan = c;
-            StartPatchTx(c, t);     // the rest of its patch hears the console too
+            if (t is P25Transmitter p25)
+                StartPatchTx(c, p25);     // the rest of its patch hears the console too
             RecallTxStarted(c, t);
             txFeed = t;
             if (talkPermit)
                 c.Sink?.Write(TalkPermitPcm());     // played locally once the call has started, as the Windows console does
-            AddLog($"{c.Cfg.Name}: TX start as {c.Link.ConsoleRid}{(t.Encrypted ? $" ({KeyStore.AlgorithmName(t.AlgorithmId)} key 0x{t.KeyId:X4})" : " (clear)")}");
+            AddLog($"{c.Cfg.Name}: TX start as {c.Link.ConsoleRid}{(c.IsDmr ? $" on TS{c.Slot}" : string.Empty)}{(t.Encrypted ? $" ({KeyStore.AlgorithmName(t.AlgorithmId)} key 0x{t.KeyId:X4})" : " (clear)")}");
             return null;
         }
 
@@ -852,9 +924,11 @@ namespace Sidetone.Core
 
         public void StopTx(string reason)
         {
-            P25Transmitter t = tx;
+            IVoiceTransmitter t = tx;
             if (t == null)
                 return;
+            if (reason == null && t is DmrTransmitter { Failure: string failed })
+                reason = failed;
 
             txFeed = null;      // stop feeding mic audio before the call ends
             StopPatchTx();
@@ -1084,7 +1158,7 @@ namespace Sidetone.Core
                 return $"ok: transmitting on {txChan?.Cfg.Name} (tg {tx.Talkgroup}) for {(DateTime.UtcNow - tx.StartedAt).TotalSeconds:F0} s";
             Chan c = chans[cursor];
             string conn = Connected ? "connected" : links.Count > 1 && ConnectedCount > 0 ? $"{ConnectedCount} of {links.Count} systems connected" : "not connected";
-            return $"ok: idle, {conn}, PTT would transmit on {c.Cfg.Name}{(c.IsP25 ? $" (tg {c.Tg})" : $" ({c.Cfg.Mode}, no transmit)")}";
+            return $"ok: idle, {conn}, PTT would transmit on {c.Cfg.Name}{(c.IsVoice ? $" ({c.TgText})" : $" ({c.Cfg.Mode}, no transmit)")}";
         }
 
         public bool Transmitting => tx != null && tx.IsTransmitting;
@@ -1120,7 +1194,7 @@ namespace Sidetone.Core
             micLevel.Push(samples);
             if (RmsDb(samples) > NoAudioDb)
                 Interlocked.Exchange(ref lastVoiceTicks, DateTime.UtcNow.Ticks);
-            P25Transmitter feed = txFeed;
+            IVoiceTransmitter feed = txFeed;
             if (feed == null)
                 return;
             short[] tx = MicToTx(samples);
@@ -1361,11 +1435,11 @@ namespace Sidetone.Core
                     continue;
                 c.Muted = cs.Muted;
                 c.TxClear = cs.TxClear && c.Selectable;
-                c.Record = cs.Record && cs.Listening && c.IsP25;
+                c.Record = cs.Record && cs.Listening && c.IsVoice;
                 c.Gain = Math.Clamp(cs.Gain, 0.25, 8.0);
                 if (c.Hidden)
                     c.Record = false;
-                if (cs.Listening && c.IsP25 && !c.Hidden)
+                if (cs.Listening && c.IsVoice && !c.Hidden)
                 {
                     Select(c);
                     restored.Add(c.Cfg.Name + (c.Record ? " (recording)" : string.Empty));
@@ -1429,6 +1503,8 @@ namespace Sidetone.Core
         public string SendRadioCommand(int action, uint rid)
         {
             (string label, ExtendedFunction fn) = RadioActions[action];
+            if (chans[cursor].IsDmr)
+                return "radio commands over DMR aren't supported yet; focus a P25 channel to send one";
             FneLink link = CommandLink;
             RadioAliasBook aliases = link.Aliases;
             string error = NotConnectedText(link);
@@ -1448,6 +1524,8 @@ namespace Sidetone.Core
         /// </summary>
         public string SendDigitalPage(uint rid)
         {
+            if (chans[cursor].IsDmr)
+                return "digital pages over DMR aren't supported yet; focus a P25 channel to send one";
             FneLink link = CommandLink;
             RadioAliasBook aliases = link.Aliases;
             string error = NotConnectedText(link);
@@ -1490,7 +1568,8 @@ namespace Sidetone.Core
             if (!links.Any(l => l.CanSend))
                 return "not connected to the FNE yet";
             if (TxCapableListening().Count == 0)
-                return "no listening channels to send the tone on (click a card to listen)";
+                return chans.Any(c => c.Selected && c.IsDmr) ? "alert tones and pages aren't sent on DMR channels yet; listen to a P25 channel to send one"
+                                                             : "no listening channels to send the tone on (click a card to listen)";
             return null;
         }
 

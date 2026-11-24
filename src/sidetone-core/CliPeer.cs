@@ -3,7 +3,7 @@
 * Sidetone - an IP dispatch console for DVMProject FNE networks.
 *
 * Connects to an FNE master as a console peer (using fnecore) and forwards
-* P25 traffic to a P25VoiceReceiver. DMR, NXDN and analog traffic are ignored.
+* P25 traffic to a P25VoiceReceiver, DMR traffic to a DmrVoiceReceiver. NXDN and analog traffic are ignored.
 */
 
 using System.Net;
@@ -33,6 +33,9 @@ namespace Sidetone.Core
 
         /// <summary>Raised on the network thread for every P25 frame from the FNE (all talkgroups).</summary>
         public event Action<P25DataReceivedEvent> P25Frame;
+
+        /// <summary>A DMR packet from the network (group or private; the console picks what it listens to).</summary>
+        public event Action<DMRDataReceivedEvent> DmrFrame;
 
         /// <summary>
         /// Raised for every P25 control message (TSDU): LCO, header source and destination, and the decoded 12-byte
@@ -452,7 +455,19 @@ namespace Sidetone.Core
         protected override bool DMRDataValidate(uint peerId, uint srcId, uint dstId, byte slot, CallType callType, FrameType frameType, DMRDataType dataType, uint streamId, byte[] message) => true;
 
         /// <inheritdoc/>
-        protected override void DMRDataReceived(object sender, DMRDataReceivedEvent e) { }
+        protected override void DMRDataReceived(object sender, DMRDataReceivedEvent e)
+        {
+            try
+            {
+                if (verbose)
+                    Status?.Invoke($"dmr src {e.SrcId} tg {e.DstId} TS{e.Slot + 1} {e.FrameType} stream {e.StreamId} ({e.Data?.Length ?? 0} bytes)");
+                DmrFrame?.Invoke(e);
+            }
+            catch (Exception ex)
+            {
+                Status?.Invoke($"error handling DMR frame: {ex.Message}");
+            }
+        }
 
         /// <inheritdoc/>
         protected override bool NXDNDataValidate(uint peerId, uint srcId, uint dstId, CallType callType, NXDNMessageType messageType, FrameType frameType, uint streamId, byte[] message) => true;
