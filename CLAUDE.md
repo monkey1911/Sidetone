@@ -199,8 +199,11 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
   (Piper is installed on the owner's Surface, through `uv tool install piper-tts`, with the
   en_US-lessac-medium voice).
 - Next on the wishlist ("To be implemented"): a CI test against a real dvmfne (waiting for dvmhost's
-  `r05a06_dev` to merge into `master`); NXDN (CTRS doesn't carry it, and there's no hardware to test it);
-  TMS and Location over MQTT (waiting on details). DMR's leftovers (encryption, patches, tones and
+  `r05a06_dev` to merge into `master`); the codeplug's transmit timeout with warning beeps; the talkgroup
+  check before PTT; analog (`mode: analog`, G.711 mu-law; for any DVM network, though CTRS doesn't carry it);
+  NXDN; TMS and Location over MQTT (waiting on details); then Windows-console parity items (tone and DTMF
+  presets, extra clocks, connection chimes, settings export, choosing panels). Sidetone is for any DVM
+  network, not only CTRS (the owner's word). DMR's leftovers (encryption, patches, tones and
   announcements, radio commands) are under "Partially implemented". The TUI's only remaining gap is audio over SSH.
 
 ## Layout
