@@ -302,7 +302,9 @@ No XAML: everything is built in C#. `Palette` (light/dark) is painted by hand on
 `RecallOverlay`, `ZoneOverlay` for the Tabs box), not separate windows. `ZoneTabs` is the tab strip;
 all cards are built once and only the current zone's are made visible. `Tap` (in `Controls.cs`) is the flat button used
 everywhere; set `Released` for hold-to-talk. `ChannelCard` is one card. Keyboard handling is in
-`ConsoleView.HandleKeyDown/Up` (tunnel handlers on the window or top level; an open box takes keys first). `DemoCodeplug` is a
+`ConsoleView.HandleKeyDown/Up` (tunnel handlers on the window or top level; an open box takes keys first). Corners
+come from one shared `Ui.CornerRadius` (2 px, the owner's squarer look): use it for any new button, card,
+pill or box instead of a number of its own. `DemoCodeplug` is a
 made-up system for `--demo`, screenshots and the self-check. The GUI uses only the core's public
 API (only `sidetone-cli` has `InternalsVisibleTo`).
 
