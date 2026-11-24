@@ -19,7 +19,7 @@ gh run watch "$id" -R "$R" --exit-status --interval 15 2>&1 | grep -E "^(X|✓) 
 for j in $(gh api "repos/$R/actions/runs/$id/jobs" --jq '.jobs[].id'); do
   gh api "repos/$R/check-runs/$j/annotations" --jq '.[] | "\(.annotation_level): \(.path):\(.start_line) \(.message)"' 2>&1 | grep -v "Node.js\|ubuntu-latest" | sort -u | head -"${ERRS:-25}"
 done
-j=$(gh api "repos/$R/actions/runs/$id/jobs" --jq '.jobs[]|select(.name|contains("x64"))|.id')
+j=$(gh api "repos/$R/actions/runs/$id/jobs" --jq '.jobs[]|select(.name=="build (linux-x64)")|.id' | head -1)   # not "windows (x64)"
 # gh 2.10x refuses to print a log containing terminal escape codes without this flag (older gh lacks it)
 gh api --allow-escape-sequences "repos/$R/actions/jobs/$j/logs" > /tmp/ci-x64.log 2>/dev/null \
   || gh api "repos/$R/actions/jobs/$j/logs" > /tmp/ci-x64.log 2>&1
