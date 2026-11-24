@@ -90,7 +90,7 @@ namespace Sidetone.Gui
             {
                 Child = Label,
                 Padding = new Thickness(padX, padY),
-                CornerRadius = new CornerRadius(6),
+                CornerRadius = new CornerRadius(Ui.CornerRadius),
                 MinWidth = minWidth,
                 Background = Brushes.Transparent,
                 BorderThickness = new Thickness(1),
@@ -209,7 +209,7 @@ namespace Sidetone.Gui
             line2.MinHeight = 24;
 
             status = new TextBlock { FontSize = 13, FontWeight = FontWeight.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis };
-            statusPill = new Border { Child = status, Padding = new Thickness(8, 4), CornerRadius = new CornerRadius(5), Margin = new Thickness(0, 4, 0, 2) };
+            statusPill = new Border { Child = status, Padding = new Thickness(8, 4), CornerRadius = new CornerRadius(Ui.CornerRadius), Margin = new Thickness(0, 4, 0, 2) };
 
             last = new TextBlock { FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
             replayTap = new Tap("Replay", () => { console.SetFocus(index); console.ReplayLast(chan); changed(); }, fontSize: 11, padX: 7, padY: 1);
@@ -248,7 +248,7 @@ namespace Sidetone.Gui
                 Width = CardWidth,
                 Margin = new Thickness(6),
                 Padding = new Thickness(13, 10, 13, 11),
-                CornerRadius = new CornerRadius(9),
+                CornerRadius = new CornerRadius(Ui.CornerRadius),
                 BorderThickness = new Thickness(2),
                 Child = stack
             };
@@ -486,7 +486,7 @@ namespace Sidetone.Gui
 
             name = new TextBlock { FontSize = 15, FontWeight = FontWeight.Bold, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
             status = new TextBlock { FontSize = 12, FontWeight = FontWeight.SemiBold };
-            statusPill = new Border { Child = status, Padding = new Thickness(8, 2), CornerRadius = new CornerRadius(5) };
+            statusPill = new Border { Child = status, Padding = new Thickness(8, 2), CornerRadius = new CornerRadius(Ui.CornerRadius) };
             host = new TextBlock { FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
             play = new Tap("Play", () => { console.ToggleStream(stream); changed(); }, fontSize: 12, padX: 10, padY: 3);
             reason = new TextBlock { FontSize = 12, TextWrapping = TextWrapping.Wrap };
@@ -508,7 +508,7 @@ namespace Sidetone.Gui
                 Width = ChannelCard.CardWidth,
                 Margin = new Thickness(6),
                 Padding = new Thickness(13, 9, 13, 10),
-                CornerRadius = new CornerRadius(9),
+                CornerRadius = new CornerRadius(Ui.CornerRadius),
                 BorderThickness = new Thickness(2),
                 Child = stack
             };

@@ -43,7 +43,7 @@ namespace Sidetone.Gui
             Width = 820,
             Padding = new Thickness(22, 18, 22, 18),
             Margin = new Thickness(0, 10),
-            CornerRadius = new CornerRadius(10),
+            CornerRadius = new CornerRadius(Ui.CornerRadius),
             BorderThickness = new Thickness(1),
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center
@@ -316,7 +316,7 @@ namespace Sidetone.Gui
             }
             l.Quiet.Add(remove);
             inner.Children.Add(remove.Root);
-            l.Row = new Border { Child = inner, Padding = new Thickness(8, 4), CornerRadius = new CornerRadius(6) };
+            l.Row = new Border { Child = inner, Padding = new Thickness(8, 4), CornerRadius = new CornerRadius(Ui.CornerRadius) };
             int index = lines.Count;
             l.Row.PointerPressed += (s, e) => { Row = index; changed(); };
             lines.Add(l);

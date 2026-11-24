@@ -98,7 +98,7 @@ namespace Sidetone.Gui
             Width = 580,
             Padding = new Thickness(24, 16, 10, 16),
             Margin = new Thickness(0, 10),
-            CornerRadius = new CornerRadius(10),
+            CornerRadius = new CornerRadius(Ui.CornerRadius),
             BorderThickness = new Thickness(1),
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center

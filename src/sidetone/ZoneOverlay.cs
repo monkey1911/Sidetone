@@ -41,7 +41,7 @@ namespace Sidetone.Gui
                 ConsoleZone z = zone;
                 Tap t = new Tap(z.Name, () => show(z), fontSize: 13, minWidth: 90, padX: 14, padY: 6);
                 t.Root.Margin = new Thickness(0, 0, 4, 6);
-                t.Root.CornerRadius = new CornerRadius(6, 6, 0, 0);
+                t.Root.CornerRadius = new CornerRadius(Ui.CornerRadius, Ui.CornerRadius, 0, 0);
 
                 // the name, and a dot when there's traffic on the tab
                 TextBlock mark = new TextBlock { Text = " ●", FontSize = 13, FontWeight = FontWeight.Bold, VerticalAlignment = VerticalAlignment.Center, IsVisible = false };
@@ -136,7 +136,7 @@ namespace Sidetone.Gui
         {
             Padding = new Thickness(22, 18, 22, 18),
             Margin = new Thickness(0, 10),
-            CornerRadius = new CornerRadius(10),
+            CornerRadius = new CornerRadius(Ui.CornerRadius),
             BorderThickness = new Thickness(1),
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center
@@ -200,7 +200,7 @@ namespace Sidetone.Gui
             {
                 ConsoleZone zone = c.Zones[i];
                 int index = i;
-                Border swatch = new Border { Width = 14, Height = 14, CornerRadius = new CornerRadius(3), VerticalAlignment = VerticalAlignment.Center, BorderThickness = new Thickness(1) };
+                Border swatch = new Border { Width = 14, Height = 14, CornerRadius = new CornerRadius(Ui.CornerRadius), VerticalAlignment = VerticalAlignment.Center, BorderThickness = new Thickness(1) };
                 TextBlock name = new TextBlock { Text = zone.Name, FontSize = 14, FontWeight = FontWeight.SemiBold, Width = 200, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
                 TextBlock state = new TextBlock { FontSize = 12, Width = 150, VerticalAlignment = VerticalAlignment.Center };
                 Tap toggle = new Tap("Hide", () => Toggle(index), fontSize: 12, minWidth: 70, padX: 10, padY: 4);
@@ -209,7 +209,7 @@ namespace Sidetone.Gui
                 inner.Children.Add(name);
                 inner.Children.Add(state);
                 inner.Children.Add(toggle.Root);
-                Border row = new Border { Child = inner, Padding = new Thickness(8, 4), CornerRadius = new CornerRadius(6) };
+                Border row = new Border { Child = inner, Padding = new Thickness(8, 4), CornerRadius = new CornerRadius(Ui.CornerRadius) };
                 row.PointerPressed += (s, e) => { Row = index; changed(); };
                 lines.Add((zone, row, swatch, name, state, toggle));
                 rows.Children.Add(row);

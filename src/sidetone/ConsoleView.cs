@@ -56,8 +56,8 @@ namespace Sidetone.Gui
         private readonly TextBlock connection = new TextBlock { FontSize = 13, FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center };
         private readonly TextBlock details = new TextBlock { FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
         private readonly TextBlock micText = new TextBlock { FontSize = 12, VerticalAlignment = VerticalAlignment.Center, MinWidth = 48 };
-        private readonly Border micTrack = new Border { Width = MeterWidth, Height = 10, CornerRadius = new CornerRadius(5), VerticalAlignment = VerticalAlignment.Center };
-        private readonly Border micFill = new Border { Height = 10, CornerRadius = new CornerRadius(5), HorizontalAlignment = HorizontalAlignment.Left, Width = 0 };
+        private readonly Border micTrack = new Border { Width = MeterWidth, Height = 10, CornerRadius = new CornerRadius(Ui.CornerRadius), VerticalAlignment = VerticalAlignment.Center };
+        private readonly Border micFill = new Border { Height = 10, CornerRadius = new CornerRadius(Ui.CornerRadius), HorizontalAlignment = HorizontalAlignment.Left, Width = 0 };
         private readonly StackPanel micMeter = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
         private Tap micCheck, micMute, mute, ptt, themeSystem, themeLight, themeDark, settingsTap, quit;
         private readonly StackPanel consoleButtons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
@@ -115,22 +115,29 @@ namespace Sidetone.Gui
         private readonly Border txBar = new Border { Padding = new Thickness(16, 7) };
         private readonly TextBlock txText = new TextBlock { FontSize = 14, FontWeight = FontWeight.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
         private readonly TextBlock keyHints = new TextBlock { FontSize = 11, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(16, 0, 0, 0) };
-        private readonly Border recentPanel = new Border { Margin = new Thickness(12, 8, 6, 12), Padding = new Thickness(12, 8), CornerRadius = new CornerRadius(8), BorderThickness = new Thickness(1) };
-        private readonly Border logPanel = new Border { Margin = new Thickness(6, 8, 12, 12), Padding = new Thickness(12, 8), CornerRadius = new CornerRadius(8), BorderThickness = new Thickness(1) };
+        private readonly Border recentPanel = new Border { Margin = new Thickness(12, 8, 6, 12), Padding = new Thickness(12, 8), CornerRadius = new CornerRadius(Ui.CornerRadius), BorderThickness = new Thickness(1) };
+        private readonly Border logPanel = new Border { Margin = new Thickness(6, 8, 12, 12), Padding = new Thickness(12, 8), CornerRadius = new CornerRadius(Ui.CornerRadius), BorderThickness = new Thickness(1) };
         private readonly TextBlock recentTitle = new TextBlock { Text = "Recent calls", FontSize = 13, FontWeight = FontWeight.Bold, Margin = new Thickness(0, 0, 0, 6) };
         private readonly TextBlock logTitle = new TextBlock { Text = "Log", FontSize = 13, FontWeight = FontWeight.Bold, Margin = new Thickness(0, 0, 0, 6) };
         private readonly StackPanel recentRows = new StackPanel();
         private readonly StackPanel logRows = new StackPanel();
         private readonly ScrollViewer logScroll = new ScrollViewer { HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
 
-        // welcome view
-        private readonly StackPanel welcome = new StackPanel { Spacing = 12, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, MaxWidth = 620, Margin = new Thickness(20, 0) };
-        private readonly TextBlock welcomeTitle = new TextBlock { Text = "Sidetone", FontSize = 28, FontWeight = FontWeight.Bold, HorizontalAlignment = HorizontalAlignment.Center };
-        private readonly TextBlock welcomeText = new TextBlock { FontSize = 14, TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center };
-        private readonly TextBlock welcomeError = new TextBlock { FontSize = 14, FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center };
+        // welcome view: a plain start screen, left-aligned like a tool rather than a landing page
+        private readonly StackPanel welcome = new StackPanel { Spacing = 12, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, MaxWidth = 560, Margin = new Thickness(24, 32, 24, 0) };
+        private readonly TextBlock welcomeTitle = new TextBlock { Text = "Sidetone", FontSize = 16, FontWeight = FontWeight.Bold, HorizontalAlignment = HorizontalAlignment.Left };
+        private readonly TextBlock welcomeText = new TextBlock { FontSize = 13, TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Left };
+        private readonly TextBlock welcomeError = new TextBlock { FontSize = 13, FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Left };
+        private readonly StackPanel welcomeActions = new StackPanel { Spacing = 8, Margin = new Thickness(0, 4, 0, 0) };
+        private readonly List<TextBlock> welcomeActionDescs = new List<TextBlock>();
+        private readonly TextBlock welcomeRecentTitle = new TextBlock { Text = "Recent", FontSize = 13, FontWeight = FontWeight.Bold, Margin = new Thickness(0, 8, 0, 0) };
+        private readonly StackPanel welcomeRecent = new StackPanel { Spacing = 4 };
+        private readonly TextBlock welcomeRecentDesc = new TextBlock { FontSize = 12, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.NoWrap, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 360 };
+        private Tap workOfflineTap, recentTap;
+        private StackPanel goOnlineRow, workOfflineRow;
         private Tap openCodeplug, saveLogsTap, goOnlineTap, offlineTap;
         private string offlinePath, offlineSystem;      // the codeplug and system taken offline, or null
-        private readonly TextBlock saveLogsResult = new TextBlock { FontSize = 12, TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center };
+        private readonly TextBlock saveLogsResult = new TextBlock { FontSize = 12, TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Left };
 
         /// <summary>Raised when the title should change (the window's title on a desktop).</summary>
         public event Action<string> TitleChanged;
@@ -412,19 +419,24 @@ namespace Sidetone.Gui
             consoleView.Children.Add(bottom);
             BuildNarrow();
 
-            // welcome view
-            openCodeplug = new Tap("Open codeplug…", () => _ = PickCodeplug(), fontSize: 15, minWidth: 180, padY: 10);
-            openCodeplug.Root.HorizontalAlignment = HorizontalAlignment.Center;
+            // welcome view: an action list, then the last codeplug
+            openCodeplug = new Tap("Open codeplug…", () => _ = PickCodeplug(), fontSize: 13, minWidth: 160, padY: 6);
+            goOnlineTap = new Tap("Connect to FNE", GoOnline, fontSize: 13, minWidth: 160, padY: 6);
+            goOnlineTap.Root.IsVisible = false;
+            workOfflineTap = new Tap("Work offline", WorkOffline, fontSize: 13, minWidth: 160, padY: 6);
+            saveLogsTap = new Tap("Save debug logs…", () => _ = SaveDebugLogsFromWelcome(), fontSize: 13, padY: 6);
+            recentTap = new Tap(string.Empty, () => { string p = appSettings.LastCodeplug; if (p != null) OpenCodeplug(p, null); }, fontSize: 13, minWidth: 160, padY: 6);
+            welcomeActions.Children.Add(WelcomeAction(openCodeplug, "Open the codeplug you use with the Windows DVM console."));
+            goOnlineRow = WelcomeAction(goOnlineTap, "Log in to the FNE with the codeplug taken offline.");
+            workOfflineRow = WelcomeAction(workOfflineTap, "Open the last codeplug without logging in: nothing is received or sent.");
+            welcomeActions.Children.Add(goOnlineRow);
+            welcomeActions.Children.Add(workOfflineRow);
             welcome.Children.Add(welcomeTitle);
             welcome.Children.Add(welcomeText);
-            goOnlineTap = new Tap("Go online", GoOnline, fontSize: 15, minWidth: 180, padY: 10);
-            goOnlineTap.Root.HorizontalAlignment = HorizontalAlignment.Center;
-            goOnlineTap.Root.IsVisible = false;
-            welcome.Children.Add(goOnlineTap.Root);
-            welcome.Children.Add(openCodeplug.Root);
+            welcome.Children.Add(welcomeActions);
+            welcome.Children.Add(welcomeRecentTitle);
+            welcome.Children.Add(welcomeRecent);
             welcome.Children.Add(welcomeError);
-            saveLogsTap = new Tap("Save debug logs…", () => _ = SaveDebugLogsFromWelcome(), fontSize: 13, padY: 6);
-            saveLogsTap.Root.HorizontalAlignment = HorizontalAlignment.Center;
             welcome.Children.Add(saveLogsTap.Root);
             welcome.Children.Add(saveLogsResult);
 
@@ -512,6 +524,17 @@ namespace Sidetone.Gui
         ** Opening and closing a console
         */
 
+        /// <summary>One row of the welcome screen's action list: the button and what it does.</summary>
+        private StackPanel WelcomeAction(Tap tap, string desc)
+        {
+            TextBlock d = new TextBlock { Text = desc, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap };
+            welcomeActionDescs.Add(d);
+            StackPanel row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
+            row.Children.Add(tap.Root);
+            row.Children.Add(d);
+            return row;
+        }
+
         private void ShowWelcome(string error)
         {
             consoleView.IsVisible = false;
@@ -519,15 +542,30 @@ namespace Sidetone.Gui
             welcome.IsVisible = true;
             offlinePath = offlineSystem = null;
             goOnlineTap.Root.IsVisible = false;
+            goOnlineRow.IsVisible = false;
+            workOfflineTap.Root.IsVisible = appSettings.LastCodeplug != null;
+            workOfflineRow.IsVisible = appSettings.LastCodeplug != null;
             openCodeplug.Text = "Open codeplug…";
             welcomeTitle.Text = "Sidetone";
             systemName.Text = "Sidetone";
             connection.Text = string.Empty;
             details.Text = "no codeplug open";
-            welcomeText.Text = "An IP dispatch console for DVMProject FNE networks.\n\n" +
-                               "Open the codeplug you use with the Windows DVM console." +
+            welcomeText.Text = "An IP dispatch console for DVMProject FNE networks." +
                                (OperatingSystem.IsAndroid() ? string.Empty : "\nYou can also start with: sidetone --codeplug FILE");
             welcomeError.Text = error ?? string.Empty;
+            // the last codeplug, if there is one (the app keeps one, not a list)
+            string last = appSettings.LastCodeplug;
+            welcomeRecentTitle.IsVisible = welcomeRecent.IsVisible = last != null;
+            welcomeRecent.Children.Clear();
+            if (last != null)
+            {
+                recentTap.Text = Path.GetFileName(last);
+                welcomeRecentDesc.Text = last;
+                StackPanel row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
+                row.Children.Add(recentTap.Root);
+                row.Children.Add(welcomeRecentDesc);
+                welcomeRecent.Children.Add(row);
+            }
         }
 
         private async Task PickCodeplug()
@@ -1203,13 +1241,27 @@ namespace Sidetone.Gui
             ApplyTheme();
         }
 
-        /// <summary>The offline view: the system's name, Go online, and Open another codeplug.</summary>
+        /// <summary>Opens the last codeplug without logging in, as at startup when it was left offline.</summary>
+        private void WorkOffline()
+        {
+            string path = appSettings.LastCodeplug;
+            if (path == null)
+                return;
+            ShowOffline(path, appSettings.LastSystem);
+            ApplyTheme();
+        }
+
+        /// <summary>The offline view: the system's name, Connect to FNE, and Open another codeplug.</summary>
         private void ShowOffline(string path, string system)
         {
             ShowWelcome(null);
             offlinePath = path;
             offlineSystem = system;
             goOnlineTap.Root.IsVisible = true;
+            goOnlineRow.IsVisible = true;
+            workOfflineTap.Root.IsVisible = false;
+            workOfflineRow.IsVisible = false;
+            welcomeRecentTitle.IsVisible = welcomeRecent.IsVisible = false;
             openCodeplug.Text = "Open another codeplug…";
             string name = system ?? Path.GetFileNameWithoutExtension(path);
             welcomeTitle.Text = "Offline";
@@ -1218,7 +1270,7 @@ namespace Sidetone.Gui
             connection.Foreground = palette.Dim;
             details.Text = Path.GetFileName(path);
             welcomeText.Text = $"Sidetone isn't logged in to {name}: nothing is received or sent.\n" +
-                               "Go online to log in again, with the same channels listening.";
+                               "Connect to FNE to log in again, with the same channels listening.";
             UpdateLayoutMode();
             RefreshNow();
         }
@@ -1303,6 +1355,12 @@ namespace Sidetone.Gui
             offlineTap.Paint(Brushes.Transparent, p.Dim, p.Edge);
             saveLogsTap.Paint(Brushes.Transparent, p.Dim, p.Edge);
             saveLogsResult.Foreground = p.Dim;
+            workOfflineTap.Paint(Brushes.Transparent, p.Text, p.Edge);
+            recentTap.Paint(Brushes.Transparent, p.Text, p.Edge);
+            welcomeRecentTitle.Foreground = p.Text;
+            welcomeRecentDesc.Foreground = p.Dim;
+            foreach (TextBlock d in welcomeActionDescs)
+                d.Foreground = p.Dim;
             quit.Paint(Brushes.Transparent, p.Dim, p.Edge);
             settingsTap.Paint(Brushes.Transparent, p.Dim, p.Edge);
 
