@@ -862,7 +862,7 @@ namespace Sidetone.Gui
             bool wentOffline = w.View.ActiveConsole == null && w.View.IsOffline && w.View.GoOnlineTap.Root.IsEffectivelyVisible && !w.View.OfflineTap.Root.IsEffectivelyVisible;
             TapOn(w.View.GoOnlineTap);
             Check(wentOffline && w.View.ActiveConsole != null && !w.View.IsOffline && w.View.ActiveConsole.Channels.Count == channelsBefore && w.View.OfflineTap.Root.IsEffectivelyVisible,
-                  "Go offline closes the console (logged out) and shows Go online, which opens the same codeplug again");
+                  "Go offline closes the console (logged out) and shows Connect to FNE, which opens the same codeplug again");
 
             w.KeyPressQwerty(PhysicalKey.Q, RawInputModifiers.Control);
             Dispatcher.UIThread.RunJobs();
