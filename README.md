@@ -12,7 +12,7 @@ There are two front ends over the same console:
 
 **What works** (Linux, macOS, Windows and Android)**:** FNE login (several systems at once), P25 receive and transmit (clear, AES-256, DES, ADP/ARC4 with keys from the FNE or a KFDtool key file), DMR receive and transmit (clear, both timeslots), PipeWire audio, channel cards in tabs for the codeplug's zones, push-to-talk from the keyboard, a hotkey or a PTT device, alert tones, pages, radio commands, the channel marker, radio aliases, patching (two-way and one-way), instant recall with a call history kept between runs, audio outputs per tab and channel, recording to Opus or WAV, announcements (WAV files, or text spoken by Piper or espeak-ng, played onto talkgroups), a time announcement that can play by itself on the clock, web streams (MP3 feeds on a tab), and log files.
 
-**Not yet:** DMR/NXDN/analog. What we'd like to add next is in [WISHLIST.md](WISHLIST.md).
+**Not yet:** NXDN/analog. What we'd like to add next is in [WISHLIST.md](WISHLIST.md).
 
 ## Contents
 
