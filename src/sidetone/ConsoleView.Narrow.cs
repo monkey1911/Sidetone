@@ -75,7 +75,7 @@ namespace Sidetone.Gui
             tonesTap = new Tap("Tones", () => ShowPage(NarrowPage.More), fontSize: 14, minWidth: 76, padX: 8, padY: 20);
             bigPtt = new Tap("PTT", () => PttPressed(null), fontSize: 24, padY: 20) { Released = PttReleased };
             bigPtt.Root.HorizontalAlignment = HorizontalAlignment.Stretch;
-            bigPtt.Root.CornerRadius = new CornerRadius(14);
+            bigPtt.Root.CornerRadius = new CornerRadius(Ui.CornerRadius);
             muteAll = new Tap("Mute all", () => Do(c => c.ToggleGlobalMute()), fontSize: 14, minWidth: 76, padX: 8, padY: 20);
             Grid bar = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), ColumnSpacing = 10 };
             Grid.SetColumn(tonesTap.Root, 0);
