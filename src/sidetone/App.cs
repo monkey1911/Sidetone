@@ -80,6 +80,16 @@ namespace Sidetone.Gui
     } // public sealed class App
 
     /// <summary>
+    /// Shared measurements for the console's controls: one corner radius for every button,
+    /// channel card, overlay and status pill, so the look changes in one place.
+    /// </summary>
+    public static class Ui
+    {
+        /// <summary>The corner radius, in device-independent pixels, for buttons, channel cards, overlays and status pills.</summary>
+        public const double CornerRadius = 2;
+    }
+
+    /// <summary>
     /// The console's colours for one theme variant.
     /// </summary>
     public sealed class Palette
