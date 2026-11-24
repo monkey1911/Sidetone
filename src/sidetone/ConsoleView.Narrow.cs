@@ -39,7 +39,7 @@ namespace Sidetone.Gui
         private readonly StackPanel morePanel = new StackPanel { Spacing = 10, Margin = new Thickness(14, 12) };
         private ScrollViewer moreScroll;
         private Tap bigPtt, muteAll, tonesTap, navChannels, navCalls, navLog, navMore;
-        private Tap morePage, moreRadio, moreMarker, morePatch, moreRecall, moreAnnounce, moreTabs, moreMicCheck, moreMicMute, moreSettings;
+        private Tap morePage, moreTones, moreRadio, moreMarker, morePatch, moreRecall, moreAnnounce, moreTabs, moreMicCheck, moreMicMute, moreSettings;
         private Tap moreThemeSystem, moreThemeLight, moreThemeDark;
         private readonly List<Tap> moreAlerts = new List<Tap>();
         private readonly List<TextBlock> moreHeadings = new List<TextBlock>();
@@ -108,12 +108,13 @@ namespace Sidetone.Gui
 
             morePanel.Children.Add(Heading("Send and listen"));
             morePage = Wide("Page…", () => overlay.ShowPage(false));
+            moreTones = Wide("Tones…", ShowTones);
             moreRadio = Wide("Radio command…", () => overlay.ShowRadio());
             morePatch = Wide("Patch…", () => { overlay.Close(); patchBox.Show(); RefreshNow(); });
             moreRecall = Wide("Recall…", () => { overlay.Close(); recallBox.Show(FocusedChannel()); RefreshNow(); });
             moreAnnounce = Wide("Announce…", () => ShowAnnouncements());
             moreTabs = Wide("Tabs…", ShowZones);
-            foreach (Tap t in new[] { morePage, moreRadio, morePatch, moreRecall, moreAnnounce, moreTabs })
+            foreach (Tap t in new[] { morePage, moreTones, moreRadio, morePatch, moreRecall, moreAnnounce, moreTabs })
                 morePanel.Children.Add(t.Root);
 
             morePanel.Children.Add(Heading("Microphone"));
@@ -191,6 +192,7 @@ namespace Sidetone.Gui
             if (routingBox.IsOpen) { routingBox.Close(); root.Focus(); return true; }
             if (zoneBox.IsOpen) { zoneBox.Close(); root.Focus(); return true; }
             if (recordingsBox.IsOpen) { recordingsBox.Close(); root.Focus(); return true; }
+            if (tonesBox.IsOpen) { tonesBox.Escape(); root.Focus(); return true; }
             if (recallBox.IsOpen) { recallBox.Close(); root.Focus(); return true; }
             if (patchBox.IsOpen) { patchBox.Close(); root.Focus(); return true; }
             if (settingsBox.IsOpen) { settingsBox.Close(); root.Focus(); return true; }
@@ -253,7 +255,11 @@ namespace Sidetone.Gui
             recentPanel.IsVisible = !narrow || page == NarrowPage.Calls;
             logPanel.IsVisible = !narrow || page == NarrowPage.Log;
             consoleView.RowDefinitions[2].Height = narrow && lists ? new GridLength(0) : GridLength.Star;
-            consoleView.RowDefinitions[4].Height = !narrow ? new GridLength(230) : lists ? GridLength.Star : new GridLength(0);
+            bool folded = !narrow && BottomCollapsed;
+            consoleView.RowDefinitions[4].Height = folded ? GridLength.Auto : !narrow ? new GridLength(230) : lists ? GridLength.Star : new GridLength(0);
+            recentScroll.IsVisible = logScroll.IsVisible = !folded;
+            recentPanel.Padding = logPanel.Padding = folded ? new Thickness(12, 5) : new Thickness(12, 8);
+            SetBottomTitles();
             bottom.ColumnDefinitions[0].Width = !narrow ? new GridLength(2, GridUnitType.Star) : page == NarrowPage.Calls ? GridLength.Star : new GridLength(0);
             bottom.ColumnDefinitions[1].Width = !narrow ? new GridLength(3, GridUnitType.Star) : page == NarrowPage.Log ? GridLength.Star : new GridLength(0);
             recentPanel.Margin = narrow ? new Thickness(8) : new Thickness(12, 8, 6, 12);
@@ -317,7 +323,7 @@ namespace Sidetone.Gui
                 else
                     moreAlerts[i].Paint(p.Card, p.Text, p.Edge);
             }
-            foreach (Tap t in new[] { morePage, moreRadio, moreTabs, moreSettings })
+            foreach (Tap t in new[] { morePage, moreTones, moreRadio, moreTabs, moreSettings })
                 t.Paint(p.Card, p.Text, p.Edge);
             PaintState(moreMarker, c.MarkerOn, c.MarkerOn ? "Channel marker on" : "Channel marker", p.Warn, p);
             PaintState(morePatch, c.Channels.Any(ch => ch.Patch != 0), "Patch…", p.Accent, p);

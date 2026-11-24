@@ -130,6 +130,7 @@ namespace Sidetone.Cli
             keyDialog = null;
             outputsDialog = null;
             streamsDialog = null;
+            tonesDialog = null;
             announceDialog = null;
             radioDialog = new RadioDialog { Rid = lastPageRid };
         }
@@ -287,6 +288,7 @@ namespace Sidetone.Cli
             keyDialog = null;
             outputsDialog = null;
             streamsDialog = null;
+            tonesDialog = null;
             announceDialog = null;
             pageDialog = new PageDialog { Digital = digital, A = lastPageA, B = lastPageB, Rid = lastPageRid };
         }
@@ -472,6 +474,11 @@ namespace Sidetone.Cli
                 StreamsInput(e);
                 return;
             }
+            if (tonesDialog != null && e.Kind == InputKind.Key)
+            {
+                TonesInput(e);
+                return;
+            }
             if (announceDialog != null && e.Kind == InputKind.Key)
             {
                 AnnounceInput(e);
@@ -493,7 +500,7 @@ namespace Sidetone.Cli
                 return;
             }
 
-            GridGeometry g = Layout(screen.Width, screen.Height, CurrentZone.chans.Count, TabRows);
+            GridGeometry g = Layout(screen.Width, screen.Height, CurrentZone.chans.Count, TabRows, BottomFolded);
             switch (e.Kind)
             {
                 case InputKind.Click:
@@ -545,6 +552,8 @@ namespace Sidetone.Cli
                         case 'K': OpenKeyFile(); break;
                         case 'o': case 'O': OpenOutputs(); break;
                         case 's': case 'S': OpenStreams(); break;
+                        case 'g': case 'G': OpenTones(); break;
+                        case 'b': case 'B': ToggleBottomFolded(); break;
                         case 'n': case 'N': OpenAnnouncements(); break;
                         case 'e': case 'E': ToggleTxSecure(c); break;
                         case 'x': CyclePatch(c); break;
@@ -595,8 +604,18 @@ namespace Sidetone.Cli
         /// Works out the card grid for a terminal size: up to four cards across, at least <see cref="MinCardWidth"/>
         /// wide, and as many card rows as fit while leaving room for the log (capped at <see cref="MaxBottomHeight"/> rows).
         /// </summary>
-        public static GridGeometry Layout(int width, int height, int cardCount, int tabRows = 0)
+        public static GridGeometry Layout(int width, int height, int cardCount, int tabRows = 0, bool folded = false)
         {
+            if (folded)
+            {
+                // Recent calls and the log folded down to one line (b): the cards get the rest
+                int colsF = Math.Clamp(width / MinCardWidth, 1, MaxColumns);
+                int totalF = (cardCount + colsF - 1) / colsF;
+                int availF = Math.Max(0, height - TitleHeight - tabRows - FooterHeight);
+                int visibleF = Math.Clamp((availF - 1) / CardHeight, 1, Math.Max(1, totalF));
+                int logF = availF > visibleF * CardHeight ? 1 : 0;
+                return new GridGeometry(colsF, width / colsF, visibleF, totalF, TitleHeight + tabRows, TitleHeight + tabRows + availF - logF, logF);
+            }
             int cols = Math.Clamp(width / MinCardWidth, 1, MaxColumns);
             int cardW = width / cols;
             int totalRows = (cardCount + cols - 1) / cols;
@@ -624,7 +643,7 @@ namespace Sidetone.Cli
             }
 
             List<Chan> shown = CurrentZone.chans;
-            GridGeometry g = Layout(width, height, shown.Count, TabRows);
+            GridGeometry g = Layout(width, height, shown.Count, TabRows, BottomFolded);
             DrawTitle(width);
             if (TabRows > 0)
                 DrawTabs(width, TitleHeight);
@@ -654,7 +673,9 @@ namespace Sidetone.Cli
                 screen.TextRight(width - 1, g.LogTop - 1, more, Style.Of(Ansi.Grey));
             }
 
-            if (g.LogHeight > 0)
+            if (g.LogHeight == 1)
+                DrawFolded(new Rect(0, g.LogTop, width, 1));
+            else if (g.LogHeight > 0)
             {
                 if (width >= MinSplitWidth)
                 {
@@ -672,6 +693,7 @@ namespace Sidetone.Cli
             DrawKeyFileDialog(width, height);
             DrawOutputsDialog(width, height);
             DrawStreamsDialog(width, height);
+            DrawTonesDialog(width, height);
             DrawAnnounceDialog(width, height);
             return screen;
         }
@@ -1004,6 +1026,31 @@ namespace Sidetone.Cli
                 screen.Text(x, y, "click to listen", Style.Of(Ansi.Grey), w);
         }
 
+        /// <summary>Recent calls and the log are folded to one line (Settings, shared with the graphical console).</summary>
+        internal bool BottomFolded => Settings?.BottomCollapsed == true;
+
+        /// <summary>b: folds Recent calls and the log down to one line, or opens them again (remembered).</summary>
+        internal void ToggleBottomFolded()
+        {
+            if (Settings == null)
+                return;
+            Settings.BottomCollapsed = BottomFolded ? null : true;
+            MarkDirty();
+        }
+
+        /// <summary>The folded bottom line: the newest call, then the newest log line.</summary>
+        private void DrawFolded(Rect r)
+        {
+            var calls = SnapshotRecent(1);
+            List<string> log = SnapshotLog(1);
+            string call = calls.Count == 0 ? "none yet" : $"{calls[0].Time} {(calls[0].Tx ? "TX" : "RX")} {calls[0].Chan}{(string.IsNullOrEmpty(calls[0].Who) ? string.Empty : " " + calls[0].Who)} {calls[0].Detail}";
+            int half = r.W >= MinSplitWidth ? Math.Min(r.W / 2, 64) : 0;
+            if (half > 0)
+                screen.Text(r.X, r.Y, $"▸ Recent: {call}", Style.Of(Ansi.White), half - 1);
+            screen.Text(r.X + half, r.Y, $"▸ Log: {(log.Count == 0 ? string.Empty : log[^1])}", Style.Of(Ansi.Grey), r.W - half);
+            screen.OnClick(r, ToggleBottomFolded);
+        }
+
         private void DrawRecent(Rect r)
         {
             screen.Box(r, Style.Of(Ansi.Grey));
@@ -1092,7 +1139,7 @@ namespace Sidetone.Cli
                     screen.Text(1 + used, y, "   MIC MUTED (u to unmute)", Style.Of(Ansi.BrightRed, bold: true), right - 1 - used);
             }
 
-            screen.Text(1, y + 1, (TabRows > 0 ? "[ ]: tab  z: zones  " : string.Empty) + "click card: listen  [●]: stop  Space: PTT  1-6: alert  p/d: page  r: radio cmd  c: marker  t: talk permit  v: mic meter  u: mic mute  a: aliases  m/M: mute card/all  +/-: vol  k: key  K: key file  o: outputs  s: streams  n: announcements  e: secure/clear  x/X: patch/direction  l/L: replay  w: rec  q: quit",
+            screen.Text(1, y + 1, (TabRows > 0 ? "[ ]: tab  z: zones  " : string.Empty) + "click card: listen  [●]: stop  Space: PTT  1-6: alert  p/d: page  r: radio cmd  c: marker  t: talk permit  v: mic meter  u: mic mute  a: aliases  m/M: mute card/all  +/-: vol  k: key  K: key file  o: outputs  s: streams  g: tone presets  n: announcements  e: secure/clear  x/X: patch/direction  l/L: replay  w: rec  b: fold calls/log  q: quit",
                         Style.Of(Ansi.Grey), width - 2);
         }
     } // public sealed class Tui

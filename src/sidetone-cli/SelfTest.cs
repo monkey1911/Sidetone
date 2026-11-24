@@ -250,6 +250,9 @@ namespace Sidetone.Cli
                 // 19d. DMR: receive, clear transmit, recall, recording and history
                 DmrTests(tmp);
 
+                // 19e. tone and DTMF presets, and folding the TUI's bottom panels
+                TonePresetTests(tmp, cp, sys);
+
                 // 20. call history kept between runs
                 HistoryTests(tmp, cp, sys);
 
@@ -3257,6 +3260,131 @@ zones:
             for (int i = 200; i < Math.Min(pieces.Count, whole.Length) - 200; i++)
                 worst = Math.Max(worst, Math.Abs(pieces[i] - whole[i]));
             Check(pieces.Count > whole.Length - 100 && worst < 1e-4, $"web streams: resampling in pieces matches resampling in one go (worst {worst:E1})");
+        }
+
+        /// <summary>How strong one frequency is in some audio (Goertzel), relative to the audio's own level.</summary>
+        private static double ToneStrength(short[] pcm, int from, int count, double hz)
+        {
+            double k = 2 * Math.Cos(2 * Math.PI * hz / 8000), s1 = 0, s2 = 0, energy = 0;
+            for (int i = from; i < from + count; i++)
+            {
+                double s0 = pcm[i] + k * s1 - s2;
+                s2 = s1;
+                s1 = s0;
+                energy += (double)pcm[i] * pcm[i];
+            }
+            double power = s1 * s1 + s2 * s2 - k * s1 * s2;
+            return energy == 0 ? 0 : power / (energy * count);
+        }
+
+        private static void TonePresetTests(string tmp, Codeplug cp, Codeplug.System sys)
+        {
+            // the steps editor's text, both ways, and what it refuses
+            List<ToneStep> steps = TonePresets.ParseSteps("1000:0.5, 0:0.2,1500 : 1");
+            string formatted = TonePresets.FormatSteps(steps);
+            string Why(string text) { try { TonePresets.ParseSteps(text); return null; } catch (ArgumentException ex) { return ex.Message; } }
+            Check(steps.Count == 3 && steps[1].Hz == 0 && steps[2].Seconds == 1 && formatted == "1000:0.5, 0:0.2, 1500:1" &&
+                  TonePresets.ParseSteps(formatted).Count == 3 && Why("4000:1")?.Contains("outside 281–2500 Hz") == true && Why("3000:1")?.Contains("outside 281–2500 Hz") == true &&
+                  Why("1000")?.Contains("isn't Hz:seconds") == true && Why("1000:0")?.Contains("s is outside") == true && Why("")?.Contains("no steps") == true,
+                  $"tone presets: the steps text (Hz:seconds) reads and writes back, and bad steps are refused with a reason ({Why("4000:1")})");
+
+            // a tone preset is tone frames after the alert tones' lead-in; DTMF is both of each digit's tones, as audio
+            TonePlan seq = TonePlan.Sequence("two tone", steps);
+            int lead = seq.Frames.TakeWhile(f => f == null).Count();
+            Check(seq.Frames.Count(f => f == 1000) == 25 && seq.Frames.Count(f => f == 1500) == 50 && lead >= 37 && lead <= 38 && seq.Frames[lead] == 1000,
+                  $"tone presets: sent as IMBE tone frames (25 at 1000 Hz, 10 silent, 50 at 1500 Hz) after the usual lead-in ({lead} frames)");
+            TonePlan dtmf = TonePlan.Dtmf("DTMF test", "1,2", 100, 100);
+            short[] audio = dtmf.MonitorPcm().SelectMany(f => f).ToArray();
+            int one = TonePlan.LeadInMs / 20 * 160, two = one + 800 + 800 + 4000;      // after the lead-in (whole frames); then 100 ms tone, 100 ms gap, 500 ms pause
+            bool digitOne = ToneStrength(audio, one + 40, 720, 697) > 10 * ToneStrength(audio, one + 40, 720, 770) && ToneStrength(audio, one + 40, 720, 1209) > 10 * ToneStrength(audio, one + 40, 720, 1336);
+            bool digitTwo = ToneStrength(audio, two + 40, 720, 697) > 10 * ToneStrength(audio, two + 40, 720, 852) && ToneStrength(audio, two + 40, 720, 1336) > 10 * ToneStrength(audio, two + 40, 720, 1209);
+            bool paused = audio.Skip(one + 1600).Take(4000).All(x => x == 0);
+            string badDigit = null;
+            try { TonePresets.CheckDtmf("12X", 100, 100); } catch (ArgumentException ex) { badDigit = ex.Message; }
+            Check(digitOne && digitTwo && paused && dtmf.Frames.All(f => f == null) && badDigit?.Contains("'X' isn't a DTMF digit") == true &&
+                  TonePresets.CheckDtmf(" 9 1 1 # ", 100, 100) == "911#",
+                  $"DTMF presets: each digit is its two tones (1 = 697+1209 Hz, 2 = 697+1336 Hz), a comma pauses, sent as audio through the encoder; a bad digit is refused ({digitOne} {digitTwo} {paused} {dtmf.Frames.All(f => f == null)} {badDigit}; {audio.Length} samples, first sound at {Array.FindIndex(audio, x => x != 0)})");
+
+            // MIDI: notes become steps, a rest silence, and a note too high moves down by octaves
+            byte[] midi =
+            {
+                (byte)'M', (byte)'T', (byte)'h', (byte)'d', 0, 0, 0, 6, 0, 0, 0, 1, 0x01, 0xE0,
+                (byte)'M', (byte)'T', (byte)'r', (byte)'k', 0, 0, 0, 32,
+                0x00, 0x90, 69, 0x40,  0x83, 0x60, 0x80, 69, 0x40,      // A4, half a second
+                0x83, 0x60, 0x90, 81, 0x40,  0x83, 0x60, 0x80, 81, 0x40, // a rest, then A5
+                0x00, 0x90, 105, 0x40,  0x83, 0x60, 0x80, 105, 0x40,     // A7 (3520 Hz): too high
+                0x00, 0xFF, 0x2F, 0x00
+            };
+            string midiPath = Path.Combine(tmp, "tune.mid");
+            File.WriteAllBytes(midiPath, midi);
+            TonePreset imported = TonePresets.ImportMidi(midiPath);
+            string importedText = TonePresets.FormatSteps(imported.Steps);
+            string notMidi = null;
+            File.WriteAllText(Path.Combine(tmp, "not.mid"), "hello");
+            try { TonePresets.ImportMidi(Path.Combine(tmp, "not.mid")); } catch (ArgumentException ex) { notMidi = ex.Message; }
+            Check(imported.Name == "tune" && importedText == "440:0.5, 0:0.5, 880:0.5, 1760:0.5" && notMidi != null,
+                  $"tone presets: a MIDI file imports as steps (a rest is silence, a note too high drops by octaves): {importedText}; a file that isn't MIDI is refused ({notMidi})");
+
+            // sending: like an alert tone, on the listening channels; refused when too long, or the FNE doesn't carry the talkgroup
+            Tui pt = new Tui(cp, sys, TimeSpan.FromSeconds(120), null) { NoAudio = true };
+            CaptureSink presetOut = new CaptureSink(new CliPeer(sys, new KeyStore(), verbose: false));
+            pt.sinkForTest = presetOut;
+            pt.consoleRidForTest = 9000006;
+            ConsoleChannel pch = pt.Channels.First(x => x.IsP25 && !x.Encrypted && !x.Cfg.RxOnly);
+            foreach (ConsoleChannel other in pt.Channels.Where(x => x.Selected))
+                pt.Deselect(other, quiet: true);
+            pt.Select(pch);
+            string sentTone = pt.SendTonePreset(new TonePreset { Name = "Two tone", Steps = steps });
+            bool going = pt.toneJob != null && WaitFor(() => presetOut.VoiceCount > 0, 5);
+            pt.CancelTones();
+            WaitFor(() => pt.toneJob == null, 5);
+            string sentDtmf = pt.SendDtmfPreset(new DtmfPreset { Name = "Call", Digits = "911#" });
+            bool dtmfGoing = pt.toneJob != null && pt.toneJob.Plan.Name == "DTMF Call";
+            pt.CancelTones();
+            WaitFor(() => pt.toneJob == null, 5);
+            string tooLong = pt.SendTonePreset(new TonePreset { Name = "Long", Steps = new List<ToneStep> { new ToneStep { Hz = 1000, Seconds = 60 }, new ToneStep { Hz = 1500, Seconds = 60 } } });
+            pt.Links[0].TalkgroupsForTest = new List<fnecore.TalkgroupEntry> { new fnecore.TalkgroupEntry { ID = pch.Tg + 1, Slot = 1 } };
+            string notCarried = pt.SendTonePreset(new TonePreset { Name = "Two tone", Steps = steps });
+            Check(sentTone == null && going && sentDtmf == null && dtmfGoing && tooLong?.Contains("longer than the 120 s transmit time limit") == true &&
+                  notCarried != null && pt.SnapshotLog(5).Any(l => l.Contains("isn't available on")),
+                  $"tone presets: sent on the listening channel like an alert tone (tone frames and DTMF); too long for the time limit, or a talkgroup the FNE doesn't carry, is refused ({tooLong}; {notCarried})");
+            pt.Shutdown();
+
+            // kept in the settings file (both consoles read the same one)
+            string presetSettings = Path.Combine(tmp, "preset-settings.json");
+            new AppSettings
+            {
+                TonePresets = new List<TonePreset> { new TonePreset { Name = "Two tone", Steps = steps } },
+                DtmfPresets = new List<DtmfPreset> { new DtmfPreset { Name = "Call", Digits = "911#", DigitMs = 80, GapMs = 60 } }
+            }.Save(presetSettings);
+            AppSettings back = AppSettings.Load(presetSettings, out _);
+            Check(back.TonePresets?.Single().Steps.Count == 3 && back.TonePresets[0].Steps[2].Hz == 1500 && back.DtmfPresets?.Single().Digits == "911#" &&
+                  back.DtmfPresets[0].DigitMs == 80 && !File.ReadAllText(presetSettings).Contains("Summary"),
+                  "tone presets: tone and DTMF presets are kept in the settings file");
+
+            // the terminal console: g lists and sends them, b folds the bottom panels to one line
+            Tui gt = new Tui(cp, sys, TimeSpan.FromSeconds(120), null, settingsPath: presetSettings) { NoAudio = true };
+            gt.sinkForTest = new CaptureSink(new CliPeer(sys, new KeyStore(), verbose: false));
+            gt.consoleRidForTest = 9000007;
+            gt.Select(gt.Channels.First(x => x.IsP25 && !x.Encrypted && !x.Cfg.RxOnly));     // a preset goes on the listening channels
+            gt.HandleInput(new InputEvent(InputKind.Key, InputKey.Char, 'g'));
+            string boxText = string.Join("\n", Enumerable.Range(0, 40).Select(y => gt.Render(140, 40).RowText(y)));
+            gt.HandleInput(new InputEvent(InputKind.Key, InputKey.Down));
+            gt.HandleInput(new InputEvent(InputKind.Key, InputKey.Enter));
+            bool sentFromTui = gt.toneJob?.Plan.Name == "DTMF Call" && !gt.TonesDialogOpen;
+            gt.CancelTones();
+            int openLog = Tui.Layout(140, 40, 4).LogHeight;
+            gt.HandleInput(new InputEvent(InputKind.Key, InputKey.Char, 'b'));
+            Tui.GridGeometry folded = Tui.Layout(140, 40, 4, 0, gt.BottomFolded);
+            ScreenBuffer foldedScreen = gt.Render(140, 40);
+            string foldedRow = Enumerable.Range(0, 40).Select(y => foldedScreen.RowText(y)).FirstOrDefault(t => t.Contains("▸ Recent:")) ?? "(no folded line)";
+            Check(boxText.Contains("Tone presets") && boxText.Contains("Two tone") && boxText.Contains("DTMF 911#") && sentFromTui &&
+                  gt.BottomFolded && folded.LogHeight == 1 && openLog > 1 && foldedRow.Contains("▸ Recent:") && foldedRow.Contains("▸ Log:") &&
+                  gt.Settings.BottomCollapsed == true,
+                  $"TUI: g lists the tone presets and Enter sends one; b folds Recent calls and the log to one line ({foldedRow.Trim()})");
+            gt.HandleInput(new InputEvent(InputKind.Key, InputKey.Char, 'b'));
+            Check(!gt.BottomFolded && gt.Settings.BottomCollapsed == null, "TUI: b opens the bottom panels again");
+            gt.Shutdown();
         }
 
         private const string DmrCodeplug = @"

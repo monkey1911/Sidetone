@@ -1566,6 +1566,45 @@ namespace Sidetone.Core
         /// </summary>
         public void SendPage(double aHz, double bHz) => SendManual(TonePlan.Page(aHz, bHz));
 
+        /// <summary>The tone presets saved in Settings (empty when there are none).</summary>
+        public IReadOnlyList<TonePreset> TonePresetList => Settings?.TonePresets ?? new List<TonePreset>();
+        /// <summary>The DTMF presets saved in Settings (empty when there are none).</summary>
+        public IReadOnlyList<DtmfPreset> DtmfPresetList => Settings?.DtmfPresets ?? new List<DtmfPreset>();
+
+        /// <summary>Sends a tone preset on every listening channel, as an alert tone. Returns why not, or null.</summary>
+        public string SendTonePreset(TonePreset preset)
+        {
+            if (preset?.Steps == null || preset.Steps.Count == 0)
+                return Refused("that tone preset has no steps");
+            return SendPreset(TonePlan.Sequence(preset.Name, preset.Steps));
+        }
+
+        /// <summary>Sends a DTMF preset on every listening channel, as an alert tone. Returns why not, or null.</summary>
+        public string SendDtmfPreset(DtmfPreset preset)
+        {
+            string digits;
+            try { digits = TonePresets.CheckDtmf(preset?.Digits, preset?.DigitMs ?? 0, preset?.GapMs ?? 0); }
+            catch (ArgumentException ex) { return Refused($"{preset?.Name}: {ex.Message}"); }
+            return SendPreset(TonePlan.Dtmf($"DTMF {preset.Name}", digits, preset.DigitMs, preset.GapMs));
+        }
+
+        private string SendPreset(TonePlan plan)
+        {
+            if (plan.Length > txLimit)
+                return Refused($"{plan.Name} takes {plan.Length.TotalSeconds:F0} s, longer than the {txLimit.TotalSeconds:F0} s transmit time limit");
+            string why = ToneBlocker();
+            if (why != null)
+                return Refused(why);
+            SendManual(plan);
+            return toneJob != null ? null : "it wasn't sent (see the log)";
+        }
+
+        private string Refused(string why)
+        {
+            AddLog(why);
+            return why;
+        }
+
         /// <summary>
         /// Why an alert tone or page can't be sent right now, or null when it can.
         /// </summary>

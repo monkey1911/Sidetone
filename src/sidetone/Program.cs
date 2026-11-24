@@ -650,6 +650,35 @@ namespace Sidetone.Gui
                   $"DMR: the demo's DMR channel is a card like any other, with its timeslot and PTT ({dmrCard?.TgLine})");
             c.SetFocus(1);
 
+            // the Tones box: make a tone preset and a DTMF preset, a bad entry is refused with its reason, Send tries them
+            w.View.OpenBox("tones");
+            TonePresetOverlay tb = w.View.TonesBox;
+            bool tonesOpen = tb.IsOpen;
+            tb.StartNew(false);
+            tb.Fill("Bad", steps: "1000:0.5, 9000:1");
+            tb.Save();
+            bool badRefused = tb.Editing && tb.Hint.Contains("outside 281–2500 Hz") && tb.Counts.Tones == 0;
+            tb.Fill("Two tone", steps: "1000:0.5, 0:0.2, 1500:1");
+            tb.Save();
+            tb.StartNew(true);
+            tb.Fill("Call", digits: "911#");
+            tb.Save();
+            tb.Send(false, 0);
+            string sendSaid = tb.Message;      // the demo isn't connected: the reason shows in the box
+            Press(PhysicalKey.Escape);
+            Check(tonesOpen && badRefused && tb.Counts == (1, 1) && c.Settings?.TonePresets?.Single().Steps.Count == 3 && c.Settings?.DtmfPresets?.Single().Digits == "911#" &&
+                  sendSaid.Contains("not connected") && !tb.IsOpen,
+                  $"Tones box: a tone preset and a DTMF preset are made and kept, a bad step is refused with its reason, Send says why it can't, Esc closes ({sendSaid})");
+
+            // folding Recent calls and the log down to one line, and back
+            w.View.ToggleBottom();
+            w.View.RefreshNow();
+            (string foldedRecent, string foldedLog) = w.View.BottomTitles;
+            bool folded = w.View.BottomCollapsed && c.Settings?.BottomCollapsed == true && foldedRecent.StartsWith("▸ Recent: ") && foldedLog.StartsWith("▸ Log: ");
+            w.View.ToggleBottom();
+            Check(folded && !w.View.BottomCollapsed && w.View.BottomTitles.Recent == "▾ Recent calls" && c.Settings?.BottomCollapsed == null,
+                  $"bottom panels: a title folds Recent calls and the log to one line each (the newest of each), and back ({foldedRecent})");
+
             // web streams: the demo's one is a card after the Dispatch tab's channels, off until Play
             c.ShowZone(c.Zones[0]);
             w.View.RefreshNow();
@@ -884,7 +913,7 @@ namespace Sidetone.Gui
             Console.WriteLine("                  [--scale FACTOR] [--key-file FILE.ekc] [--record-dir DIR] [--no-notify] [--no-processing]");
             Console.WriteLine("  sidetone --install-launcher | --remove-launcher");
             Console.WriteLine("  sidetone --demo");
-            Console.WriteLine("  sidetone --screenshot FILE.png [--demo] [--theme light|dark] [--size 1280x800] [--show page|digital|radio|settings|keyfile|patch|recall|recordings|tabs]");
+            Console.WriteLine("  sidetone --screenshot FILE.png [--demo] [--theme light|dark] [--size 1280x800] [--show page|digital|radio|settings|keyfile|patch|recall|recordings|tones|tabs]");
             Console.WriteLine();
             Console.WriteLine("Without --codeplug, the codeplug opened last time is used. --demo shows a made-up system");
             Console.WriteLine("without connecting to anything. The options are the same as 'sidetone-cli tui'; see the README.");

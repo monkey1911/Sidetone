@@ -131,6 +131,52 @@ namespace Sidetone.Core
         /// <summary>The channel marker (the console's "channel hold" beep).</summary>
         public static TonePlan Marker() => new TonePlan("marker", new List<(double, double)> { (MarkerHz, MarkerMs) });
 
+        /// <summary>A tone preset: its steps as IMBE tone frames (0 Hz is silence), with the alert tones' lead-in and tail.</summary>
+        public static TonePlan Sequence(string name, IEnumerable<ToneStep> steps) =>
+            new TonePlan(name, steps.Select(st => (st.Hz, st.Seconds * 1000)).ToList());
+
+        /// <summary>The DTMF pairs (low, high Hz), as the Windows console's table.</summary>
+        public static (double Low, double High) DtmfPair(char digit) => char.ToUpperInvariant(digit) switch
+        {
+            '1' => (697, 1209), '2' => (697, 1336), '3' => (697, 1477), 'A' => (697, 1633),
+            '4' => (770, 1209), '5' => (770, 1336), '6' => (770, 1477), 'B' => (770, 1633),
+            '7' => (852, 1209), '8' => (852, 1336), '9' => (852, 1477), 'C' => (852, 1633),
+            '*' => (941, 1209), '0' => (941, 1336), '#' => (941, 1477), 'D' => (941, 1633),
+            _ => throw new ArgumentException($"'{digit}' isn't a DTMF digit")
+        };
+
+        /// <summary>
+        /// A DTMF preset: each digit as its two tones (each at -20 dBFS, 5 ms fades), then the gap; ',' is a pause.
+        /// Sent as audio through the voice encoder (a tone frame carries one frequency), as the Windows console does.
+        /// </summary>
+        public static TonePlan Dtmf(string name, string digits, int digitMs, int gapMs)
+        {
+            const int rate = 8000, fade = 40;
+            const double level = 0.1 * short.MaxValue;
+            List<short> pcm = new List<short>();
+            foreach (char ch in digits)
+            {
+                if (ch == ',')
+                {
+                    pcm.AddRange(new short[TonePresets.PauseMs * rate / 1000]);
+                    continue;
+                }
+                (double low, double high) = DtmfPair(ch);
+                int n = digitMs * rate / 1000;
+                for (int i = 0; i < n; i++)
+                {
+                    double env = Math.Min(1.0, Math.Min(i, n - 1 - i) / (double)fade);
+                    double v = (Math.Sin(2 * Math.PI * low * i / rate) + Math.Sin(2 * Math.PI * high * i / rate)) * level * env;
+                    pcm.Add((short)Math.Round(v));
+                }
+                pcm.AddRange(new short[gapMs * rate / 1000]);
+            }
+            return FromAudio(name, pcm.ToArray());
+        }
+
+        /// <summary>How long the plan takes to send, lead-in and tail included.</summary>
+        public TimeSpan Length => TimeSpan.FromMilliseconds(Frames.Length * FrameMs);
+
         private static void Alternate(List<(double, double)> c, double a, double b, double step)
         {
             bool first = true;

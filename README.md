@@ -10,7 +10,7 @@ There are two front ends over the same console:
 - **`sidetone`**: a graphical console (Avalonia), with light and dark themes. See [Graphical console (sidetone)](#graphical-console-sidetone).
 - **Sidetone for Android**: the same graphical console as an Android app, with a phone layout. See [Android](#android).
 
-**What works** (Linux, macOS, Windows and Android)**:** FNE login (several systems at once), P25 receive and transmit (clear, AES-256, DES, ADP/ARC4 with keys from the FNE or a KFDtool key file), DMR receive and transmit (clear, both timeslots), PipeWire audio, channel cards in tabs for the codeplug's zones, push-to-talk from the keyboard, a hotkey or a PTT device, alert tones, pages, radio commands, the channel marker, radio aliases, patching (two-way and one-way), instant recall with a call history kept between runs, audio outputs per tab and channel, recording to Opus or WAV, announcements (WAV files, or text spoken by Piper or espeak-ng, played onto talkgroups), a time announcement that can play by itself on the clock, web streams (MP3 feeds on a tab), and log files.
+**What works** (Linux, macOS, Windows and Android)**:** FNE login (several systems at once), P25 receive and transmit (clear, AES-256, DES, ADP/ARC4 with keys from the FNE or a KFDtool key file), DMR receive and transmit (clear, both timeslots), PipeWire audio, channel cards in tabs for the codeplug's zones, push-to-talk from the keyboard, a hotkey or a PTT device, alert tones, pages, your own tone and DTMF presets, radio commands, the channel marker, radio aliases, patching (two-way and one-way), instant recall with a call history kept between runs, audio outputs per tab and channel, recording to Opus or WAV, announcements (WAV files, or text spoken by Piper or espeak-ng, played onto talkgroups), a time announcement that can play by itself on the clock, web streams (MP3 feeds on a tab), and log files.
 
 **Not yet:** NXDN/analog. What we'd like to add next is in [WISHLIST.md](WISHLIST.md).
 
@@ -46,6 +46,7 @@ There are two front ends over the same console:
 - [Audio processing](#audio-processing)
 - [Instant recall and recording](#instant-recall-and-recording)
   - [Call history](#call-history)
+- [Tone and DTMF presets](#tone-and-dtmf-presets)
 - [Announcements](#announcements)
   - [Text to speech](#text-to-speech)
   - [Spoken announcements](#spoken-announcements)
@@ -330,6 +331,8 @@ Channels are shown as cards, up to four across. The mouse works in any terminal 
 | z | Zones box: ↑/↓ pick a zone, Space or Enter hides or shows it, Esc closes |
 | o | Outputs box: ↑/↓ pick a tab or channel, ←/→ choose its audio output, Esc closes |
 | s | Web streams box for the tab on show: ↑/↓ pick a stream, Enter plays or stops it, +/- volume, Esc closes (see [Web streams](#web-streams)) |
+| g | Tone presets box: ↑/↓ pick a tone or DTMF preset, Enter sends it on every listening channel, Esc closes (see [Tone and DTMF presets](#tone-and-dtmf-presets)) |
+| b | Fold Recent calls and the log down to one line (the newest of each), or open them again; remembered, and shared with the graphical console |
 | Enter | Start or stop listening on the focused card |
 | Space | Toggle transmit on the focused card (press again to stop) |
 | Esc | Stop transmitting or stop a tone |
@@ -390,11 +393,12 @@ What it has so far:
 - a tool bar under the header:
   - **Alert tones 1 to 6**, sent on every listening channel. While a tone is going out, the PTT button reads **STOP TONE**; click it or press Esc to stop.
   - **Page…** opens a box for a two-tone (QuickCall II) page on every listening channel, or a digital page (P25 call alert) to one radio. The last values are filled in.
+  - **Tones…** opens your tone and DTMF presets (see [Tone and DTMF presets](#tone-and-dtmf-presets))
   - **Radio command…** sends a check, inhibit or uninhibit to one radio. Inhibit has to be sent twice to confirm. The radio's alias shows as you type its ID. Replies appear in the log when the FNE passes them back to the console, which not every FNE version does.
   - **Channel marker** turns the periodic beep on idle listening channels on and off
   - **Patch…** opens the Patches box (see [Patching](#patching))
   - **Recall…** opens Instant recall (see [Instant recall and recording](#instant-recall-and-recording))
-- a transmit bar, recent calls and the log
+- a transmit bar, recent calls and the log. Click either panel's title (▾) to fold both down to one line, showing the newest call and the newest log line, so the cards get the room; click again (▸) to open them. Remembered between runs.
 - **Auto / Light / Dark** in the top right. Auto follows your desktop's light or dark setting. The choice is remembered. `--theme light|dark|system` sets it from the command line.
 
 ### Settings
@@ -673,6 +677,14 @@ The Recent calls list and each channel's last ten calls (with their audio) are s
 **Secure calls are saved decrypted.** A recording of a secure channel is plain audio anyone with the file can play. The folders and files are made readable by your user only, and the log says so when you start recording a secure channel.
 
 **Audio quality.** Calls are kept as the voice frames that came over the network (about 0.5 kB a second) and only turned into audio when played or saved, so both sound the same as the live call.
+
+## Tone and DTMF presets
+
+Your own tone sequences and DTMF strings, as the Windows console has them, kept in the settings file (so the TUI sends the same ones). In the graphical console, **Tones…** (on a phone, More → Tones…) lists them with **Send**, **Edit** and **Delete**, and makes new ones; in the TUI, `g` lists them and Enter sends one. Sending works like an alert tone: on every listening P25 channel, with the lead-in, Esc to stop, the talkgroup check, and an entry in the log and Recent calls. A preset longer than the transmit time limit is refused.
+
+- **Tone presets** are steps written as `Hz:seconds`, separated by commas, with `0` for silence: `1000:0.5, 0:0.2, 1500:1` is half a second of 1000 Hz, a fifth of a second of silence, then a second of 1500 Hz. Tones are 281 to 2500 Hz, the range P25's tone codewords cover (in steps of about 31 Hz, as alert tones and QCII pages); steps are 0.02 to 60 seconds. They go out as the same tone codewords as alert tones, so radios hear clean tones.
+- **Import MIDI…** turns a `.mid` file into a tone preset (the Windows console's own importer): one note at a time, rests as silence, and notes outside the range moved by octaves into it. It opens in the editor to check before saving.
+- **DTMF presets** are digits `0-9`, `*`, `#` and `A-D`, with `,` for a half-second pause, a length for each digit (100 ms by default) and the gap after it (100 ms). P25's voice codec has no DTMF codewords, so DTMF goes out as audio through the voice encoder, as the Windows console sends it. **The codec blurs it:** in Sidetone's own measurements one of a digit's two tones often comes out too weak to decode, so a DTMF decoder may miss digits. Test it with what you need it to reach before relying on it.
 
 ## Announcements
 

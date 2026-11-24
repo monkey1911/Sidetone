@@ -8,7 +8,19 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
 
 ## State at hand-off (2026-11-16)
 
-- Version **0.38.0** on `main` (set once, in `src/Directory.Build.props`): three Windows-console features
+- Version **0.39.0** on `main` (set once, in `src/Directory.Build.props`): tone and DTMF presets, and folding
+  the bottom panels. `TonePresets.cs` (`TonePreset`/`ToneStep`, `DtmfPreset`; `ParseSteps`/`FormatSteps` for the
+  editor's `Hz:seconds` text; `ImportMidi` through the Windows console's `TonePresetFileImporter`, linked, with a
+  two-constant `dvmconsole.SettingsManager` stand-in in the same file since the real one is WPF). Kept in
+  `AppSettings.TonePresets`/`DtmfPresets`; sent by `SendTonePreset`/`SendDtmfPreset` → `SendManual` (every
+  listening P25 channel, like alert tones; refused past the time limit). `TonePlan.Sequence` = tone codewords;
+  **P25 full-rate IMBE has no real tone or DTMF codewords**: `VocoderToneLookupTable` is pre-encoded voice
+  codewords for single tones, 281–2500 Hz (anything above snaps to 2500, so QCII's allowed 3000 Hz is really
+  2500), and `TonePlan.Dtmf` renders the pair as audio through the encoder, as Windows, which measurably
+  blurs one of the two tones often (see the README's warning). GUI: `TonePresetOverlay` (Tones…, More → Tones…,
+  `--show tones`); TUI `g` (`Tui.Tones.cs`). Folding: `AppSettings.BottomCollapsed`; GUI title ▾/▸
+  (`ToggleBottom`, row 4 Auto), TUI `b` (`Layout(..., folded)` gives a one-row bottom, `DrawFolded`).
+  0.38.0: three Windows-console features
   (`DispatchConsole.Alerts.cs`). The codeplug's `transmitTimeoutSeconds` is the time limit unless an option
   or Settings say otherwise (`StartupChoices.TxLimit(option, saved, codeplug)`; dvmconsole's Codeplug defaults
   it to 180, so every codeplug without it now gets 180, not 120; its 0 becomes 900); a 1 kHz beep each second
@@ -203,7 +215,9 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
   tab and channel, the call history between runs; from 0.29: announcements, `listen --key-file`; from 0.30: the scheduled time announcement, the new announcement level (0.30.3); from 0.31:
   on Android, hardware PTT keys on the Sonim XP Pro; the LEX L11's PTT key was reported not working (how far it got not known yet); from 0.32: web streams (a real feed, and
   one with a password); from 0.37: DMR receive and transmit on the air (CTRS's DMR FNE); from 0.38: the time limit's beeps and
-  latch, the talkgroup check against CTRS's real talkgroup list, and the chimes on a real drop; from 0.34: macOS on Apple silicon (only CI so far), and on the
+  latch, the talkgroup check against CTRS's real talkgroup list, and the chimes on a real drop; from 0.39:
+  tone presets heard on a radio, DTMF presets reaching a decoder (doubtful through IMBE), MIDI import of a
+  real file, and folding; from 0.34: macOS on Apple silicon (only CI so far), and on the
   owner's Intel Mac whatever their "it worked" didn't cover (ask before listing parts as tested); from
   0.36: the boxes on a real tablet; from
   0.35: on Windows 10 and 11 x64 the rest (receive audio, Credential Manager, the taskbar flash, the
@@ -213,8 +227,8 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
   en_US-lessac-medium voice).
 - Next on the wishlist ("To be implemented"): a CI test against a real dvmfne (waiting for dvmhost's
   `r05a06_dev` to merge into `master`); analog (`mode: analog`, G.711 mu-law; for any DVM network, though CTRS doesn't carry it);
-  NXDN; TMS and Location over MQTT (waiting on details); then Windows-console parity items (tone and DTMF
-  presets, extra clocks, settings export, choosing panels). Sidetone is for any DVM
+  NXDN; TMS and Location over MQTT (waiting on details); then Windows-console parity items
+  (extra clocks, settings export, hiding panels). Sidetone is for any DVM
   network, not only CTRS (the owner's word). DMR's leftovers (encryption, patches, tones and
   announcements, radio commands) are under "Partially implemented". The TUI's only remaining gap is audio over SSH.
 

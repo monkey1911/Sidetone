@@ -144,6 +144,12 @@ namespace Sidetone.Core
         public bool? Notifications { get; set; }
         /// <summary>Play a chime when a system connects or drops (null means yes).</summary>
         public bool? ConnectionChimes { get; set; }
+        /// <summary>The operator's tone presets (both consoles).</summary>
+        public List<TonePreset> TonePresets { get; set; }
+        /// <summary>The operator's DTMF presets (both consoles).</summary>
+        public List<DtmfPreset> DtmfPresets { get; set; }
+        /// <summary>Recent calls and the log are folded down to one line (both consoles).</summary>
+        public bool? BottomCollapsed { get; set; }
         /// <summary>Display scale for the graphical console (1.0 = 100%), or null to work it out.</summary>
         public double? UiScale { get; set; }
         /// <summary>Local key file (.ekc) chosen in Settings, or null to use the codeplug's, if it names one.</summary>

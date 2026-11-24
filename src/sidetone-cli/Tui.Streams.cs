@@ -30,6 +30,7 @@ namespace Sidetone.Cli
             keyDialog = null;
             outputsDialog = null;
             announceDialog = null;
+            tonesDialog = null;
             streamsDialog = new StreamsDialog();
         }
 

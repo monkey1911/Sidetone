@@ -97,6 +97,9 @@ namespace Sidetone.Gui
         private PatchOverlay patchBox;
         private RecallOverlay recallBox;
         private RecordingsOverlay recordingsBox;
+        private TonePresetOverlay tonesBox;
+        private Tap presetsTap;
+        internal TonePresetOverlay TonesBox => tonesBox;
 
         /// <summary>The Patches box (self-check hook).</summary>
         internal PatchOverlay PatchBox => patchBox;
@@ -117,8 +120,10 @@ namespace Sidetone.Gui
         private readonly TextBlock keyHints = new TextBlock { FontSize = 11, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(16, 0, 0, 0) };
         private readonly Border recentPanel = new Border { Margin = new Thickness(12, 8, 6, 12), Padding = new Thickness(12, 8), CornerRadius = new CornerRadius(Ui.CornerRadius), BorderThickness = new Thickness(1) };
         private readonly Border logPanel = new Border { Margin = new Thickness(6, 8, 12, 12), Padding = new Thickness(12, 8), CornerRadius = new CornerRadius(Ui.CornerRadius), BorderThickness = new Thickness(1) };
-        private readonly TextBlock recentTitle = new TextBlock { Text = "Recent calls", FontSize = 13, FontWeight = FontWeight.Bold, Margin = new Thickness(0, 0, 0, 6) };
-        private readonly TextBlock logTitle = new TextBlock { Text = "Log", FontSize = 13, FontWeight = FontWeight.Bold, Margin = new Thickness(0, 0, 0, 6) };
+        private readonly TextBlock recentTitle = new TextBlock { Text = "Recent calls", FontSize = 13, FontWeight = FontWeight.Bold, Margin = new Thickness(0, 0, 0, 6), TextTrimming = TextTrimming.CharacterEllipsis };
+        private readonly TextBlock logTitle = new TextBlock { Text = "Log", FontSize = 13, FontWeight = FontWeight.Bold, Margin = new Thickness(0, 0, 0, 6), TextTrimming = TextTrimming.CharacterEllipsis };
+        private readonly ScrollViewer recentScroll = new ScrollViewer { HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
+        private string newestCall = "none yet", newestLog = string.Empty;
         private readonly StackPanel recentRows = new StackPanel();
         private readonly StackPanel logRows = new StackPanel();
         private readonly ScrollViewer logScroll = new ScrollViewer { HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
@@ -157,6 +162,50 @@ namespace Sidetone.Gui
         private void RequestQuit() => QuitRequested?.Invoke();
 
         private IStorageProvider Storage => TopLevel.GetTopLevel(this)?.StorageProvider;
+
+        /// <summary>Opens the Tones box (tone and DTMF presets).</summary>
+        private void ShowTones()
+        {
+            overlay.Close();
+            tonesBox.Show();
+            RefreshNow();
+        }
+
+        /// <summary>Import MIDI…: picks a .mid file and reads it into a tone preset (null when nothing was picked).</summary>
+        private async Task<TonePreset> ImportMidi()
+        {
+            IStorageProvider storage = Storage;
+            if (storage == null)
+                return null;
+            IReadOnlyList<IStorageFile> files = await storage.OpenFilePickerAsync(new FilePickerOpenOptions
+            {
+                Title = "Import a MIDI file as a tone preset",
+                AllowMultiple = false,
+                FileTypeFilter = OperatingSystem.IsAndroid() ? null : new[] { new FilePickerFileType("MIDI") { Patterns = new[] { "*.mid", "*.midi" } } }
+            });
+            if (files == null || files.Count == 0)
+                return null;
+            // a phone's picker gives a stream, not a path: copy it to a scratch file the importer can read
+            string name = Path.GetFileNameWithoutExtension(files[0].Name);
+            string scratch = Path.Combine(Path.GetTempPath(), $"sidetone-import-{Guid.NewGuid():N}.mid");
+            try
+            {
+                await using (Stream from = await files[0].OpenReadAsync())
+                await using (FileStream to = File.Create(scratch))
+                    await from.CopyToAsync(to);
+                TonePreset preset = TonePresets.ImportMidi(scratch);
+                preset.Name = name;
+                return preset;
+            }
+            catch (IOException ex)
+            {
+                throw new ArgumentException(ex.Message);
+            }
+            finally
+            {
+                try { File.Delete(scratch); } catch (IOException) { }
+            }
+        }
         private IClipboard Clipboard => TopLevel.GetTopLevel(this)?.Clipboard;
 
         public ConsoleView(GuiOptions opt)
@@ -253,6 +302,9 @@ namespace Sidetone.Gui
                     recordingsBox.Show();
                     recordingsBox.Refresh(palette);
                     break;
+                case "tones":
+                    ShowTones();
+                    break;
                 case "patch":
                     if (console != null)
                     {
@@ -348,6 +400,8 @@ namespace Sidetone.Gui
             markerTap = new Tap("Channel marker", () => Do(c => c.ToggleMarker()), fontSize: 12, padY: 5);
             markerTap.Root.Margin = new Thickness(14, 0, 0, 0);
             tools.Children.Add(pageTap.Root);
+            presetsTap = new Tap("Tones…", ShowTones, fontSize: 12, padY: 5);
+            tools.Children.Add(presetsTap.Root);
             tools.Children.Add(radioTap.Root);
             tools.Children.Add(markerTap.Root);
             patchTap = new Tap("Patch…", () => { overlay.Close(); patchBox.Show(); RefreshNow(); }, fontSize: 12, padY: 5);
@@ -373,6 +427,7 @@ namespace Sidetone.Gui
             keyBox = new KeyFileOverlay(UnlockKeyFile, () => root.Focus());
             patchBox = new PatchOverlay(() => console, RefreshNow, () => root.Focus());
             recallBox = new RecallOverlay(() => console, RefreshNow, () => root.Focus(), OpenRecordings);
+            tonesBox = new TonePresetOverlay(() => console, () => appSettings, ChangeSettings, ImportMidi, RefreshNow, () => root.Focus());
             recordingsBox = new RecordingsOverlay(() => console?.RecordingsFolder ?? appSettings.RecordingsFolder ?? DispatchConsole.DefaultRecordingsFolder, () => root.Focus());
             zoneBox = new ZoneOverlay(() => console, RefreshNow, () => root.Focus());
             announceBox = new AnnouncementOverlay(() => console, () => _ = PickAnnouncements(), RefreshNow, () => root.Focus());
@@ -391,7 +446,11 @@ namespace Sidetone.Gui
             DockPanel recentDock = new DockPanel();
             DockPanel.SetDock(recentTitle, Dock.Top);
             recentDock.Children.Add(recentTitle);
-            recentDock.Children.Add(new ScrollViewer { Content = recentRows, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled });
+            recentScroll.Content = recentRows;
+            recentDock.Children.Add(recentScroll);
+            // a title folds both panels down to one line (or opens them again), on a desktop or tablet
+            foreach (TextBlock t in new[] { recentTitle, logTitle })
+                t.PointerPressed += (s, e) => { if (!narrow) { e.Handled = true; ToggleBottom(); } };
             recentPanel.Child = recentDock;
 
             DockPanel logDock = new DockPanel();
@@ -449,6 +508,7 @@ namespace Sidetone.Gui
             Grid.SetRow(patchBox.Root, 1);
             Grid.SetRow(recallBox.Root, 1);
             Grid.SetRow(recordingsBox.Root, 1);
+            Grid.SetRow(tonesBox.Root, 1);
             Grid.SetRow(zoneBox.Root, 1);
             Grid.SetRow(routingBox.Root, 1);
             Grid.SetRow(announceBox.Root, 1);
@@ -460,11 +520,12 @@ namespace Sidetone.Gui
             root.Children.Add(patchBox.Root);
             root.Children.Add(recallBox.Root);
             root.Children.Add(recordingsBox.Root);
+            root.Children.Add(tonesBox.Root);
             root.Children.Add(zoneBox.Root);
             root.Children.Add(routingBox.Root);
             root.Children.Add(announceBox.Root);
             root.Children.Add(keyBox.Root);
-            boxes.AddRange(new[] { overlay.Root, settingsBox.Root, patchBox.Root, recallBox.Root, recordingsBox.Root, zoneBox.Root, routingBox.Root, announceBox.Root, keyBox.Root });
+            boxes.AddRange(new[] { overlay.Root, settingsBox.Root, patchBox.Root, recallBox.Root, recordingsBox.Root, tonesBox.Root, zoneBox.Root, routingBox.Root, announceBox.Root, keyBox.Root });
             Content = root;
         }
 
@@ -1284,6 +1345,7 @@ namespace Sidetone.Gui
             patchBox?.Close();
             recallBox?.Close();
             recordingsBox?.Close();
+            tonesBox?.Close();
             zoneBox?.Close();
             routingBox?.Close();
             announceBox?.Close();
@@ -1462,6 +1524,7 @@ namespace Sidetone.Gui
                     alertTaps[i].Paint(Brushes.Transparent, p.Text, p.Edge);
             }
             pageTap.Paint(Brushes.Transparent, p.Text, p.Edge);
+            presetsTap.Paint(Brushes.Transparent, p.Text, p.Edge);
             radioTap.Paint(Brushes.Transparent, p.Text, p.Edge);
             markerTap.Text = c.MarkerOn ? "Channel marker on" : "Channel marker";
             if (c.MarkerOn)
@@ -1496,6 +1559,7 @@ namespace Sidetone.Gui
             patchBox.Refresh(p);
             recallBox.Refresh(p);
             recordingsBox.Refresh(p);
+            tonesBox.Refresh(p);
             FitBoxes();     // the open box, with any rows it just built
             if (c.Replaying != null)
                 recallTap.Paint(p.Accent, p.OnStrong);
@@ -1592,6 +1656,17 @@ namespace Sidetone.Gui
                 {
                     e.Handled = true;
                     keyBox.Submit();
+                }
+                return;
+            }
+
+            // the Tones box is open: Esc closes its editor, then the box (typing in it isn't a shortcut)
+            if (tonesBox.IsOpen)
+            {
+                if (e.Key == Key.Escape)
+                {
+                    e.Handled = true;
+                    tonesBox.Escape();
                 }
                 return;
             }
@@ -1963,6 +2038,31 @@ namespace Sidetone.Gui
             RefreshNow();
         }
 
+        /// <summary>Recent calls and the log are folded down to one line (Settings; desktop and tablet layouts).</summary>
+        internal bool BottomCollapsed => appSettings.BottomCollapsed == true;
+
+        /// <summary>Folds the bottom panels to one line, or opens them again (remembered).</summary>
+        internal void ToggleBottom()
+        {
+            bool fold = !BottomCollapsed;
+            ChangeSettings(s => s.BottomCollapsed = fold ? true : null);
+            UpdateLayoutMode();
+            SetBottomTitles();
+        }
+
+        /// <summary>The panels' titles: a ▾/▸ to fold them on a desktop, and the newest entry when folded.</summary>
+        private void SetBottomTitles()
+        {
+            bool folded = BottomCollapsed && !narrow;
+            recentTitle.Text = narrow ? "Recent calls" : folded ? $"▸ Recent: {newestCall}" : "▾ Recent calls";
+            logTitle.Text = narrow ? "Log" : folded ? $"▸ Log: {newestLog}" : "▾ Log";
+            recentTitle.FontWeight = logTitle.FontWeight = folded ? FontWeight.SemiBold : FontWeight.Bold;
+            recentTitle.Margin = logTitle.Margin = new Thickness(0, 0, 0, folded ? 0 : 6);
+        }
+
+        /// <summary>The newest entries the folded titles show (self-check hook).</summary>
+        internal (string Recent, string Log) BottomTitles => (recentTitle.Text, logTitle.Text);
+
         private void RefreshRecent(DispatchConsole c, Palette p)
         {
             if (c.RecentVersion == shownRecent && shownRecentPalette == p)
@@ -1972,6 +2072,8 @@ namespace Sidetone.Gui
 
             recentRows.Children.Clear();
             var rows = c.SnapshotRecent(MaxRecentRows);
+            newestCall = rows.Count == 0 ? "none yet" : $"{rows[0].Time}  {(rows[0].Tx ? "TX" : "RX")}  {rows[0].Chan}{(string.IsNullOrEmpty(rows[0].Who) ? string.Empty : "  " + rows[0].Who)}  {rows[0].Detail}";
+            SetBottomTitles();
             if (rows.Count == 0)
                 recentRows.Children.Add(new TextBlock { Text = "none yet", FontSize = 12, Foreground = p.Dim });
             foreach (var call in rows)
@@ -1995,7 +2097,10 @@ namespace Sidetone.Gui
             shownLogPalette = p;
 
             logRows.Children.Clear();
-            foreach (string line in c.SnapshotLog(MaxLogLines))
+            List<string> logLines = c.SnapshotLog(MaxLogLines);
+            newestLog = logLines.Count == 0 ? string.Empty : logLines[^1];
+            SetBottomTitles();
+            foreach (string line in logLines)
             {
                 IBrush colour = line.Contains("TX ") ? p.Tx
                     : line.Contains(": RX ") ? p.Rx

@@ -70,6 +70,7 @@ namespace Sidetone.Cli
             keyDialog = null;
             outputsDialog = null;
             streamsDialog = null;
+            tonesDialog = null;
             RefreshSpeechEngine();   // something may have been installed since
             announceDialog = new AnnounceDialog();
         }

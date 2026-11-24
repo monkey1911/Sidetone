@@ -29,18 +29,17 @@ Roughly in the order that makes sense to do them.
    - Still to learn from the FNE's maintainers: the broker's address and how a console logs in (likely new codeplug keys per system: host, port, TLS, user name, password or certificate); the topic layout and message format (JSON?) for messages, delivery receipts and locations; how radio IDs map to topics; whether location is pushed regularly or asked for.
    - What it would likely take, once known: one MQTT connection per system in the core (connecting and reconnecting with the FNE link, `FneLink`); a messages panel in the GUI and TUI, and notifications for incoming messages (Android's, and the desktop ones); for Location, the last known position per radio in the call list and radio box at first, with a map later if wanted. Secrets (passwords, a client certificate's key) are never logged, as for FNE passwords.
 
-5. **Custom tone presets** (as the Windows console). Your own tone sequences (frequency, length, holds) beside alert tones 1–6, QCII pages and the marker, with an importer for tone preset files (the Windows console's `TonePresetFileImporter` shows the format). Sent the way alert tones are.
+5. **Clocks for other time zones** (as the Windows console's toolbar clocks). A few clocks in the header, each with its own label and zone; the TUI's title line could show one.
 
-6. **DTMF presets** (as the Windows console). Stored DTMF sequences sent on a talkgroup, as IMBE tone frames like the other tones.
-
-7. **Clocks for other time zones** (as the Windows console's toolbar clocks). A few clocks in the header, each with its own label and zone; the TUI's title line could show one.
-
-8. **Export and import settings** (as the Windows console). One file to move settings to another machine: tabs, outputs, announcements, tone presets. Never key-file passwords; codeplugs stay separate.
-
-9. **Choosing which panels show** (as the Windows console's widget selection). Hide Recent calls, the log, alert tones or the transmit bar to give the cards more room.
+6. **Export and import settings** (as the Windows console). One file to move settings to another machine: tabs, outputs, announcements, tone presets. Never key-file passwords; codeplugs stay separate.
 
 ## Partially implemented
 
+- **Choosing which panels show** (as the Windows console's widget selection). Hide Recent calls, the log, alert tones or the transmit bar to give the cards more room.
+  - ~~Fold the bottom panels (Recent calls and the log) down to one line.~~ Done in 0.39 (a title's ▾/▸, `b` in the TUI; remembered).
+  - Still to do: hiding the alert tones row and other panels outright.
+- ~~**DTMF presets**~~ (as the Windows console). Stored DTMF sequences sent on a talkgroup, as IMBE tone frames like the other tones. Done in 0.39, but as audio through the voice encoder (as the Windows console), not tone frames: P25 full-rate IMBE has no DTMF (nor real tone) codewords, only the pre-encoded single-tone table. Measured: the codec often weakens one of a digit's two tones past decoding.
+  - Still to do, if DTMF matters on the air: build IMBE codewords that decode to each digit's tone pair (as the single-tone table was), instead of encoding audio.
 - ~~**DMR**~~, ~~**and more than one FNE system at a time.**~~ (Several systems at once: done in 0.33; DMR receive and clear transmit: done in 0.37.) libvocoder already has the codec, the cards already show modes that aren't supported yet, and the Windows console in the submodule handles DMR (`MainWindow.DMR.cs`, `FneSystemBase.DMR.cs`, `DMR/DmrTxCall.cs`) to follow, so the work is a receiver and a transmitter. CTRS can carry DMR, but on a second FNE of its own (what setting it up last time required), so for a dispatcher DMR goes with connecting to several FNEs at once, as the Windows console can: one console with the P25 and DMR channels together.
   - ~~Until then, a second Sidetone with a codeplug for the DMR FNE works, in its own window.~~ Done in 0.33: one console connects to every system in the codeplug (each turned off in Settings if wanted), so DMR channels on the DMR FNE will sit beside the P25 ones once DMR itself is done.
   - Testing without radios: two Sidetones through the network test's FNE (item 1). On the air needs someone on CTRS with a DMR radio; until then the release notes say DMR is untested on the air.
@@ -98,6 +97,8 @@ Roughly in the order that makes sense to do them.
   - Still to do: sending audio to another machine's sound system, for when the TUI is run over SSH (today audio stays on the machine Sidetone runs on).
 
 ## Fully implemented
+
+- ~~**Custom tone presets**~~ (as the Windows console). Your own tone sequences (frequency, length, holds) beside alert tones 1–6, QCII pages and the marker, with an importer for tone preset files (the Windows console's `TonePresetFileImporter` shows the format). Sent the way alert tones are. Done in 0.39 (`TonePresets.cs`, the Tones… box, `g` in the TUI): steps as Hz:seconds, sent as the same IMBE tone codewords as alert tones, 281–2500 Hz (the codeword table's range); MIDI import through the Windows console's own importer, notes moved by octaves into range.
 
 - ~~**The codeplug's transmit timeout, with warning beeps**~~ (as the Windows console). Read the codeplug's `transmitTimeoutSeconds` (the Windows console's default is 180; 0 turns it off). Use it unless `--tx-limit` or Settings say otherwise; Sidetone's own setting is 120 s by default today. Done in 0.38 (`StartupChoices.TxLimit`, `DispatchConsole.Alerts.cs`): as planned here; the codeplug's 0 is Sidetone's longest, 900 s, since a stuck PTT must still stop.
   - ~~A countdown warning before the cut-off: short beeps, heard locally, at most one a second, in the last seconds.~~ Done in 0.38: the last 10 seconds, 1 kHz, and a 1 s tone at the cut-off.
