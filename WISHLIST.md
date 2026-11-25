@@ -33,6 +33,13 @@ Roughly in the order that makes sense to do them.
 
 6. **Export and import settings** (as the Windows console). One file to move settings to another machine: tabs, outputs, announcements, tone presets. Never key-file passwords; codeplugs stay separate.
 
+7. **Even Realities G2 glasses on Android** (requested by a user). A heads-up display and PTT for the Android app, through Even's native Android SDK (`com.evenrealities.devices:even-devices-native-android`, a beta). An Even Hub plugin isn't used: it runs in Even's own app, can only connect to web addresses declared in advance (so it couldn't reach Sidetone on the same phone), and Android may suspend it.
+   - **Waiting** for an enterprise licence from Even Realities (the SDK turns away glasses not listed in the licence file) and a pair of G2s to test with.
+   - The display (576×288, monochrome green, text only in the native SDK's docs): the current call (`SYSTEM:CHANNEL:RADIOID/ALIAS`), receiving or transmitting, the time limit's countdown, and pages as they arrive.
+   - PTT: long press and release on the R1 ring or the temple touchpads, through the same hold-to-talk path as other PTT keys (and the latch after a cut-off). Still to measure: the Bluetooth delay, and whether Even's own menu takes some presses first.
+   - Microphone, optional: the glasses' mics (16 kHz PCM, resampled to 8 kHz). The phone's mic and Bluetooth headsets already work. The G2 has no speakers, so receive audio stays on the phone or headset.
+   - Testing: by hand only. CI has no glasses.
+
 ## Partially implemented
 
 - **Choosing which panels show** (as the Windows console's widget selection). Hide Recent calls, the log, alert tones or the transmit bar to give the cards more room.
