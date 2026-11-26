@@ -305,8 +305,8 @@ Channels are shown as cards, up to four across. The mouse works in any terminal 
 |---|---|
 | **PTT** (title bar) | Toggle transmit on the focused card (click again to stop) |
 | **MUTE** (title bar) | Mute or unmute all receive audio |
-| **T1**–**T6** (title bar) | Send alert tone 1–6 on every listening channel (click again to stop) |
-| **PAGE** (title bar) | Page: a QuickCall II tone page on the listening channels, or a digital page (P25 call alert) to one radio ID |
+| **T1**–**T6** (title bar) | Send alert tone 1–6 on the focused channel (click again to stop) |
+| **PAGE** (title bar) | Page: a QuickCall II tone page on the focused channel, or a digital page (P25 call alert) to one radio ID |
 | **RADIO** (title bar) | Radio command: enter a radio ID, pick Check, Inhibit or Uninhibit, then SEND |
 | **MARK** (title bar) | Turn the channel marker on or off |
 | **EXIT** (title bar) | Quit |
@@ -331,17 +331,17 @@ Channels are shown as cards, up to four across. The mouse works in any terminal 
 | z | Zones box: ↑/↓ pick a zone, Space or Enter hides or shows it, Esc closes |
 | o | Outputs box: ↑/↓ pick a tab or channel, ←/→ choose its audio output, Esc closes |
 | s | Web streams box for the tab on show: ↑/↓ pick a stream, Enter plays or stops it, +/- volume, Esc closes (see [Web streams](#web-streams)) |
-| g | Tone presets box: ↑/↓ pick a tone or DTMF preset, Enter sends it on every listening channel, Esc closes (see [Tone and DTMF presets](#tone-and-dtmf-presets)) |
+| g | Tone presets box: ↑/↓ pick a tone or DTMF preset, Enter sends it on the focused channel, Esc closes (see [Tone and DTMF presets](#tone-and-dtmf-presets)) |
 | b | Fold Recent calls and the log down to one line (the newest of each), or open them again; remembered, and shared with the graphical console |
 | Enter | Start or stop listening on the focused card |
 | Space | Toggle transmit on the focused card (press again to stop) |
 | Esc | Stop transmitting or stop a tone |
-| 1 – 6 | Send alert tone 1–6 on every listening channel |
+| 1 – 6 | Send alert tone 1–6 on the focused channel |
 | r | Radio command box (Tab or arrows pick the action, Enter sends) |
 | t | Talk permit tone on or off |
 | p / d | Open the page box in tone or digital mode (←/→ switch modes, Tab switches tone A / B, Enter sends, Esc cancels) |
 | c | Turn the channel marker on or off |
-| n | Announcements box: ↑/↓ pick a file, a spoken text or the time; Enter plays it on the focused card, Space on every listening channel, h hears a spoken one (not sent); a adds a WAV file by its path, t a text to say, r removes one; e opens the speech and time settings |
+| n | Announcements box: ↑/↓ pick a file, a spoken text or the time; Enter plays it on the focused card, h hears a spoken one (not sent); a adds a WAV file by its path, t a text to say, r removes one; e opens the speech and time settings |
 | v | Microphone level meter on or off (without transmitting) |
 | u | Mute or unmute the microphone |
 | a | Reload the alias file and download aliases from the FNE again |
@@ -357,7 +357,7 @@ Channels are shown as cards, up to four across. The mouse works in any terminal 
 | w | Turn recording on the focused card on or off |
 | q or Ctrl+C | Quit |
 
-Alert tones match the Windows console's built-in tones 1–6 (5 seconds each). A digital page is a P25 call alert from the console's RID to one radio (the Windows console's "Page Subscriber"); call alerts and acknowledgements addressed to the console's RID are logged when the FNE passes them on. A QuickCall II page is tone A for 1 s then tone B for 3 s (250–3000 Hz, as the Windows console's manual page), sent on every listening channel; the last page's tones are filled in next time. On P25, tones travel as IMBE tone frames, which carry the frequency in steps of about 31 Hz, so radios regenerate the nearest step. The channel marker is the console's "channel hold" beep: 0.5 s of 650 Hz every 10 seconds on each listening channel that isn't busy; change the interval with `--marker-interval SECONDS`. Tones are encrypted on secure channels and skipped on channels whose key isn't held. The tone buttons are hidden on terminals narrower than 110 columns; the keys still work.
+Alert tones match the Windows console's built-in tones 1–6 (5 seconds each). A digital page is a P25 call alert from the console's RID to one radio (the Windows console's "Page Subscriber"); call alerts and acknowledgements addressed to the console's RID are logged when the FNE passes them on. A QuickCall II page is tone A for 1 s then tone B for 3 s (250–3000 Hz, as the Windows console's manual page), sent on the focused channel; the last page's tones are filled in next time. On P25, tones travel as IMBE tone frames, which carry the frequency in steps of about 31 Hz, so radios regenerate the nearest step. The channel marker is the console's "channel hold" beep: 0.5 s of 650 Hz once a minute on the focused channel, while it's listening and not busy; change the interval in Settings (**Channel marker**, 5 to 600 seconds; the TUI uses the same setting) or for one run with `--marker-interval SECONDS`. **Tones and announcements go out only on the focused channel**, never on every listening channel (since 0.40; before, they went on all of them). Tones are encrypted on secure channels and skipped on channels whose key isn't held. The tone buttons are hidden on terminals narrower than 110 columns; the keys still work.
 
 Radio check, inhibit and uninhibit are sent as in the Windows console. Inhibit disables the radio, so it asks you to press SEND a second time. Replies ("radio 1234 answered the radio check", inhibit / uninhibit confirmations) are logged when the FNE passes them back to the console, which not every FNE version does. Without that, the command still reaches the radio; the console just doesn't hear the answer.
 
@@ -371,7 +371,7 @@ Transmit uses the system's `rid` as the source ID, and the default microphone un
 
 Before keying up, Sidetone checks that the FNE carries the channel's talkgroup: the FNE announces its talkgroup list at login ("Activated 217 TGs" in the log). Transmit, tones and announcements on a talkgroup that isn't in it, or that the FNE has turned off, are refused with the reason (on DMR the timeslot has to match too), instead of keying up into nothing. Until the FNE has announced a list, nothing is refused, as in the Windows console. The log is also written to a file each day (see [Log files](#log-files)).
 
-**The graphical console's Settings apply here too.** When no option says otherwise, the TUI uses the audio output and microphone, PTT device and buttons, time limit, key file, recordings folder, notifications and audio processing chosen there. A saved audio device or PTT device that can't be used right now (unplugged, or a button it doesn't have) is skipped with a warning in the log; one given on the command line is an error.
+**The graphical console's Settings apply here too.** When no option says otherwise, the TUI uses the audio output and microphone, PTT device and buttons, time limit, channel marker interval, key file, recordings folder, notifications and audio processing chosen there. A saved audio device or PTT device that can't be used right now (unplugged, or a button it doesn't have) is skipped with a warning in the log; one given on the command line is an error.
 
 ## Graphical console (sidetone)
 
@@ -391,11 +391,11 @@ What it has so far:
 - **Settings** and **Quit** in the top right (Quit is there for desktops without window buttons)
 - **tabs**, one per codeplug zone, under the tool bar (see [Tabs (zones)](#tabs-zones))
 - a tool bar under the header:
-  - **Alert tones 1 to 6**, sent on every listening channel. While a tone is going out, the PTT button reads **STOP TONE**; click it or press Esc to stop.
-  - **Page…** opens a box for a two-tone (QuickCall II) page on every listening channel, or a digital page (P25 call alert) to one radio. The last values are filled in.
+  - **Alert tones 1 to 6**, sent on the focused channel. While a tone is going out, the PTT button reads **STOP TONE**; click it or press Esc to stop.
+  - **Page…** opens a box for a two-tone (QuickCall II) page on the focused channel, or a digital page (P25 call alert) to one radio. The last values are filled in.
   - **Tones…** opens your tone and DTMF presets (see [Tone and DTMF presets](#tone-and-dtmf-presets))
   - **Radio command…** sends a check, inhibit or uninhibit to one radio. Inhibit has to be sent twice to confirm. The radio's alias shows as you type its ID. Replies appear in the log when the FNE passes them back to the console, which not every FNE version does.
-  - **Channel marker** turns the periodic beep on idle listening channels on and off
+  - **Channel marker** turns the periodic beep on the focused channel on and off (how often: Settings, **Channel marker**)
   - **Patch…** opens the Patches box (see [Patching](#patching))
   - **Recall…** opens Instant recall (see [Instant recall and recording](#instant-recall-and-recording))
 - a transmit bar, recent calls and the log. Click anywhere on either panel's title row (▾) to fold both down to one line, showing the newest call and the newest log line, so the cards get the room; click anywhere on a folded panel (▸) to open them. Remembered between runs.
@@ -422,6 +422,7 @@ What it has so far:
 | Connection chimes | A rising chime when a system connects and the same notes falling when it drops, on or off (on unless turned off). A drop is also logged |
 | Key file | A local key file to use, and its unlock state (see [Encryption keys](#encryption-keys)) |
 | Time limit | How long a transmission can last, 5 to 900 seconds (left as it is, the codeplug's `transmitTimeoutSeconds`) |
+| Channel marker | Seconds between the channel marker's beeps, 5 to 600 (a minute unless changed) |
 | Log | Where the log files are, **Copy log** (puts this run's log on the clipboard, to paste into a message) and **Open folder** |
 | Codeplug | Shows the open codeplug, and opens another one |
 | App launcher | Adds Sidetone to, or removes it from, your desktop's app launcher |
@@ -485,7 +486,7 @@ Keyboard shortcuts (the same keys as the TUI where both have the feature):
 | W | Turn recording on the focused channel on or off |
 | A | Reload the alias file and download aliases again |
 | T | Talk permit tone on or off |
-| 1 to 6 | Send an alert tone on every listening channel |
+| 1 to 6 | Send an alert tone on the focused channel |
 | P / D | Open the page box: two-tone / digital |
 | R | Open the radio command box |
 | C | Channel marker on or off |
@@ -680,7 +681,7 @@ The Recent calls list and each channel's last ten calls (with their audio) are s
 
 ## Tone and DTMF presets
 
-Your own tone sequences and DTMF strings, as the Windows console has them, kept in the settings file (so the TUI sends the same ones). In the graphical console, **Tones…** (on a phone, More → Tones…) lists them with **Send**, **Edit** and **Delete**, and makes new ones; in the TUI, `g` lists them and Enter sends one. Sending works like an alert tone: on every listening P25 channel, with the lead-in, Esc to stop, the talkgroup check, and an entry in the log and Recent calls. A preset longer than the transmit time limit is refused.
+Your own tone sequences and DTMF strings, as the Windows console has them, kept in the settings file (so the TUI sends the same ones). In the graphical console, **Tones…** (on a phone, More → Tones…) lists them with **Send**, **Edit** and **Delete**, and makes new ones; in the TUI, `g` lists them and Enter sends one. Sending works like an alert tone: on the focused P25 channel, with the lead-in, Esc to stop, the talkgroup check, and an entry in the log and Recent calls. A preset longer than the transmit time limit is refused.
 
 - **Tone presets** are steps written as `Hz:seconds`, separated by commas, with `0` for silence: `1000:0.5, 0:0.2, 1500:1` is half a second of 1000 Hz, a fifth of a second of silence, then a second of 1500 Hz. Tones are 281 to 2500 Hz, the range P25's tone codewords cover (in steps of about 31 Hz, as alert tones and QCII pages); steps are 0.02 to 60 seconds. They go out as the same tone codewords as alert tones, so radios hear clean tones.
 - **Import MIDI…** turns a `.mid` file into a tone preset (the Windows console's own importer): one note at a time, rests as silence, and notes outside the range moved by octaves into it. It opens in the editor to check before saving.
@@ -690,8 +691,8 @@ Your own tone sequences and DTMF strings, as the Windows console has them, kept 
 
 An announcement is a WAV file, or a text spoken by a text-to-speech engine, played onto a talkgroup. A WAV announcement is like a pre-recorded message or a weather alert: the Windows console calls them custom alert tones. It goes out the way the alert tones do: after a short lead-in (time for the system to grant the talkgroup), as ordinary voice, at a steady pace, and Esc stops it. It shows in the log and Recent calls.
 
-- **Graphical console:** **Announce…** in the tool bar (or N) lists the files, each with **Play on** *the focused channel* and **Play on all listening**. **Add WAV files…** picks some; **Remove** takes one off the list (the file stays where it is). The same box holds the spoken announcements and the time announcement (below).
-- **TUI:** `n` opens the same list: Enter plays the highlighted one on the focused card, Space on every listening channel, `a` adds a file by typing its path, `r` removes one.
+- **Graphical console:** **Announce…** in the tool bar (or N) lists the files, each with **Play on** *the focused channel*. **Add WAV files…** picks some; **Remove** takes one off the list (the file stays where it is). The same box holds the spoken announcements and the time announcement (below).
+- **TUI:** `n` opens the same list: Enter plays the highlighted one on the focused card, `a` adds a file by typing its path, `r` removes one.
 - **Any common WAV works:** 8, 16, 24 or 32-bit, or floating point, at any sample rate, mono or stereo. Sidetone converts it to the 8 kHz mono the radio system carries (filtering out what's above the voice band first, so nothing folds back as a whistle) and levels it the way your microphone is levelled: the speech (not counting pauses) at -20 dBFS, so an announcement is as loud on the air as your own voice. It's never raised more than 12 dB, and peaks stay under -1 dBFS. The Windows console only takes files already at 8 kHz mono.
 - **Level:** at the top of the Announcements box (and in the TUI's `e` settings) sets all announcements quieter (3, 6 or 9 dB) or 3 dB louder than your voice, if they're reported too hot or too quiet. It takes effect at once.
 - **Limits:** an announcement can't be longer than the transmit time limit (and at most 10 minutes), and nothing else can be transmitting or sending a tone at the time. Secure channels send it encrypted, like your own voice.
@@ -722,7 +723,7 @@ Speech goes through the same conversion as a WAV file, and IMBE is made for spee
 
 ### Spoken announcements
 
-Type what to say, and it's kept in the list with the WAV files: in the graphical console, in the box under **Spoken**, then **Add** (or Enter); in the TUI, `t`. Each one plays on the focused channel or on every listening channel, like a file. The engine makes the audio the first time it's played (Piper takes well under a second) and keeps it until Sidetone closes.
+Type what to say, and it's kept in the list with the WAV files: in the graphical console, in the box under **Spoken**, then **Add** (or Enter); in the TUI, `t`. Each one plays on the focused channel, like a file. The engine makes the audio the first time it's played (Piper takes well under a second) and keeps it until Sidetone closes.
 
 ### Time announcement
 
@@ -732,8 +733,8 @@ The time announcement says the time, with your own words around it, for example 
 - **Clock:** 12-hour (*two twenty P M*, *two oh five P M*, *twelve A M* at midnight) or 24-hour, as it's said on the radio (*fourteen twenty*, *fourteen hundred*, *zero nine thirty*).
 - **Time zone:** this computer's, or any other (like `America/Chicago` or `UTC`).
 - **Say the zone:** its abbreviation, letter by letter (*P S T* in winter, *P D T* in summer; zones with no letters are said as an offset, *U T C plus four*), or your own words in **Zone said as** (like *Pacific time*).
-- **By itself:** off, or every 15, 30 or 60 minutes on the clock (on the hour, the quarter hours, and so on), on every listening channel or on one channel (which has to be listening, so Sidetone knows when it's quiet). It waits for its channels to be quiet and for the console to be free (not transmitting or sending a tone); if they aren't within 3 minutes, it's skipped and the log says why. It only plays while Sidetone is running and connected.
-- **Hear it**, **Play on** *the focused channel* and **Play on all listening** play it now; the box shows what it will say. In the TUI it's the last row of the `n` box, and `e` opens its settings.
+- **By itself:** off, or every 15, 30 or 60 minutes on the clock (on the hour, the quarter hours, and so on), on the focused channel or on one chosen channel (either has to be listening, so Sidetone knows when it's quiet). It waits for its channel to be quiet and for the console to be free (not transmitting or sending a tone); if they aren't within 3 minutes, it's skipped and the log says why. It only plays while Sidetone is running and connected.
+- **Hear it** and **Play on** *the focused channel* play it now; the box shows what it will say. In the TUI it's the last row of the `n` box, and `e` opens its settings.
 
 The time announcement is kept for each system; the engine, voice and spoken texts are shared by all.
 

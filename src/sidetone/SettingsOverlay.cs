@@ -22,6 +22,8 @@ namespace Sidetone.Gui
         {
             public string Output, Input, PttDevice, PttButton, MuteButton;
             public int TxLimit = 120;
+            /// <summary>Seconds between channel marker beeps.</summary>
+            public int MarkerSeconds = DispatchConsole.DefaultMarkerSeconds;
             public bool SpaceToggle;
             /// <summary>Display scale (1.0 = 100%), or null for automatic.</summary>
             public double? Scale;
@@ -106,6 +108,8 @@ namespace Sidetone.Gui
         private readonly TextBlock title = new TextBlock { Text = "Settings", FontSize = 19, FontWeight = FontWeight.Bold };
         private readonly TextBlock codeplugPath = new TextBlock { FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
         private readonly TextBlock launcherState = new TextBlock { FontSize = 12, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
+        public readonly TextBox MarkerSeconds = new TextBox { Width = 90, MaxLength = 3, FontSize = 14, HorizontalAlignment = HorizontalAlignment.Left };
+        private readonly TextBlock markerSecondsHint = new TextBlock { Text = $"seconds between beeps ({DispatchConsole.MinMarkerSeconds} to {DispatchConsole.MaxMarkerSeconds})", FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
         private readonly TextBlock seconds = new TextBlock { Text = $"seconds ({MinTxLimit} to {MaxTxLimit})", FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
         private readonly TextBlock overrides = new TextBlock { FontSize = 12, TextWrapping = TextWrapping.Wrap };
         private readonly TextBlock note = new TextBlock { FontSize = 12, TextWrapping = TextWrapping.Wrap };
@@ -275,6 +279,9 @@ namespace Sidetone.Gui
             WrapPanel limitRow = new WrapPanel { ItemSpacing = 8, LineSpacing = 8 };
             limitRow.Children.Add(TxLimit);
             limitRow.Children.Add(seconds);
+            WrapPanel markerRow = new WrapPanel { ItemSpacing = 8, LineSpacing = 8 };
+            markerRow.Children.Add(MarkerSeconds);
+            markerRow.Children.Add(markerSecondsHint);
 
             openCodeplug = new Tap("Open another…", () => { Close(); pickCodeplug(); }, fontSize: 12, padX: 10, padY: 5);
             Grid codeplugRow = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
@@ -298,6 +305,7 @@ namespace Sidetone.Gui
                     FillButtons(null, null);
             };
             TxLimit.TextChanged += (s, e) => message.Text = string.Empty;
+            MarkerSeconds.TextChanged += (s, e) => message.Text = string.Empty;
 
             cancel = new Tap("Cancel", Close, fontSize: 13, minWidth: 90, padY: 8);
             saveTap = new Tap("Save", Save, fontSize: 13, minWidth: 110, padY: 8);
@@ -336,6 +344,7 @@ namespace Sidetone.Gui
                 stack.Children.Add(row);
             stack.Children.Add(Field("Space and PTT", spaceRow));
             stack.Children.Add(Field("Time limit", limitRow));
+            stack.Children.Add(Field("Channel marker", markerRow));
             stack.Children.Add(Heading("Codeplug"));
             stack.Children.Add(codeplugRow);
             stack.Children.Add(BuildSystemsRow());
@@ -474,6 +483,7 @@ namespace Sidetone.Gui
             }
 
             TxLimit.Text = current.TxLimit.ToString();
+            MarkerSeconds.Text = current.MarkerSeconds.ToString();
             SpaceToggle = current.SpaceToggle;
             codeplugPath.Text = codeplug ?? "No codeplug open.";
             overrides.Text = commandLine == null ? string.Empty
@@ -577,6 +587,12 @@ namespace Sidetone.Gui
                 message.Text = $"The time limit must be {MinTxLimit} to {MaxTxLimit} seconds.";
                 return;
             }
+            if (!int.TryParse((MarkerSeconds.Text ?? string.Empty).Trim(), out int marker) ||
+                marker < DispatchConsole.MinMarkerSeconds || marker > DispatchConsole.MaxMarkerSeconds)
+            {
+                message.Text = $"The channel marker's interval must be {DispatchConsole.MinMarkerSeconds} to {DispatchConsole.MaxMarkerSeconds} seconds.";
+                return;
+            }
 
             string device = Selected(PttDevice);
             string scaleText = Selected(Scale);
@@ -590,6 +606,7 @@ namespace Sidetone.Gui
                 PttButton = device == null ? null : Selected(PttButton),
                 MuteButton = device == null ? null : Selected(MuteButton),
                 TxLimit = limit,
+                MarkerSeconds = marker,
                 SpaceToggle = SpaceToggle,
                 Notifications = Notify,
                 ConnectionChimes = Chimes,
@@ -633,6 +650,7 @@ namespace Sidetone.Gui
             codeplugPath.Foreground = p.Dim;
             launcherState.Foreground = p.Dim;
             seconds.Foreground = p.Dim;
+            markerSecondsHint.Foreground = p.Dim;
             scaleNote.Foreground = p.Dim;
             note.Foreground = p.Dim;
             overrides.Foreground = p.Warn;

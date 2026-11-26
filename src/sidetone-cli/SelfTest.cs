@@ -764,6 +764,16 @@ B: MSC=10
             string titleRow = tui.Render(120, 40).RowText(1);
             Check(tui.MarkerOn && titleRow.Contains("T1") && titleRow.Contains("T5") && titleRow.Contains("MARK"),
                   "TUI tone buttons T1-T5 and MARK in the title bar; c toggles the marker");
+            bool markerMinute = tui.MarkerInterval == TimeSpan.FromMinutes(1);
+            tui.Settings.MarkerSeconds = 20;
+            bool markerSet = tui.MarkerInterval == TimeSpan.FromSeconds(20);
+            tui.Settings.MarkerSeconds = 2;
+            bool markerOdd = tui.MarkerInterval == TimeSpan.FromMinutes(1);
+            tui.Settings.MarkerSeconds = null;
+            Tui markerOption = new Tui(cp, sys, TimeSpan.FromSeconds(120), null, TimeSpan.FromSeconds(15)) { NoAudio = true };
+            markerOption.Settings.MarkerSeconds = 20;
+            Check(markerMinute && markerSet && markerOdd && markerOption.MarkerInterval == TimeSpan.FromSeconds(15),
+                  "channel marker: once a minute by default, Settings' interval (5 to 600 s, else a minute), --marker-interval wins");
             Check(titleRow.Contains("PAGE"), "TUI PAGE button in the title bar");
             tui.HandleInput(new InputEvent(InputKind.Key, InputKey.Char, 'p'));
             foreach (char ch in "11534") tui.HandleInput(new InputEvent(InputKind.Key, InputKey.Char, ch));   // digits go to the field, not alert tones
@@ -2208,13 +2218,12 @@ zones:
             string addedBad = at.AddAnnouncement(notWav), addedGood = at.AddAnnouncement(cd);
             at.SaveSettings();
             bool listed = at.Announcements.SequenceEqual(new[] { Path.GetFullPath(cd) }) && File.ReadAllText(annSettings).Contains("cd-stereo.wav");
-            string tooLongForLimit = at.PlayAnnouncement(cd, allListening: false);
+            string tooLongForLimit = at.PlayAnnouncement(cd);
             Tui at2 = new Tui(cp, sys, TimeSpan.FromSeconds(120), null, settingsPath: annSettings) { NoAudio = true };
-            string offlineWhy = at2.PlayAnnouncement(at2.Announcements[0], allListening: false);
-            string noneListening = at2.PlayAnnouncement(at2.Announcements[0], allListening: true);
+            string offlineWhy = at2.PlayAnnouncement(at2.Announcements[0]);
             Check(addedBad != null && addedGood == null && listed && tooLongForLimit.Contains("longer than the 1 s transmit time limit") &&
-                  offlineWhy.Contains("not connected") && noneListening.Contains("no listening channels") && DispatchConsole.AnnouncementName(cd) == "cd-stereo",
-                  "announcements: remembered; refused (saying why) when too long for the time limit, not connected, or with nothing listening");
+                  offlineWhy.Contains("not connected") && DispatchConsole.AnnouncementName(cd) == "cd-stereo",
+                  "announcements: remembered; refused (saying why) when too long for the time limit, or not connected");
 
             // the TUI's box: add by path, play (refused here: not connected), remove
             at2.Render(120, 40);
@@ -2510,8 +2519,8 @@ zones:
                     Tui worker = new Tui(cp, sys, TimeSpan.FromSeconds(120), null) { NoAudio = true };
                     List<(TonePlan Plan, List<ConsoleChannel> Targets)> workerSent = new List<(TonePlan, List<ConsoleChannel>)>();
                     worker.sendAnnouncementForTest = (plan, targets) => workerSent.Add((plan, targets));
-                    string workerWhy = worker.SpeakAnnouncement("Radio check", allListening: false);
-                    bool preparing = worker.SpeechPreparing, busyRefused = worker.SpeakAnnouncement("Again", false)?.Contains("still being made") == true;
+                    string workerWhy = worker.SpeakAnnouncement("Radio check");
+                    bool preparing = worker.SpeechPreparing, busyRefused = worker.SpeakAnnouncement("Again")?.Contains("still being made") == true;
                     for (int i = 0; i < 500 && workerSent.Count == 0; i++)
                     {
                         Thread.Sleep(10);
@@ -2603,12 +2612,12 @@ zones:
             Tui sp = NewSpeaker(TimeSpan.FromSeconds(120), 2);
             string blank = sp.AddSpokenAnnouncement("   "), added = sp.AddSpokenAnnouncement("Shift change in ten minutes"), tooLongText = sp.AddSpokenAnnouncement(new string('x', DispatchConsole.MaxSpokenLength + 1));
             sp.SaveSettings();
-            string spokeWhy = sp.SpeakAnnouncement("Shift change in ten minutes", allListening: false);
+            string spokeWhy = sp.SpeakAnnouncement("Shift change in ten minutes");
             ConsoleChannel focusedChan = sp.Channels[sp.FocusIndex];
             bool spokeOnFocused = spokeWhy == null && sent.Count == 1 && sent[0].Plan.Name.Contains("spoken announcement") && sent[0].Targets.SequenceEqual(new[] { focusedChan }) &&
                                   sent[0].Plan.Frames.Length >= 100 && synthesized.Last() == "Shift change in ten minutes";
             int madeBefore = synthesized.Count;
-            sp.SpeakAnnouncement("Shift change in ten minutes", allListening: false);
+            sp.SpeakAnnouncement("Shift change in ten minutes");
             TimeSpan? spokenFor = sp.SpokenLength("Shift change in ten minutes");
             bool cached = synthesized.Count == madeBefore && sent.Count == 2 && spokenFor == TimeSpan.FromSeconds(2);
             Tui sp2 = NewSpeaker(TimeSpan.FromSeconds(120), 2);
@@ -2619,23 +2628,24 @@ zones:
             ConsoleChannel listenB = sp.Channels.Where(c => c.IsP25 && !c.Cfg.RxOnly).Skip(1).First();
             sp.Select(listenA);
             sp.Select(listenB);
+            sp.SetFocus(sp.Channels.ToList().IndexOf(listenB));
             sent.Clear();
-            string timeWhy = sp.PlayTimeAnnouncement(allListening: true);
-            Check(timeWhy == null && sent.Count == 1 && sent[0].Targets.Contains(listenA) && sent[0].Targets.Contains(listenB) && sent[0].Plan.Name == "time announcement" &&
+            string timeWhy = sp.PlayTimeAnnouncement();
+            Check(timeWhy == null && sent.Count == 1 && sent[0].Targets.SequenceEqual(new[] { listenB }) && sent[0].Plan.Name == "time announcement" &&
                   synthesized.Last().StartsWith("The time is ") && synthesized.Last().Contains(Speech.TimeWords(TimeZoneInfo.ConvertTimeFromUtc(clock, TimeZoneInfo.Local).Hour, 7, false)),
-                  $"time announcement: played on every listening channel, saying the time now ({synthesized.Last()})");
+                  $"time announcement: played on the focused channel only (another listening channel doesn't get it), saying the time now ({synthesized.Last()})");
 
             Tui shortLimit = NewSpeaker(TimeSpan.FromSeconds(1), 3);
             sent.Clear();
-            string acceptedThenRefused = shortLimit.SpeakAnnouncement("a long speech", allListening: false);
+            string acceptedThenRefused = shortLimit.SpeakAnnouncement("a long speech");
             bool refusedLong = acceptedThenRefused == null && sent.Count == 0 && shortLimit.SnapshotLog(5).Any(l => l.Contains("longer than the 1 s transmit time limit"));
             Tui noHook = new Tui(cp, sys, TimeSpan.FromSeconds(120), null) { NoAudio = true };
             noHook.synthesizeForTest = _ => new short[8000];
-            string offline = noHook.SpeakAnnouncement("hello", false);
+            string offline = noHook.SpeakAnnouncement("hello");
             Speech.programFoldersForTest = new[] { Path.Combine(tmp, "speech-nothing-here") };
             Speech.voiceFoldersForTest = new[] { Path.Combine(tmp, "speech-nothing-here") };
             Tui noEngine = new Tui(cp, sys, TimeSpan.FromSeconds(120), null) { NoAudio = true };
-            string noEngineWhy = noEngine.SpeakAnnouncement("hello", false);
+            string noEngineWhy = noEngine.SpeakAnnouncement("hello");
             string statusLine = noEngine.SpeechStatus;
             Speech.programFoldersForTest = null;
             Speech.voiceFoldersForTest = null;
@@ -2646,7 +2656,7 @@ zones:
             // the speed: remembered, checked, and speech made again at the new speed
             int madeAtNormal = synthesized.Count;
             string slower = sp.SetSpeechRate(0.9), oddSpeed = sp.SetSpeechRate(0.5);
-            sp.SpeakAnnouncement("Shift change in ten minutes", allListening: false);
+            sp.SpeakAnnouncement("Shift change in ten minutes");
             bool remade = synthesized.Count == madeAtNormal + 1;
             sp.SaveSettings();
             bool speedKept = NewSpeaker(TimeSpan.FromSeconds(120), 2).SpeechRate == 0.9;
@@ -2657,9 +2667,9 @@ zones:
 
             // the level: all announcements go out that much quieter (or louder), and Hear it follows it
             sent.Clear();
-            sp.SpeakAnnouncement("Shift change in ten minutes", allListening: false);
+            sp.SpeakAnnouncement("Shift change in ten minutes");
             string quieter = sp.SetAnnouncementLevel(-6), oddLevel = sp.SetAnnouncementLevel(-5);
-            sp.SpeakAnnouncement("Shift change in ten minutes", allListening: false);
+            sp.SpeakAnnouncement("Shift change in ten minutes");
             double Rms(TonePlan plan) { double sum = 0; long n = 0; foreach (short[] fr in plan.MonitorPcm()) foreach (short v in fr) { sum += (double)v * v; n++; } return 20 * Math.Log10(Math.Sqrt(sum / Math.Max(1, n)) / 32768.0); }
             double drop = sent.Count == 2 ? Rms(sent[0].Plan) - Rms(sent[1].Plan) : 0;
             sp.SaveSettings();
@@ -2688,7 +2698,7 @@ zones:
             clock = new DateTime(2026, 3, 2, 10, 15, 4, DateTimeKind.Utc);
             sp.Tick();
             sp.Tick();
-            bool onTheQuarter = sent.Count == 1 && synthesized.SequenceEqual(new[] { "CTRS time is ten fifteen" }) && sent[0].Targets.Contains(listenA) && sent[0].Targets.Contains(listenB);
+            bool onTheQuarter = sent.Count == 1 && synthesized.SequenceEqual(new[] { "CTRS time is ten fifteen" }) && sent[0].Targets.SequenceEqual(new[] { listenB });
             clock = new DateTime(2026, 3, 2, 10, 30, 2, DateTimeKind.Utc);
             listenB.Active = true;
             listenB.ActiveLast = clock;     // frames keep coming (a busy channel with no frames for 3 s is taken as ended)
@@ -2699,18 +2709,18 @@ zones:
             sp.Tick();
             bool thenSays = sent.Count == 2 && synthesized.Last() == "CTRS time is ten thirty one";
             clock = new DateTime(2026, 3, 2, 10, 45, 1, DateTimeKind.Utc);
-            listenA.Active = true;
-            listenA.ActiveLast = clock;
+            listenB.Active = true;
+            listenB.ActiveLast = clock;
             sp.Tick();
             clock = new DateTime(2026, 3, 2, 10, 48, 30, DateTimeKind.Utc);
-            listenA.ActiveLast = clock;     // a long call: still sending frames
+            listenB.ActiveLast = clock;     // a long call: still sending frames
             sp.Tick();
-            listenA.Active = false;
+            listenB.Active = false;
             clock = new DateTime(2026, 3, 2, 10, 49, 0, DateTimeKind.Utc);
             sp.Tick();
-            bool skippedAfterWait = sent.Count == 2 && sp.SnapshotLog(10).Any(l => l.Contains("time announcement skipped after waiting 3 minutes") && l.Contains($"{listenA.Cfg.Name} stayed busy"));
+            bool skippedAfterWait = sent.Count == 2 && sp.SnapshotLog(10).Any(l => l.Contains("time announcement skipped after waiting 3 minutes") && l.Contains($"{listenB.Cfg.Name} stayed busy"));
             Check(notMidSlot && onTheQuarter && waitsForQuiet && thenSays && skippedAfterWait,
-                  "time announcement schedule: plays on the quarter hour (not mid-slot at start), waits while a channel is busy, and gives up after 3 minutes");
+                  "time announcement schedule: plays on the quarter hour (not mid-slot at start) on the focused channel, waits while it's busy, and gives up after 3 minutes");
 
             ConsoleChannel notListening = listenB;
             sp.Deselect(listenB, quiet: true);
@@ -2732,7 +2742,7 @@ zones:
             // turned on a few seconds after the hour (just after playing it by hand): nothing until the next hour
             sp.SetTimeAnnouncement(new TimeAnnouncementSettings { TimeZone = "UTC", EveryMinutes = 0 });
             clock = new DateTime(2026, 3, 2, 12, 0, 1, DateTimeKind.Utc);
-            sp.PlayTimeAnnouncement(allListening: false);
+            sp.PlayTimeAnnouncement();
             int byHand = sent.Count;
             clock = new DateTime(2026, 3, 2, 12, 0, 9, DateTimeKind.Utc);
             sp.SetTimeAnnouncement(new TimeAnnouncementSettings { TimeZone = "UTC", EveryMinutes = 60, Channel = notListening.Cfg.Name });
@@ -3715,11 +3725,27 @@ zones:
             other.SinkForTest = otherOut;
             mc.Select(m601);
             mc.Select(o601);
+            mc.SetFocus(mc.chans.IndexOf(o601));
             mc.SendAlert(1);
-            bool bothSent = WaitFor(() => Volatile.Read(ref mainOut.TduCount) > 0 && Volatile.Read(ref otherOut.TduCount) > 0, 5);
+            bool otherSent = WaitFor(() => Volatile.Read(ref otherOut.TduCount) > 0, 5);
             mc.CancelTones(wait: true);
-            Check(bothSent && mainOut.Tdus[0].Src == 9000001 && otherOut.Tdus[0].Src == 9000002 && mainOut.Tdus.All(t => t.Dst == 601) && otherOut.Tdus.All(t => t.Dst == 601),
-                  "systems: an alert tone goes out on each listening channel's own FNE, as the console's RID there");
+            bool mainQuiet = Volatile.Read(ref mainOut.TduCount) == 0;
+            mc.SetFocus(mc.chans.IndexOf(m601));
+            mc.SendAlert(1);
+            bool mainSent = WaitFor(() => Volatile.Read(ref mainOut.TduCount) > 0, 5);
+            mc.CancelTones(wait: true);
+            Check(otherSent && mainQuiet && mainSent && mainOut.Tdus[0].Src == 9000001 && otherOut.Tdus[0].Src == 9000002 && mainOut.Tdus.All(t => t.Dst == 601) && otherOut.Tdus.All(t => t.Dst == 601),
+                  "systems: an alert tone goes out only on the focused channel, on its own FNE, as the console's RID there (another listening channel doesn't get it)");
+
+            // the channel marker: on the focused channel only
+            int markerMainBefore = Volatile.Read(ref mainOut.TduCount), markerOtherBefore = Volatile.Read(ref otherOut.TduCount);
+            mc.ToggleMarker();
+            mc.Tick();
+            bool markerMain = WaitFor(() => Volatile.Read(ref mainOut.TduCount) > markerMainBefore, 5);
+            mc.CancelTones(wait: true);
+            mc.ToggleMarker();
+            Check(markerMain && Volatile.Read(ref otherOut.TduCount) == markerOtherBefore, "channel marker: beeps on the focused channel only, not on every listening one");
+            mc.SetFocus(mc.chans.IndexOf(o601));     // back where the radio command test left it, for the checks below
 
             // a patch across systems: sent on the other FNE as the console's RID there
             int mainBefore = mainOut.Tdus.Count, otherBefore = otherOut.Tdus.Count;

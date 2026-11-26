@@ -3,7 +3,7 @@
 * Sidetone - an IP dispatch console for DVMProject FNE networks. Graphical front end.
 *
 * The Tones box: the operator's tone presets and DTMF presets (TonePresets.cs), each with Send, Edit and
-* Delete; New tone preset, New DTMF preset and Import MIDI…. Sending goes on every listening channel, as an
+* Delete; New tone preset, New DTMF preset and Import MIDI…. Sending goes on the focused channel, as an
 * alert tone. Presets live in the settings file, so the terminal console sends the same ones.
 */
 
@@ -40,7 +40,7 @@ namespace Sidetone.Gui
         private readonly TextBlock note = new TextBlock
         {
             FontSize = 12, TextWrapping = TextWrapping.Wrap,
-            Text = "Your own tone sequences and DTMF strings. Send puts one on every listening channel, like an alert tone; Esc stops it."
+            Text = "Your own tone sequences and DTMF strings. Send puts one on the focused channel, like an alert tone; Esc stops it."
         };
         private readonly TextBlock message = new TextBlock { FontSize = 13, FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap };
         private readonly StackPanel rows = new StackPanel { Spacing = 4 };

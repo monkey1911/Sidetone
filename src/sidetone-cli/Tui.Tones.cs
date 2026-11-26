@@ -116,7 +116,7 @@ namespace Sidetone.Cli
 
             if (d.Message.Length > 0)
                 screen.Text(ix, r.Y + h - 4, d.Message, Style.Of(Ansi.BrightRed, Ansi.Black), iw);
-            screen.Text(ix, r.Y + h - 3, "↑/↓: preset  Enter or click: send on every listening channel  Esc: close", Style.Of(Ansi.Grey, Ansi.Black), iw);
+            screen.Text(ix, r.Y + h - 3, "↑/↓: preset  Enter or click: send on the focused channel  Esc: close", Style.Of(Ansi.Grey, Ansi.Black), iw);
             Style closeStyle = Style.Of(Ansi.Black, Ansi.BrightCyan, bold: true);
             Rect close = new Rect(ix, r.Y + h - 2, 9, 1);
             screen.Fill(close, closeStyle);

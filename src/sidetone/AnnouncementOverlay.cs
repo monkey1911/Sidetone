@@ -2,7 +2,7 @@
 /**
 * Sidetone - an IP dispatch console for DVMProject FNE networks. Graphical front end.
 *
-* The Announcements box: WAV files and spoken texts to play onto talkgroups, on the focused channel
+* The Announcements box: WAV files and spoken texts to play onto talkgroups, on the focused channel only
 * or on every listening channel, and the time announcement (words before and after, 12- or 24-hour,
 * a time zone, and a schedule). Spoken ones need a text-to-speech engine (Piper or espeak-ng),
 * installed separately; "Hear it" plays them through the vocoder on the speakers without sending.
@@ -55,7 +55,7 @@ namespace Sidetone.Gui
         private readonly StackPanel files = new StackPanel { Spacing = 6 }, spoken = new StackPanel { Spacing = 6 };
         private readonly List<Line> lines = new List<Line>();
         private readonly List<TextBlock> headings = new List<TextBlock>(), labels = new List<TextBlock>();
-        private readonly Tap add, done, lookAgain, addText, h12, h24, zoneYes, zoneNo, hearTime, playTime, playTimeAll;
+        private readonly Tap add, done, lookAgain, addText, h12, h24, zoneYes, zoneNo, hearTime, playTime;
 
         private readonly ComboBox engine = new ComboBox { Width = 200, FontSize = 13 }, voice = new ComboBox { Width = 260, FontSize = 13 };
         private readonly ComboBox speed = new ComboBox { Width = 200, FontSize = 13 }, level = new ComboBox { Width = 200, FontSize = 13 };
@@ -95,7 +95,7 @@ namespace Sidetone.Gui
             this.closed = closed;
 
             note.Text = "WAV files and spoken texts to play onto talkgroups, and the time announcement. They go out like an alert tone: Esc stops one. " +
-                        "Enter plays the highlighted one on the focused channel, Shift+Enter on every listening channel.";
+                        "Enter plays the highlighted one on the focused channel.";
             add = new Tap("Add WAV files…", () => addFiles(), fontSize: 13, padY: 8);
             done = new Tap("Done", Close, fontSize: 13, minWidth: 110, padY: 8);
             lookAgain = new Tap("Look again", () => { console()?.RefreshSpeechEngine(); Show(); changed(); }, fontSize: 12, padX: 10, padY: 4);
@@ -105,8 +105,7 @@ namespace Sidetone.Gui
             zoneYes = new Tap("Say it", () => SetSayZone(true), fontSize: 12, padX: 10, padY: 4);
             zoneNo = new Tap("Don't", () => SetSayZone(false), fontSize: 12, padX: 10, padY: 4);
             hearTime = new Tap("Hear it", () => Hear(console()?.PreviewTimeAnnouncement()), fontSize: 12, padX: 10, padY: 4);
-            playTime = new Tap("Play on focused", () => PlayTime(false), fontSize: 12, padX: 10, padY: 4);
-            playTimeAll = new Tap("Play on all listening", () => PlayTime(true), fontSize: 12, padX: 10, padY: 4);
+            playTime = new Tap("Play on focused", PlayTime, fontSize: 12, padX: 10, padY: 4);
 
             engine.ItemsSource = new List<Choice> { new Choice(null, "Automatic"), new Choice(Speech.PiperSetting, "Piper"), new Choice(Speech.EspeakSetting, "espeak-ng") };
             engine.SelectionChanged += (s, e) => SaveEngine();
@@ -151,7 +150,7 @@ namespace Sidetone.Gui
             content.Children.Add(FieldRow(Label("Zone said as"), zoneName, Label("(empty: its abbreviation, letter by letter, like P S T)", false)));
             content.Children.Add(FieldRow(Label("By itself"), every, Label("On", false), onChannel));
             content.Children.Add(FieldRow(Label("Will say"), willSay));
-            content.Children.Add(FieldRow(Label(string.Empty), hearTime.Root, playTime.Root, playTimeAll.Root, next));
+            content.Children.Add(FieldRow(Label(string.Empty), hearTime.Root, playTime.Root, next));
 
             WrapPanel buttons = new WrapPanel { ItemSpacing = 8, LineSpacing = 8, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 8, 0, 0) };
             buttons.Children.Add(add.Root);
@@ -249,7 +248,7 @@ namespace Sidetone.Gui
                 List<Choice> intervals = Speech.Intervals.Select(m => new Choice(m.ToString(), m == 0 ? "Off (only when played)" : $"Every {m} minutes")).ToList();
                 every.ItemsSource = intervals;
                 every.SelectedIndex = Math.Max(0, Array.IndexOf(Speech.Intervals, t.EveryMinutes));
-                List<Choice> channels = new List<Choice> { new Choice(null, "Every listening channel") };
+                List<Choice> channels = new List<Choice> { new Choice(null, "The focused channel") };
                 channels.AddRange(c.Channels.Where(x => x.IsP25 && !x.Cfg.RxOnly).Select(x => x.Cfg.Name).Distinct().Select(n => new Choice(n, n)));
                 if (t.Channel != null && channels.All(x => x.Value != t.Channel))
                     channels.Add(new Choice(t.Channel, $"{t.Channel} (not in this system)"));
@@ -291,9 +290,8 @@ namespace Sidetone.Gui
                 Text = kind == Kind.File ? (length == null ? "can't read it" : $"{length.Value.TotalSeconds:F0} s") : (length == null ? "spoken" : $"{length.Value.TotalSeconds:F0} s"),
                 FontSize = 12, Width = 70, VerticalAlignment = VerticalAlignment.Center
             };
-            Tap here = new Tap($"Play on {focused}", () => PlayLine(l, false), fontSize: 12, padX: 10, padY: 4);
+            Tap here = new Tap($"Play on {focused}", () => PlayLine(l), fontSize: 12, padX: 10, padY: 4);
             here.Root.MaxWidth = 170;
-            Tap all = new Tap("Play on all listening", () => PlayLine(l, true), fontSize: 12, padX: 10, padY: 4);
             Tap remove = new Tap("Remove", () =>
             {
                 DispatchConsole dc = console();
@@ -302,12 +300,10 @@ namespace Sidetone.Gui
                 changed();
             }, fontSize: 12, padX: 10, padY: 4);
             l.Strong.Add(here);
-            l.Plain.Add(all);
             WrapPanel inner = new WrapPanel { ItemSpacing = 6, LineSpacing = 6 };
             inner.Children.Add(l.Name);
             inner.Children.Add(l.Length);
             inner.Children.Add(here.Root);
-            inner.Children.Add(all.Root);
             if (kind == Kind.Spoken)
             {
                 Tap hear = new Tap("Hear it", () => Hear(console()?.PreviewSpeech(value)), fontSize: 12, padX: 10, padY: 4);
@@ -346,21 +342,21 @@ namespace Sidetone.Gui
 
         private void Hear(string why) => Say(why ?? "playing it on the speakers as a radio would hear it (nothing is sent)");
 
-        private void PlayLine(Line l, bool allListening)
+        private void PlayLine(Line l)
         {
             DispatchConsole c = console();
             if (c == null)
                 return;
-            Started(l.Kind == Kind.File ? c.PlayAnnouncement(l.Value, allListening)
-                  : l.Kind == Kind.Spoken ? c.SpeakAnnouncement(l.Value, allListening)
-                  : c.PlayTimeAnnouncement(allListening));
+            Started(l.Kind == Kind.File ? c.PlayAnnouncement(l.Value)
+                  : l.Kind == Kind.Spoken ? c.SpeakAnnouncement(l.Value)
+                  : c.PlayTimeAnnouncement());
         }
 
-        private void PlayTime(bool allListening)
+        private void PlayTime()
         {
             DispatchConsole c = console();
             if (c != null)
-                Started(c.PlayTimeAnnouncement(allListening));
+                Started(c.PlayTimeAnnouncement());
         }
 
         private void AddText()
@@ -466,11 +462,11 @@ namespace Sidetone.Gui
             next.Text = due == null ? string.Empty : $"Next by itself: {TimeZoneInfo.ConvertTimeFromUtc(due.Value, tz):HH:mm}";
         }
 
-        /// <summary>Plays the highlighted row (Enter, Shift+Enter).</summary>
-        public void PlayRow(bool allListening)
+        /// <summary>Plays the highlighted row (Enter).</summary>
+        public void PlayRow()
         {
             if (Row >= 0 && Row < lines.Count)
-                PlayLine(lines[Row], allListening);
+                PlayLine(lines[Row]);
         }
 
         public void MoveRow(int delta)
@@ -520,7 +516,6 @@ namespace Sidetone.Gui
             }
             bool timeRow = Row == lines.Count - 1;
             playTime.Paint(timeRow ? p.Accent : Brushes.Transparent, timeRow ? p.OnStrong : p.Text, p.Edge);
-            playTimeAll.Paint(Brushes.Transparent, p.Text, p.Edge);
             hearTime.Paint(Brushes.Transparent, p.Text, p.Edge);
             PaintChoice(h12, !clock24, p);
             PaintChoice(h24, clock24, p);

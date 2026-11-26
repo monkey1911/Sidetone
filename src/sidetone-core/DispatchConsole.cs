@@ -145,11 +145,15 @@ namespace Sidetone.Core
         internal bool talkPermit;
 
         // tones: alert 1-5 and the periodic channel marker, sent on every listening channel
-        internal readonly TimeSpan markerInterval;
+        internal readonly TimeSpan? markerOption;     // --marker-interval, which wins over Settings
+        public const int MinMarkerSeconds = 5, MaxMarkerSeconds = 600, DefaultMarkerSeconds = 60;
         internal volatile ToneJob toneJob;
         internal HashSet<Chan> toneChans = new HashSet<Chan>();
         internal bool markerOn;
-        internal DateTime nextMarker;
+        internal DateTime lastMarker;
+        /// <summary>Time between channel marker beeps: the option, else Settings, else a minute.</summary>
+        public TimeSpan MarkerInterval => markerOption ?? TimeSpan.FromSeconds(
+            settings?.MarkerSeconds is int s && s >= MinMarkerSeconds && s <= MaxMarkerSeconds ? s : DefaultMarkerSeconds);
 
         /// <summary>Self-test hook: don't start audio players when selecting channels.</summary>
         public bool NoAudio { get; set; }
@@ -199,7 +203,7 @@ namespace Sidetone.Core
             this.settingsPath = settingsPath;
             settings = AppSettings.Load(settingsPath, out settingsError);
             talkPermit = settings.TalkPermitTone;
-            this.markerInterval = markerInterval ?? TimeSpan.FromSeconds(10);   // the Windows console's hold timer
+            markerOption = markerInterval;
             this.system = system;
             this.txLimit = txLimit;
             foreach (Codeplug.System sys in systems)
@@ -1387,13 +1391,14 @@ namespace Sidetone.Core
             if (settingsDirty && DateTime.Now - dirtyAt > TimeSpan.FromSeconds(1))
                 SaveSettings();
 
-            // channel marker: a beep on every idle listening channel, every markerInterval
-            if (markerOn && DateTime.UtcNow >= nextMarker)
+            // channel marker: a beep on every idle listening channel, every MarkerInterval (read each pass, so a new setting applies at once)
+            if (markerOn && DateTime.UtcNow >= lastMarker + MarkerInterval)
             {
-                nextMarker = DateTime.UtcNow + markerInterval;
+                lastMarker = DateTime.UtcNow;
                 if (toneJob == null && !Transmitting && links.Any(l => l.CanSend))
                 {
-                    List<Chan> idle = TxCapableListening().Where(c => !(c.Rx?.InCall ?? false) && !c.Active).ToList();
+                    // the focused channel, while it's listening (so a call on it is known) and quiet
+                    List<Chan> idle = (FocusedTarget(out _) ?? new List<Chan>()).Where(c => c.Selected && !(c.Rx?.InCall ?? false) && !c.Active).ToList();
                     if (idle.Count > 0)
                         SendTone(TonePlan.Marker(), idle, quiet: true);
                 }
@@ -1553,16 +1558,29 @@ namespace Sidetone.Core
         ** Tones
         */
 
-        internal List<Chan> TxCapableListening() =>
-            chans.Where(c => c.Selected && c.IsP25 && !c.Cfg.RxOnly && (links.Count == 1 || c.Link.CanSend)).ToList();
+        /// <summary>
+        /// The focused channel, as a list, when tones and announcements can go out on it; else null, with why not.
+        /// Tones and announcements go only there (the owner's choice), never on every listening channel.
+        /// </summary>
+        internal List<Chan> FocusedTarget(out string why)
+        {
+            Chan c = chans.Count == 0 ? null : chans[cursor];
+            why = c == null ? "no channels to send on"
+                : c.IsDmr ? $"{c.Cfg.Name}: tones and announcements aren't sent on DMR channels yet"
+                : !c.IsP25 ? $"{c.Cfg.Name}: can't transmit on a {c.Cfg.Mode} channel"
+                : c.Cfg.RxOnly ? $"{c.Cfg.Name}: receive-only channel"
+                : links.Count > 1 && !c.Link.CanSend ? $"{c.Cfg.Name}: its system isn't connected yet"
+                : null;
+            return why == null ? new List<Chan> { c } : null;
+        }
 
         /// <summary>
-        /// Sends alert tone 1-5 on every listening channel (internal for the self-test).
+        /// Sends alert tone 1-5 on the focused channel.
         /// </summary>
         public void SendAlert(int number) => SendManual(TonePlan.Alert(number));
 
         /// <summary>
-        /// Sends a QuickCall II page on every listening channel (internal for the self-test).
+        /// Sends a QuickCall II page on the focused channel.
         /// </summary>
         public void SendPage(double aHz, double bHz) => SendManual(TonePlan.Page(aHz, bHz));
 
@@ -1571,7 +1589,7 @@ namespace Sidetone.Core
         /// <summary>The DTMF presets saved in Settings (empty when there are none).</summary>
         public IReadOnlyList<DtmfPreset> DtmfPresetList => Settings?.DtmfPresets ?? new List<DtmfPreset>();
 
-        /// <summary>Sends a tone preset on every listening channel, as an alert tone. Returns why not, or null.</summary>
+        /// <summary>Sends a tone preset on the focused channel, as an alert tone. Returns why not, or null.</summary>
         public string SendTonePreset(TonePreset preset)
         {
             if (preset?.Steps == null || preset.Steps.Count == 0)
@@ -1579,7 +1597,7 @@ namespace Sidetone.Core
             return SendPreset(TonePlan.Sequence(preset.Name, preset.Steps));
         }
 
-        /// <summary>Sends a DTMF preset on every listening channel, as an alert tone. Returns why not, or null.</summary>
+        /// <summary>Sends a DTMF preset on the focused channel, as an alert tone. Returns why not, or null.</summary>
         public string SendDtmfPreset(DtmfPreset preset)
         {
             string digits;
@@ -1616,10 +1634,8 @@ namespace Sidetone.Core
                 return "stop transmitting before sending a tone";
             if (!links.Any(l => l.CanSend))
                 return "not connected to the FNE yet";
-            if (TxCapableListening().Count == 0)
-                return chans.Any(c => c.Selected && c.IsDmr) ? "alert tones and pages aren't sent on DMR channels yet; listen to a P25 channel to send one"
-                                                             : "no listening channels to send the tone on (click a card to listen)";
-            return null;
+            FocusedTarget(out string why);
+            return why;
         }
 
         internal void SendManual(TonePlan plan)
@@ -1630,7 +1646,7 @@ namespace Sidetone.Core
                 AddLog(why);
                 return;
             }
-            SendTone(plan, TxCapableListening(), quiet: false);
+            SendTone(plan, FocusedTarget(out _), quiet: false);
         }
 
         /// <summary>
@@ -1805,8 +1821,8 @@ namespace Sidetone.Core
         public void ToggleMarker()
         {
             markerOn = !markerOn;
-            nextMarker = DateTime.UtcNow;     // first beep straight away
-            AddLog(markerOn ? $"channel marker on: a {TonePlan.MarkerHz:F0} Hz beep every {markerInterval.TotalSeconds:F0} s on idle listening channels"
+            lastMarker = DateTime.MinValue;   // first beep straight away
+            AddLog(markerOn ? $"channel marker on: a {TonePlan.MarkerHz:F0} Hz beep every {MarkerInterval.TotalSeconds:F0} s on the focused channel while it's listening and quiet"
                             : "channel marker off");
         }
 

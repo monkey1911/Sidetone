@@ -8,14 +8,24 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
 
 ## State at hand-off (2026-11-16)
 
-- Version **0.39.1** on `main` (set once, in `src/Directory.Build.props`): the whole title row folds the bottom
+- Version **0.40.0** on `main` (set once, in `src/Directory.Build.props`): **tones and announcements go out only on
+  the focused channel** (the owner's choice), never on every listening channel: alert tones, QCII pages, tone and
+  DTMF presets, WAV/spoken/time announcements (the "Play on all listening" buttons and Shift+Enter / the TUI's Space
+  are gone), the scheduled time announcement when no channel is chosen (it follows the focus), and the channel
+  marker (focused channel, while listening and quiet). One helper, `DispatchConsole.FocusedTarget(out why)`;
+  `TxCapableListening` is gone. The channel marker's interval is a setting (`AppSettings.MarkerSeconds`, 5–600,
+  null = 60; `--marker-interval` still wins; `MarkerInterval` is read each pass, so a change applies at once;
+  Settings row "Channel marker"); it was a fixed 10 s. Windows: `sidetone.exe` and `sidetone-cli.exe` now carry
+  the icon (`ApplicationIcon` = `packaging/windows/sidetone.ico` for win RIDs; it was only the setup's icon, so
+  Explorer, the Start menu and the taskbar showed the generic one); the `windows` CI job checks both with
+  `ExtractIconEx`. 0.39.1: the whole title row folds the bottom
   panels (a transparent background makes the TextBlock take clicks across its width; the owner asked), and a
   folded panel opens on a click anywhere. 0.39.0: tone and DTMF presets, and folding
   the bottom panels. `TonePresets.cs` (`TonePreset`/`ToneStep`, `DtmfPreset`; `ParseSteps`/`FormatSteps` for the
   editor's `Hz:seconds` text; `ImportMidi` through the Windows console's `TonePresetFileImporter`, linked, with a
   two-constant `dvmconsole.SettingsManager` stand-in in the same file since the real one is WPF). Kept in
-  `AppSettings.TonePresets`/`DtmfPresets`; sent by `SendTonePreset`/`SendDtmfPreset` → `SendManual` (every
-  listening P25 channel, like alert tones; refused past the time limit). `TonePlan.Sequence` = tone codewords;
+  `AppSettings.TonePresets`/`DtmfPresets`; sent by `SendTonePreset`/`SendDtmfPreset` → `SendManual` (then every
+  listening P25 channel, the focused one since 0.40, like alert tones; refused past the time limit). `TonePlan.Sequence` = tone codewords;
   **P25 full-rate IMBE has no real tone or DTMF codewords**: `VocoderToneLookupTable` is pre-encoded voice
   codewords for single tones, 281–2500 Hz (anything above snaps to 2500, so QCII's allowed 3000 Hz is really
   2500), and `TonePlan.Dtmf` renders the pair as audio through the encoder, as Windows, which measurably
@@ -219,7 +229,8 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
   one with a password); from 0.37: DMR receive and transmit on the air (CTRS's DMR FNE); from 0.38: the time limit's beeps and
   latch, the talkgroup check against CTRS's real talkgroup list, and the chimes on a real drop; from 0.39:
   tone presets heard on a radio, DTMF presets reaching a decoder (doubtful through IMBE), MIDI import of a
-  real file, and folding; from 0.34: macOS on Apple silicon (only CI so far), and on the
+  real file, and folding; from 0.40: the Windows icon on a real install (CI checks the exe), the marker's
+  interval, and tones/announcements on the focused channel only; from 0.34: macOS on Apple silicon (only CI so far), and on the
   owner's Intel Mac whatever their "it worked" didn't cover (ask before listing parts as tested); from
   0.36: the boxes on a real tablet; from
   0.35: on Windows 10 and 11 x64 the rest (receive audio, Credential Manager, the taskbar flash, the

@@ -4,7 +4,7 @@
 *
 * Terminal UI: one system's channels as a grid of cards (up to four across), live
 * receive on selected channels, toggle push-to-talk, alert tones 1-5 and the channel
-* marker on every listening channel, and mouse support: buttons in the title bar,
+* marker on the focused channel, and mouse support: buttons in the title bar,
 * click a card to listen, wheel to scroll. The console itself (what the keys and
 * clicks do) is the core's DispatchConsole; this class adds input, dialogs and drawing.
 */
@@ -415,9 +415,9 @@ namespace Sidetone.Cli
             }
             else
             {
-                List<string> names = TxCapableListening().Select(c => c.Cfg.Name).ToList();
-                screen.Text(ix, r.Y + 4, names.Count > 0 ? $"on: {string.Join(", ", names)}" : "no listening channels: click a card first",
-                            names.Count > 0 ? info : Style.Of(Ansi.Yellow, Ansi.Black), iw);
+                List<Chan> target = FocusedTarget(out string noTarget);
+                screen.Text(ix, r.Y + 4, target != null ? $"on: {target[0].Cfg.Name}" : noTarget,
+                            target != null ? info : Style.Of(Ansi.Yellow, Ansi.Black), iw);
                 DrawField(ix, r.Y + 5, "Tone A (Hz)", d.A, d.Field == 0, "1 s", () => pageDialog.Field = 0);
                 DrawField(ix, r.Y + 6, "Tone B (Hz)", d.B, d.Field == 1, "3 s", () => pageDialog.Field = 1);
             }

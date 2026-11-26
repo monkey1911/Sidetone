@@ -38,7 +38,7 @@ namespace Sidetone.Cli
             public int Level;               // announcements' level, dB compared with the microphone's
             public List<string> Voices = new List<string>();
             public TimeAnnouncementSettings Time;
-            public List<string> Channels = new List<string>();   // names that can take it (null first: every listening channel)
+            public List<string> Channels = new List<string>();   // names that can take it (null first: the focused channel)
             public string Error;
         }
 
@@ -113,11 +113,9 @@ namespace Sidetone.Cli
                     d.Message = null;
                     break;
                 case InputKey.Enter:
-                case InputKey.Space:
-                    bool all = e.Key == InputKey.Space;
-                    string result = kind == AnnounceKind.File ? PlayAnnouncement(value, all)
-                                  : kind == AnnounceKind.Spoken ? SpeakAnnouncement(value, all)
-                                  : PlayTimeAnnouncement(all);
+                    string result = kind == AnnounceKind.File ? PlayAnnouncement(value)
+                                  : kind == AnnounceKind.Spoken ? SpeakAnnouncement(value)
+                                  : PlayTimeAnnouncement();
                     if (result == null)
                         announceDialog = null;
                     else
@@ -343,7 +341,7 @@ namespace Sidetone.Cli
             FSayZone => f.Time.SayZone ? "Yes" : "No",
             FZoneName => f.Time.ZoneName ?? string.Empty,
             FEvery => f.Time.EveryMinutes == 0 ? "Off (only when played)" : $"Every {f.Time.EveryMinutes} minutes, on the clock",
-            FChannel => f.Time.Channel ?? "Every listening channel",
+            FChannel => f.Time.Channel ?? "The focused channel",
             _ => FieldText(f, field)
         };
 
@@ -468,7 +466,7 @@ namespace Sidetone.Cli
                 screen.Text(ix, r.Y + h - 2, d.Path != null ? "type the WAV file's path  Enter: add  Esc: cancel" : "type what to say  Enter: add  Esc: cancel", helpStyle, iw);
             else
             {
-                screen.Text(ix, r.Y + h - 3, "Enter: play on focused card  Space: on all listening  h: hear it (not sent)", helpStyle, iw);
+                screen.Text(ix, r.Y + h - 3, "Enter: play on focused card  h: hear it (not sent)", helpStyle, iw);
                 screen.Text(ix, r.Y + h - 2, "a: add WAV file  t: add text  r: remove  e: settings  Esc: close", helpStyle, iw);
             }
         }

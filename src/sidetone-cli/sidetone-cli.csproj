@@ -11,6 +11,8 @@
     <InvariantGlobalization>true</InvariantGlobalization>
     <!-- Windows: .NET's globalization (Windows's own ICU) converts IANA time zones; the culture stays invariant (DesktopPlatform) -->
     <InvariantGlobalization Condition="$(RuntimeIdentifier.StartsWith('win'))">false</InvariantGlobalization>
+    <!-- Windows: the icon inside the .exe, which Explorer, the Start menu shortcut and the taskbar show -->
+    <ApplicationIcon Condition="$(RuntimeIdentifier.StartsWith('win'))">..\..\packaging\windows\sidetone.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>

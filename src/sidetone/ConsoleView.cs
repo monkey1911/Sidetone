@@ -1025,6 +1025,7 @@ namespace Sidetone.Gui
                 MuteButton = appSettings.MuteButton,
                 Scale = appSettings.UiScale,
                 TxLimit = StartupChoices.TxLimit(null, appSettings, currentCodeplug),
+                MarkerSeconds = appSettings.MarkerSeconds ?? DispatchConsole.DefaultMarkerSeconds,
                 SpaceToggle = appSettings.SpaceToggle,
                 Notifications = appSettings.Notifications != false,
                 ConnectionChimes = appSettings.ConnectionChimes != false,
@@ -1089,6 +1090,7 @@ namespace Sidetone.Gui
                 s.SpaceToggle = v.SpaceToggle;
                 s.Notifications = v.Notifications ? null : false;
                 s.ConnectionChimes = v.ConnectionChimes ? null : false;
+                s.MarkerSeconds = v.MarkerSeconds == DispatchConsole.DefaultMarkerSeconds ? null : v.MarkerSeconds;
                 VoiceProcessing d = VoiceProcessing.MicDefault;
                 s.MicLowCut = v.LowCut == d.LowCut ? null : v.LowCut;
                 s.MicAutoLevel = v.AutoLevel == d.AutoLevel ? null : v.AutoLevel;
@@ -1709,7 +1711,7 @@ namespace Sidetone.Gui
                 return;
             }
 
-            // the Announcements box is open: arrows pick a file, Enter plays it here, Shift+Enter on all listening, Esc closes
+            // the Announcements box is open: arrows pick a file, Enter plays it on the focused channel, Esc closes
             if (announceBox.IsOpen)
             {
                 if (announceBox.Typing)
@@ -1729,7 +1731,7 @@ namespace Sidetone.Gui
                     case Key.Escape: case Key.N: announceBox.Close(); break;
                     case Key.Up: announceBox.MoveRow(-1); break;
                     case Key.Down: announceBox.MoveRow(1); break;
-                    case Key.Enter: announceBox.PlayRow(e.KeyModifiers.HasFlag(KeyModifiers.Shift)); break;
+                    case Key.Enter: announceBox.PlayRow(); break;
                     default: e.Handled = false; break;
                 }
                 RefreshNow();

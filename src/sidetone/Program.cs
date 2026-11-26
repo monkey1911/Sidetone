@@ -498,6 +498,19 @@ namespace Sidetone.Gui
             set.Save();
             Check(!set.IsOpen && w.View.TxLimitSeconds == 90, "Save keeps the new time limit");
             Press(PhysicalKey.Comma, RawInputModifiers.Control);
+            bool markerShown = set.MarkerSeconds.Text == "60";
+            set.MarkerSeconds.Text = "2";
+            set.Save();
+            bool markerRefused = set.IsOpen && set.Message.Contains("channel marker");
+            set.MarkerSeconds.Text = "30";
+            set.Save();
+            bool markerKept = !set.IsOpen && c.MarkerInterval == TimeSpan.FromSeconds(30) && c.Settings?.MarkerSeconds == 30;
+            Press(PhysicalKey.Comma, RawInputModifiers.Control);
+            set.MarkerSeconds.Text = "60";
+            set.Save();
+            Check(markerShown && markerRefused && markerKept && c.Settings?.MarkerSeconds == null && c.MarkerInterval == TimeSpan.FromMinutes(1),
+                  "Settings: the channel marker's interval is a minute by default, refused outside 5 to 600 s, and kept");
+            Press(PhysicalKey.Comma, RawInputModifiers.Control);
             bool chimesShownOn = set.IsOpen && set.Chimes;
             set.PressChimes(false);
             set.Save();

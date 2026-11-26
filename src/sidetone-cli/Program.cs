@@ -360,7 +360,7 @@ namespace Sidetone.Cli
             string logFile = string.IsNullOrWhiteSpace(opt.LogFile) ? null : Path.GetFullPath(opt.LogFile);
             string socket = opt.NoSocket ? null : opt.Socket != null ? Path.GetFullPath(opt.Socket) : ControlServer.DefaultPath;
             Tui tui = new Tui(cp, systems, TimeSpan.FromSeconds(StartupChoices.TxLimit(opt.TxLimitSeconds, saved, cp)), logFile,
-                              TimeSpan.FromSeconds(opt.MarkerSeconds), settingsPath)
+                              opt.MarkerSeconds is int ms ? TimeSpan.FromSeconds(ms) : null, settingsPath)
             {
                 Audio = audio,
                 ControlSocketPath = socket,
@@ -576,7 +576,7 @@ namespace Sidetone.Cli
             public bool NoPlay, Verbose;
             public double Gain = 1.0;
             public int? TxLimitSeconds;
-            public int MarkerSeconds = 10;
+            public int? MarkerSeconds;
             public string SettingsFile;
             public bool NoSettings;
             public string Socket, PttDevice, PttButton, MuteButton, KeyFile, RecordDir;
@@ -623,8 +623,9 @@ namespace Sidetone.Cli
                         case "--ptt-button": o.PttButton = Next(); break;
                         case "--mute-button": o.MuteButton = Next(); break;
                         case "--marker-interval":
-                            if (!int.TryParse(Next(), out o.MarkerSeconds) || o.MarkerSeconds < 5 || o.MarkerSeconds > 600)
+                            if (!int.TryParse(Next(), out int marker) || marker < 5 || marker > 600)
                                 throw new ArgumentException("--marker-interval must be between 5 and 600 seconds");
+                            o.MarkerSeconds = marker;
                             break;
                         case "--tx-limit":
                             if (!int.TryParse(Next(), out int limit) || limit < StartupChoices.MinTxLimit || limit > StartupChoices.MaxTxLimit)

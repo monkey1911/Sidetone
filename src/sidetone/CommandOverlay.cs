@@ -4,7 +4,7 @@
 *
 * The page and radio-command boxes. They open over the console inside the main window (not as
 * separate windows, which tiling desktops place unpredictably): a page is either two QuickCall II
-* tones on every listening channel or a digital call alert to one radio; a radio command is a
+* tones on the focused channel or a digital call alert to one radio; a radio command is a
 * check, inhibit or uninhibit for one radio. The rules are the console's (the core), shared with
 * the TUI; this class is the form.
 */
@@ -220,7 +220,7 @@ namespace Sidetone.Gui
             alias.IsVisible = !(page && !Digital);
 
             if (page && !Digital)
-                note.Text = $"Sent on every listening channel: tone A for {TonePlan.PageAMs / 1000:0.#} s, then tone B for {TonePlan.PageBMs / 1000:0.#} s. " +
+                note.Text = $"Sent on the focused channel: tone A for {TonePlan.PageAMs / 1000:0.#} s, then tone B for {TonePlan.PageBMs / 1000:0.#} s. " +
                             $"Tones can be {TonePlan.MinPageHz:F0} to {TonePlan.MaxPageHz:F0} Hz.";
             else if (page)
                 note.Text = "A P25 call alert to one radio. It doesn't use a talkgroup.";

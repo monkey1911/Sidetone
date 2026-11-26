@@ -117,10 +117,10 @@ namespace Sidetone.Core
         }
 
         /// <summary>
-        /// Sends an announcement on the focused channel, or on every listening channel. Returns null when it
+        /// Sends an announcement on the focused channel. Returns null when it
         /// has started, or why not (also logged). Esc (CancelTones) stops it, as it does a tone.
         /// </summary>
-        public string PlayAnnouncement(string path, bool allListening)
+        public string PlayAnnouncement(string path)
         {
             string Refuse(string why)
             {
@@ -142,7 +142,7 @@ namespace Sidetone.Core
             if (length > txLimit)
                 return Refuse($"announcement {AnnouncementName(path)} is {length.TotalSeconds:F0} s, longer than the {txLimit.TotalSeconds:F0} s transmit time limit");
 
-            string why = AnnouncementTargets(allListening, out List<Chan> targets);
+            string why = AnnouncementTargets(out List<Chan> targets);
             if (why != null)
                 return Refuse(why);
 

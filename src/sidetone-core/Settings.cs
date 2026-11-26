@@ -74,7 +74,7 @@ namespace Sidetone.Core
         public string ZoneName { get; set; }
         /// <summary>Plays by itself every this many minutes, on the clock (0 is off).</summary>
         public int EveryMinutes { get; set; }
-        /// <summary>The channel it plays on by itself (its name), or null for every listening channel.</summary>
+        /// <summary>The channel it plays on by itself (its name), or null for the focused channel.</summary>
         public string Channel { get; set; }
 
         public TimeAnnouncementSettings Copy() => (TimeAnnouncementSettings)MemberwiseClone();
@@ -144,6 +144,8 @@ namespace Sidetone.Core
         public bool? Notifications { get; set; }
         /// <summary>Play a chime when a system connects or drops (null means yes).</summary>
         public bool? ConnectionChimes { get; set; }
+        /// <summary>Seconds between channel marker beeps (5 to 600); null is a minute.</summary>
+        public int? MarkerSeconds { get; set; }
         /// <summary>The operator's tone presets (both consoles).</summary>
         public List<TonePreset> TonePresets { get; set; }
         /// <summary>The operator's DTMF presets (both consoles).</summary>

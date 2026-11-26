@@ -191,44 +191,29 @@ namespace Sidetone.Core
             return null;
         }
 
-        /// <summary>The focused channel, or every listening channel, when they can take an announcement; else why not.</summary>
-        private string AnnouncementTargets(bool allListening, out List<Chan> targets)
+        /// <summary>The focused channel, when it can take an announcement; else why not.</summary>
+        private string AnnouncementTargets(out List<Chan> targets)
         {
-            targets = null;
-            if (allListening)
-            {
-                targets = TxCapableListening();
-                if (targets.Count == 0)
-                    return "no listening channels to send the announcement on (click a card to listen)";
-            }
-            else
-            {
-                Chan c = chans[cursor];
-                if (c.IsDmr)
-                    return $"{c.Cfg.Name}: announcements aren't sent on DMR channels yet";
-                if (!c.IsP25)
-                    return $"{c.Cfg.Name}: can't transmit on a {c.Cfg.Mode} channel";
-                if (c.Cfg.RxOnly)
-                    return $"{c.Cfg.Name}: receive-only channel";
-                targets = new List<Chan> { c };
-            }
+            targets = FocusedTarget(out string why);
+            if (why != null)
+                return why;
             if (!CanSendAnnouncement)
                 return "not connected to the FNE yet";
             return null;
         }
 
         /// <summary>
-        /// Says a text on the focused channel, or every listening channel. Returns null when it has started
+        /// Says a text on the focused channel. Returns null when it has started
         /// (the engine runs first; then it's sent like a WAV announcement), or why not (also logged).
         /// </summary>
-        public string SpeakAnnouncement(string text, bool allListening) =>
-            StartSpoken($"spoken announcement \"{SpokenName(text)}\"", () => text, allListening, null, cache: true);
+        public string SpeakAnnouncement(string text) =>
+            StartSpoken($"spoken announcement \"{SpokenName(text)}\"", () => text, null, cache: true);
 
-        /// <summary>Says the time announcement now, on the focused channel or every listening channel. Null, or why not.</summary>
-        public string PlayTimeAnnouncement(bool allListening) =>
-            StartSpoken("time announcement", () => Speech.TimeAnnouncementText(TimeAnnouncement, UtcNow), allListening, null, cache: false);
+        /// <summary>Says the time announcement now, on the focused channel. Null, or why not.</summary>
+        public string PlayTimeAnnouncement() =>
+            StartSpoken("time announcement", () => Speech.TimeAnnouncementText(TimeAnnouncement, UtcNow), null, cache: false);
 
-        private string StartSpoken(string name, Func<string> text, bool allListening, List<Chan> fixedTargets, bool cache)
+        private string StartSpoken(string name, Func<string> text, List<Chan> fixedTargets, bool cache)
         {
             string Refuse(string why)
             {
@@ -245,7 +230,7 @@ namespace Sidetone.Core
             List<Chan> targets = fixedTargets;
             if (targets == null)
             {
-                string why = AnnouncementTargets(allListening, out targets);
+                string why = AnnouncementTargets(out targets);
                 if (why != null)
                     return Refuse(why);
             }
@@ -511,12 +496,10 @@ namespace Sidetone.Core
         private string ScheduledTargets(TimeAnnouncementSettings t, out List<Chan> targets)
         {
             targets = null;
-            if (t.Channel == null)
-            {
-                targets = TxCapableListening();
-                return targets.Count == 0 ? "no listening channels" : null;
-            }
-            Chan c = chans.FirstOrDefault(x => x.Cfg.Name == t.Channel);
+            // no channel chosen: the focused one (tones and announcements never go on every listening channel)
+            Chan c = t.Channel == null ? (chans.Count == 0 ? null : chans[cursor]) : chans.FirstOrDefault(x => x.Cfg.Name == t.Channel);
+            if (c == null && t.Channel == null)
+                return "no channels";
             if (c == null)
                 return $"no channel called {t.Channel} in this system";
             if (c.IsDmr)
@@ -583,7 +566,7 @@ namespace Sidetone.Core
             }
 
             timeSlotWaiting = null;
-            StartSpoken("time announcement", () => Speech.TimeAnnouncementText(t, UtcNow), false, targets, cache: false);
+            StartSpoken("time announcement", () => Speech.TimeAnnouncementText(t, UtcNow), targets, cache: false);
         }
     } // public partial class DispatchConsole
 }
