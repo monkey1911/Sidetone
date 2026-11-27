@@ -8,8 +8,9 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
 
 ## State at hand-off (2026-11-16)
 
-- Version **0.40.1** on `main` (set once, in `src/Directory.Build.props`): **Try the demo** on the welcome view
-  (`ConsoleView.StartDemo`/`LeaveDemo`: offline, `settingsPath` set aside so nothing is saved; the header's Go offline
+- Version **0.40.2** on `main` (set once, in `src/Directory.Build.props`): **Try the demo** on the welcome view
+  (0.40.2: the phone layout only below 600 wide, was 700, so an unfolded Galaxy Fold gets the tablet layout;
+  the header's buttons are a WrapPanel so Settings stays on screen there. 0.40.1: `ConsoleView.StartDemo`/`LeaveDemo`: offline, `settingsPath` set aside so nothing is saved; the header's Go offline
   reads Leave demo; Settings' Open codeplug… leaves the demo first), for Google Play's reviewers (App access), who
   have no codeplug. Welcome rows are DockPanels so the text wraps on a phone. 0.40.0: **tones and announcements go out only on
   the focused channel** (the owner's choice), never on every listening channel: alert tones, QCII pages, tone and
@@ -321,7 +322,7 @@ receiver's lock.
 `ConsoleView` (a `UserControl`, partial: `ConsoleView.Narrow.cs` is the phone layout) is the whole
 console; `MainWindow` is a thin desktop `Window` around it (title, icon, keys, closing). On Android,
 `App` hands the same view to `IActivityApplicationLifetime.MainViewFactory` (made once, kept).
-Below 700 px wide the view switches to the phone layout (one column, big PTT, Channels/Calls/Log/More
+Below 600 px wide (700 until 0.40.2; 600 so an unfolded Galaxy Fold, about 690 dp, gets the tablet layout) the view switches to the phone layout (one column, big PTT, Channels/Calls/Log/More
 pages; on a phone each box is a full-screen sheet, `PhoneSheet`, while tablets keep the usual boxes). `IGuiPlatform` (`GuiPlatform.Current`,
 null on a desktop) is what a device adds: the hardware PTT key, keep screen on, the foreground
 service, battery settings; `SettingsOverlay.Device.cs` holds its Settings rows.

@@ -757,6 +757,10 @@ namespace Sidetone.Gui
                 Dispatcher.UIThread.RunJobs();
                 w.UpdateLayout();
             }
+            Resize(690, 840);
+            bool foldTablet = !v.Narrow;
+            Resize(590, 840);
+            Check(foldTablet && v.Narrow, "phone layout: the tablet layout from 600 wide (an unfolded Galaxy Fold, about 690), the phone layout below");
             Resize(412, 915);
             Check(v.Narrow && v.PageShown == ConsoleView.NarrowPage.Channels && v.BigPtt.Root.IsEffectivelyVisible && v.CardsOnShow && !v.PttTap.Root.IsEffectivelyVisible,
                   "phone layout: a narrow window shows the cards in one column with a big PTT at the bottom (the header's PTT hidden)");

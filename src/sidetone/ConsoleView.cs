@@ -64,7 +64,8 @@ namespace Sidetone.Gui
 
         // console view
         private readonly Grid consoleView = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*,Auto,230,Auto,Auto") };
-        private StackPanel themeRow, titleRow, headerRight;
+        private StackPanel themeRow, titleRow;
+        private WrapPanel headerRight;      // wraps on a narrow tablet (an unfolded Galaxy Fold), so Settings stays on screen
         private Grid headerGrid;
         private ScrollViewer cardScroll;
         private Grid bottom;
@@ -372,7 +373,7 @@ namespace Sidetone.Gui
             settingsTap.Root.Margin = new Thickness(6, 0, 0, 0);
             quit = new Tap("Quit", RequestQuit, fontSize: 12, padX: 10, padY: 4);
 
-            headerRight = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right };
+            headerRight = new WrapPanel { ItemSpacing = 8, LineSpacing = 8, HorizontalAlignment = HorizontalAlignment.Right };
             headerRight.Children.Add(consoleButtons);
             headerRight.Children.Add(themeRow);
             headerRight.Children.Add(offlineTap.Root);

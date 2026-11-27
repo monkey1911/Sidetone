@@ -21,7 +21,7 @@ namespace Sidetone.Gui
     public sealed partial class ConsoleView
     {
         /// <summary>Narrower than this (in device-independent pixels), the phone layout is used.</summary>
-        public const double NarrowWidth = 700;
+        public const double NarrowWidth = 600;      // Android's own phone/tablet line (smallest width 600 dp): an unfolded Galaxy Fold gets the tablet layout
 
         /// <summary>Narrower than this, the usual layout puts the header's buttons on a second row (an upright tablet).</summary>
         public const double TwoRowHeaderWidth = 1150;
