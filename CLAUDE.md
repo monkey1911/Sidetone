@@ -8,7 +8,10 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
 
 ## State at hand-off (2026-11-16)
 
-- Version **0.40.0** on `main` (set once, in `src/Directory.Build.props`): **tones and announcements go out only on
+- Version **0.40.1** on `main` (set once, in `src/Directory.Build.props`): **Try the demo** on the welcome view
+  (`ConsoleView.StartDemo`/`LeaveDemo`: offline, `settingsPath` set aside so nothing is saved; the header's Go offline
+  reads Leave demo; Settings' Open codeplug… leaves the demo first), for Google Play's reviewers (App access), who
+  have no codeplug. Welcome rows are DockPanels so the text wraps on a phone. 0.40.0: **tones and announcements go out only on
   the focused channel** (the owner's choice), never on every listening channel: alert tones, QCII pages, tone and
   DTMF presets, WAV/spoken/time announcements (the "Play on all listening" buttons and Shift+Enter / the TUI's Space
   are gone), the scheduled time announcement when no channel is chosen (it follows the focus), and the channel
@@ -443,7 +446,10 @@ every release on the air and on their hardware after publishing it.
 - **A new peer ID gets no keys until CTRS's FNE has pulled its peer list from myCTRS.** Until then the
   FNE ignores the peer's key requests without a reply (Sidetone logs "requested … key" and nothing comes
   back). Found 2026-11-23 with a tester's Mac (peer 63007, RID 99508): the next try got its keys. Ask how
-  new the peer is before suspecting Sidetone.
+  new the peer is before suspecting Sidetone. **Per-peer passwords have the same delay:** after a password
+  change in myCTRS, the FNE keeps the old one until its next sync. Until then the login stalls without a NAK:
+  "login ACK received" then "Sending login request" again every 5 s (the hash isn't answered), or no ACK at
+  all. Found 2026-11-27 with peers 113007 and 113017; both connected after the sync.
 - **The FNE version CTRS runs does not pass extended-function replies (radio check acks) back to
   the peer that sent them.** The radio does answer over the air. Don't ask the owner about it again;
   Sidetone already decodes and logs replies if a newer FNE sends them.

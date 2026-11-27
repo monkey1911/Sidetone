@@ -175,7 +175,7 @@ sidetone-cli tui --codeplug C:\Radio\codeplug.yml
 
 Sidetone for Android is the graphical console as an app for phones and tablets running **Android 11 or newer**. It is built for the newest Android (API 36), as Google Play requires. Each release has `Sidetone-VERSION-android.apk` attached: download it on the phone and open it to install (Android asks you to allow installing apps from your browser or file manager the first time). It isn't on Google Play yet.
 
-To start, tap **Open codeplug…** and choose your dvmconsole codeplug. Sidetone keeps a copy in its own storage and opens it again next time. A KFDtool key file is chosen the same way, in Settings. Its password can be remembered; it's kept encrypted with a key in the Android Keystore.
+To start, tap **Open codeplug…** and choose your dvmconsole codeplug, or tap **Try the demo** to look around a made-up system first (nothing is connected, sent or saved; **Leave demo** goes back). Sidetone keeps a copy in its own storage and opens it again next time. A KFDtool key file is chosen the same way, in Settings. Its password can be remembered; it's kept encrypted with a key in the Android Keystore.
 
 Sidetone asks for three permissions the first time a console starts:
 
@@ -512,7 +512,7 @@ Space and the on-screen PTT buttons are hold-to-talk here because a window, unli
 
 Settings shows which one is in effect. A change needs a restart. With `--wayland` the desktop scales the window itself and none of this applies.
 
-To look around without connecting to anything, `./sidetone --demo` shows a made-up system.
+To look around without connecting to anything, `./sidetone --demo` shows a made-up system, as does **Try the demo** on the start screen (**Leave demo** goes back).
 
 ## Audio devices
 

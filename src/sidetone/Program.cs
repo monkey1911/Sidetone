@@ -925,6 +925,43 @@ namespace Sidetone.Gui
             Check(wentOffline && w.View.ActiveConsole != null && !w.View.IsOffline && w.View.ActiveConsole.Channels.Count == channelsBefore && w.View.OfflineTap.Root.IsEffectivelyVisible,
                   "Go offline closes the console (logged out) and shows Connect to FNE, which opens the same codeplug again");
 
+            // Try the demo on the welcome view (for Google Play's reviewers): the demo, offline, saving nothing; Leave demo goes back
+            string demoDir = Path.Combine(Path.GetTempPath(), $"sidetone-democheck-{Environment.ProcessId}");
+            string dataHomeBefore = Environment.GetEnvironmentVariable("XDG_DATA_HOME");
+            try
+            {
+                Directory.CreateDirectory(demoDir);
+                Environment.SetEnvironmentVariable("XDG_DATA_HOME", demoDir);      // never touch the real launcher entry
+                string demoSettings = Path.Combine(demoDir, "settings.json");
+                MainWindow ww = new MainWindow(new GuiOptions { SettingsFile = demoSettings, NoLog = true, NoSocket = true, NoNotify = true });
+                ww.Show();
+                Dispatcher.UIThread.RunJobs();
+                void TapIn(Tap t)
+                {
+                    Point at = t.Root.TranslatePoint(new Point(t.Root.Bounds.Width / 2, t.Root.Bounds.Height / 2), ww) ?? new Point(-1, -1);
+                    ww.MouseDown(at, MouseButton.Left);
+                    ww.MouseUp(at, MouseButton.Left);
+                    Dispatcher.UIThread.RunJobs();
+                    ww.UpdateLayout();
+                }
+                bool welcomeFirst = ww.View.ActiveConsole == null && ww.View.DemoTap.Root.IsEffectivelyVisible;
+                TapIn(ww.View.DemoTap);
+                DispatchConsole demoConsole = ww.View.ActiveConsole;
+                bool demoShown = demoConsole != null && demoConsole.Channels.Count > 0 && ww.View.OfflineTap.Text == "Leave demo" && ww.View.OfflineTap.Root.IsEffectivelyVisible;
+                ww.View.RefreshNow();
+                bool nothingSaved = !File.Exists(demoSettings);
+                TapIn(ww.View.OfflineTap);
+                bool backToWelcome = ww.View.ActiveConsole == null && !ww.View.IsOffline && ww.View.DemoTap.Root.IsEffectivelyVisible && ww.View.OfflineTap.Text == "Go offline";
+                Check(welcomeFirst && demoShown && nothingSaved && backToWelcome && !File.Exists(demoSettings),
+                      "welcome: Try the demo shows the demo system (offline, nothing saved), and Leave demo goes back to the welcome view");
+                ww.Close();
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable("XDG_DATA_HOME", dataHomeBefore);
+                try { Directory.Delete(demoDir, true); } catch (Exception) { }
+            }
+
             w.KeyPressQwerty(PhysicalKey.Q, RawInputModifiers.Control);
             Dispatcher.UIThread.RunJobs();
             Check(closed, "Ctrl+Q closes the window");

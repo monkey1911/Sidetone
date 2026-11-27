@@ -32,7 +32,7 @@ namespace Sidetone.Gui
         private const double MeterWidth = 150;
 
         private readonly GuiOptions opt;
-        private readonly string settingsPath;
+        private string settingsPath;     // null in the demo (Try the demo sets it aside)
         private AppSettings appSettings;
         private string settingsError;      // why the settings file couldn't be read at start-up, for the first console's log
         private string currentPath, currentSystem;     // the open codeplug, and its system (or systems) in words
@@ -139,8 +139,10 @@ namespace Sidetone.Gui
         private readonly StackPanel welcomeRecent = new StackPanel { Spacing = 4 };
         private readonly TextBlock welcomeRecentDesc = new TextBlock { FontSize = 12, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.NoWrap, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 360 };
         private Tap workOfflineTap, recentTap;
-        private StackPanel goOnlineRow, workOfflineRow;
-        private Tap openCodeplug, saveLogsTap, goOnlineTap, offlineTap;
+        private DockPanel goOnlineRow, workOfflineRow;
+        private Tap openCodeplug, saveLogsTap, goOnlineTap, offlineTap, demoTap;
+        private string demoSettingsPath;    // while Try the demo runs: the real settings file, put back by Leave demo
+        private bool demoFromWelcome;
         private string offlinePath, offlineSystem;      // the codeplug and system taken offline, or null
         private readonly TextBlock saveLogsResult = new TextBlock { FontSize = 12, TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Left };
 
@@ -492,7 +494,9 @@ namespace Sidetone.Gui
             workOfflineTap = new Tap("Work offline", WorkOffline, fontSize: 13, minWidth: 160, padY: 6);
             saveLogsTap = new Tap("Save debug logs…", () => _ = SaveDebugLogsFromWelcome(), fontSize: 13, padY: 6);
             recentTap = new Tap(string.Empty, () => { string p = appSettings.LastCodeplug; if (p != null) OpenCodeplug(p, null); }, fontSize: 13, minWidth: 160, padY: 6);
+            demoTap = new Tap("Try the demo", StartDemo, fontSize: 13, minWidth: 160, padY: 6);
             welcomeActions.Children.Add(WelcomeAction(openCodeplug, "Open the codeplug you use with the Windows DVM console."));
+            welcomeActions.Children.Add(WelcomeAction(demoTap, "See a made-up radio system: nothing is connected, sent or saved."));
             goOnlineRow = WelcomeAction(goOnlineTap, "Log in to the FNE with the codeplug taken offline.");
             workOfflineRow = WelcomeAction(workOfflineTap, "Open the last codeplug without logging in: nothing is received or sent.");
             welcomeActions.Children.Add(goOnlineRow);
@@ -593,11 +597,12 @@ namespace Sidetone.Gui
         */
 
         /// <summary>One row of the welcome screen's action list: the button and what it does.</summary>
-        private StackPanel WelcomeAction(Tap tap, string desc)
+        private DockPanel WelcomeAction(Tap tap, string desc)
         {
             TextBlock d = new TextBlock { Text = desc, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap };
             welcomeActionDescs.Add(d);
-            StackPanel row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
+            DockPanel row = new DockPanel { HorizontalSpacing = 10 };     // the text wraps beside the button on a phone
+            DockPanel.SetDock(tap.Root, Dock.Left);
             row.Children.Add(tap.Root);
             row.Children.Add(d);
             return row;
@@ -658,6 +663,8 @@ namespace Sidetone.Gui
                     ShowWelcome("That file couldn't be read.");
                     return;
                 }
+                if (demoFromWelcome)
+                    LeaveDemo();        // Settings' Open codeplug… during the demo: a real console, with the real settings
                 OpenCodeplug(path, null);
                 ApplyTheme();
             }
@@ -1274,6 +1281,11 @@ namespace Sidetone.Gui
         /// </summary>
         public void GoOffline()
         {
+            if (demoFromWelcome)
+            {
+                LeaveDemo();
+                return;
+            }
             DispatchConsole c = console;
             if (c == null || currentPath == null)
                 return;
@@ -1289,6 +1301,41 @@ namespace Sidetone.Gui
                 }
             }
             ShowOffline(path, system);
+            ApplyTheme();
+        }
+
+        /// <summary>The welcome view's Try the demo and the header's Leave demo (self-check hook).</summary>
+        internal Tap DemoTap => demoTap;
+
+        /// <summary>
+        /// Shows the demo system from the welcome view (for anyone without a codeplug, and Google Play's reviewers):
+        /// offline, with the settings file set aside so nothing the demo does is saved.
+        /// </summary>
+        private void StartDemo()
+        {
+            if (demoFromWelcome || offline)
+                return;
+            DebugLog.Mark("console", "trying the demo");
+            demoFromWelcome = true;
+            demoSettingsPath = settingsPath;
+            settingsPath = null;
+            offline = true;
+            appSettings = AppSettings.Load(null, out _);
+            offlineTap.Text = "Leave demo";
+            OpenCodeplug(DemoCodeplug.Write(), null);
+            ApplyTheme();
+        }
+
+        /// <summary>Back from the demo to the welcome view, with the real settings again.</summary>
+        private void LeaveDemo()
+        {
+            CloseConsole();
+            demoFromWelcome = false;
+            offline = false;
+            settingsPath = demoSettingsPath;
+            appSettings = AppSettings.Load(settingsPath, out _);
+            offlineTap.Text = "Go offline";
+            ShowWelcome(null);
             ApplyTheme();
         }
 
@@ -1427,6 +1474,7 @@ namespace Sidetone.Gui
             saveLogsTap.Paint(Brushes.Transparent, p.Dim, p.Edge);
             saveLogsResult.Foreground = p.Dim;
             workOfflineTap.Paint(Brushes.Transparent, p.Text, p.Edge);
+            demoTap.Paint(Brushes.Transparent, p.Text, p.Edge);
             recentTap.Paint(Brushes.Transparent, p.Text, p.Edge);
             welcomeRecentTitle.Foreground = p.Text;
             welcomeRecentDesc.Foreground = p.Dim;
