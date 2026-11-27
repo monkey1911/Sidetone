@@ -8,11 +8,12 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
 
 ## State at hand-off (2026-11-16)
 
-- Version **0.40.2** on `main` (set once, in `src/Directory.Build.props`): **Try the demo** on the welcome view
-  (0.40.2: the phone layout only below 600 wide, was 700, so an unfolded Galaxy Fold gets the tablet layout;
-  the header's buttons are a WrapPanel so Settings stays on screen there. 0.40.1: `ConsoleView.StartDemo`/`LeaveDemo`: offline, `settingsPath` set aside so nothing is saved; the header's Go offline
-  reads Leave demo; Settings' Open codeplug… leaves the demo first), for Google Play's reviewers (App access), who
-  have no codeplug. Welcome rows are DockPanels so the text wraps on a phone. 0.40.0: **tones and announcements go out only on
+- Version **0.40.2** on `main` (set once, in `src/Directory.Build.props`): the phone layout only below 600 wide
+  (`NarrowWidth`, was 700), so an unfolded Galaxy Fold (about 690 dp upright) gets the tablet layout; the header's
+  buttons are a WrapPanel so Settings stays on screen there (the owner's choice, for foldables). 0.40.1: **Try the
+  demo** on the welcome view (`ConsoleView.StartDemo`/`LeaveDemo`: offline, `settingsPath` set aside so nothing is
+  saved; the header's Go offline reads Leave demo; Settings' Open codeplug… leaves the demo first), for Google
+  Play's reviewers (App access), who have no codeplug. Welcome rows are DockPanels so the text wraps on a phone. 0.40.0: **tones and announcements go out only on
   the focused channel** (the owner's choice), never on every listening channel: alert tones, QCII pages, tone and
   DTMF presets, WAV/spoken/time announcements (the "Play on all listening" buttons and Shift+Enter / the TUI's Space
   are gone), the scheduled time announcement when no channel is chosen (it follows the focus), and the channel
