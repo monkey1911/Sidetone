@@ -166,13 +166,25 @@ namespace Sidetone.Gui
             window.View.RefreshNow();
             Dispatcher.UIThread.RunJobs();
 
+            string path = Path.GetFullPath(opt.Screenshot);
+            if (opt.Scale is double scale && scale != 1)
+            {
+                // headless windows render at 1x; --scale draws the same layout sharper (store screenshots at a phone's density)
+                Size size = window.ClientSize;
+                using Avalonia.Media.Imaging.RenderTargetBitmap big = new Avalonia.Media.Imaging.RenderTargetBitmap(
+                    new PixelSize((int)Math.Round(size.Width * scale), (int)Math.Round(size.Height * scale)), new Vector(96 * scale, 96 * scale));
+                big.Render(window);
+                big.Save(path);
+                Console.WriteLine($"sidetone: wrote {path} ({big.PixelSize.Width}x{big.PixelSize.Height})");
+                window.View.CloseConsole();
+                return 0;
+            }
             using var frame = window.CaptureRenderedFrame();
             if (frame == null)
             {
                 Console.Error.WriteLine("error: nothing was rendered");
                 return 1;
             }
-            string path = Path.GetFullPath(opt.Screenshot);
 #pragma warning disable CS0618 // the simple PNG overload is all this needs
             frame.Save(path);
 #pragma warning restore CS0618
