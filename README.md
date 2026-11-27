@@ -14,6 +14,8 @@ There are two front ends over the same console:
 
 **Not yet:** NXDN/analog. What we'd like to add next is in [WISHLIST.md](WISHLIST.md).
 
+**Privacy:** Sidetone collects nothing for its developers; see [PRIVACY.md](PRIVACY.md).
+
 ## Contents
 
 - [Install](#install)
