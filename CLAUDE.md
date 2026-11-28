@@ -472,8 +472,8 @@ every release on the air and on their hardware after publishing it.
   change in myCTRS, the FNE keeps the old one until its next sync. Until then the login stalls without a NAK:
   "login ACK received" then "Sending login request" again every 5 s (the hash isn't answered), or no ACK at
   all. Found 2026-11-27 with peers 113007 and 113017; both connected after the sync.
-- **The FNE version CTRS runs does not pass extended-function replies (radio check acks) back to
-  the peer that sent them.** The radio does answer over the air. Don't ask the owner about it again;
+- **The FNE version CTRS ran before R06A00 (2026-11-28) did not pass extended-function replies (radio check acks) back to
+  the peer that sent them.** The radio does answer over the air. R06A00 is being checked (a radio check, 2026-11-28);
   Sidetone already decodes and logs replies if a newer FNE sends them.
 - Text to speech (`Speech.cs`, `DispatchConsole.Speech.cs`): Piper (`piper`/`piper-tts`, voices
   are `.onnx` + `.onnx.json` in `~/.local/share/piper-voices` or `/usr/share/piper-voices`) or

@@ -42,7 +42,7 @@ Roughly in the order that makes sense to do them.
 
 8. **Page alerts to the console** (as the Windows console's R02A00). Call alerts addressed to the console's RID are only logged and notified today; R02A00 also plays a chime three times and lists the page until acknowledged. A chime through the focused channel's output, an entry in Recent calls (or a page list) that a click acknowledges and silences, and Android's notification as now.
 
-9. **Remote patch status** (as the Windows console's R02A00, `PatchStatusService`). Each console publishes its active patches to the FNE's patch status registry every 5 s (records last 15 s), and the FNE sends back the other consoles' records, so a card shows that another console has patched its talkgroup. fnecore already has the protocol (`FnePeer.PatchStatus.cs`). Needs an FNE with the registry, R06A00 or newer; check what CTRS runs before starting.
+9. **Remote patch status** (as the Windows console's R02A00, `PatchStatusService`). Each console publishes its active patches to the FNE's patch status registry every 5 s (records last 15 s), and the FNE sends back the other consoles' records, so a card shows that another console has patched its talkgroup. fnecore already has the protocol (`FnePeer.PatchStatus.cs`). Needs an FNE with the registry, R06A00 or newer; CTRS runs R06A00 since 2026-11-28.
 
 10. **More from R02A00**, each small, to weigh one at a time:
    - Muting receive while transmitting (a setting; the Windows console's "RX mute during TX").
