@@ -3456,8 +3456,10 @@ zones:
             string patchStart = bc.StartTx(clear);
             bool on = bc.Transmitting;
             bc.StopTx(null);
-            Check(patchStart == null && on && bOut.Tdus.Any(t => t.Dst == 700) && bOut.Tdus.Any(t => t.Dst == 706) && !bOut.Tdus.Any(t => t.Dst == 702),
-                  $"bad encryption settings: the console transmitting into a patch skips such a member ({string.Join(",", bOut.Tdus.Select(t => t.Dst).Distinct())})");
+            // which members it keys is decided at once and logged; their grants go out on the network's own timing
+            string also = bc.SnapshotLog(30).LastOrDefault(l => l.Contains("also transmitting on")) ?? "(none)";
+            Check(patchStart == null && on && also.Contains("Spelled none") && !also.Contains("Typo") && !bOut.Tdus.Any(t => t.Dst == 702),
+                  $"bad encryption settings: the console transmitting into a patch skips such a member ({also})");
             bc.Shutdown();
         }
 
