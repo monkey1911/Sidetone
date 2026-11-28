@@ -8,7 +8,13 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
 
 ## State at hand-off (2026-11-16)
 
-- Version **0.40.2** on `main` (set once, in `src/Directory.Build.props`): the phone layout only below 600 wide
+- Version **0.40.3** on `main` (set once, in `src/Directory.Build.props`): a P25 channel with unusable encryption
+  settings (an unknown `algo`, or an encrypted one without a `keyId` 1–FFFF) receives but never transmits, not even
+  in the clear (`ConsoleChannel.TxConfigError` from R02A00's `Codeplug.ValidateP25EncryptionConfig`; `NoTx` =
+  receive-only or that, checked by `StartTx`, `FocusedTarget`, `SendTone`, scheduled announcements and patch
+  forwarding; cards and the TUI say TX refused; logged once at `Start`). Before, an unknown `algo` went out clear
+  (alg 0x80) while marked encrypted. Also the dvmconsole submodule on R02A00 (fork dev 2f13fdb, fnecore 080d273).
+  0.40.2: the phone layout only below 600 wide
   (`NarrowWidth`, was 700), so an unfolded Galaxy Fold (about 690 dp upright) gets the tablet layout; the header's
   buttons are a WrapPanel so Settings stays on screen there (the owner's choice, for foldables). 0.40.1: **Try the
   demo** on the welcome view (`ConsoleView.StartDemo`/`LeaveDemo`: offline, `settingsPath` set aside so nothing is

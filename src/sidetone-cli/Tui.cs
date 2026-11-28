@@ -909,11 +909,13 @@ namespace Sidetone.Cli
             string patch = PatchName(c);
             screen.Text(ix, y, $"TG {c.Tg}{(c.IsDmr ? $" TS{c.Slot}" : string.Empty)}{(patch != null ? $" {PatchMark(c)} {patch}" : string.Empty)}", patch != null ? Style.Of(Ansi.BrightCyan, bold: true) : Style.Of(Ansi.BrightWhite), iw);
             // a selectable channel switched to clear still decrypts what it receives, so say which half is clear
-            string crypt = c.DmrSecure ? "DMR encrypted" : !c.Encrypted ? "clear" : c.TxSecure ? $"{KeyStore.AlgorithmName(c.TxAlg)} 🔒" : "TX CLEAR 🔓";
-            screen.TextRight(right, y, crypt, c.DmrSecure ? Style.Of(Ansi.BrightYellow) : !c.Encrypted ? dim : c.TxSecure ? Style.Of(Ansi.BrightYellow) : Style.Of(Ansi.BrightRed, bold: true));
+            string crypt = c.DmrSecure ? "DMR encrypted" : c.TxConfigError != null ? "TX refused" : !c.Encrypted ? "clear" : c.TxSecure ? $"{KeyStore.AlgorithmName(c.TxAlg)} 🔒" : "TX CLEAR 🔓";
+            screen.TextRight(right, y, crypt, c.DmrSecure || c.TxConfigError != null ? Style.Of(Ansi.BrightYellow) : !c.Encrypted ? dim : c.TxSecure ? Style.Of(Ansi.BrightYellow) : Style.Of(Ansi.BrightRed, bold: true));
 
             // line 2: key
-            if (c.Encrypted)
+            if (c.TxConfigError != null)
+                screen.Text(ix, y + 1, c.TxConfigError, Style.Of(Ansi.Yellow), iw);
+            else if (c.Encrypted)
             {
                 bool have = keys.TryGet(c.KeyRequestAlg, c.KeyId, out _);
                 screen.Text(ix, y + 1, have ? $"key ✓ {c.KeyId:X4}{(keys.IsLocal(c.KeyRequestAlg, c.KeyId) ? " (file)" : string.Empty)}{(c.Selectable ? "  e: secure/clear" : string.Empty)}"

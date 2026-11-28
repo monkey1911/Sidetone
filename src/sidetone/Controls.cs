@@ -323,6 +323,16 @@ namespace Sidetone.Gui
                 listen.Root.IsVisible = false;
                 bottomRow.IsVisible = false;    // nothing to hear or key on a mode that isn't supported yet
             }
+            else if (chan.TxConfigError != null)
+            {
+                Set(crypt, "TX refused");
+                crypt.Foreground = p.Warn;
+                crypt.IsVisible = true;
+                secureTap.Root.IsVisible = false;
+                Set(keyLine, chan.TxConfigError);
+                keyLine.Foreground = p.Warn;
+                keyTap.Root.IsVisible = false;
+            }
             else if (chan.Encrypted)
             {
                 bool have = console.HasKey(chan);
@@ -418,7 +428,7 @@ namespace Sidetone.Gui
             vol.Foreground = chan.Selected ? p.Text : p.Dim;
             quieter.Paint(Brushes.Transparent, p.Text, p.Edge);
             louder.Paint(Brushes.Transparent, p.Text, p.Edge);
-            pttTap.Root.IsVisible = chan.IsVoice && !chan.Cfg.RxOnly && !chan.DmrSecure;
+            pttTap.Root.IsVisible = chan.IsVoice && !chan.NoTx && !chan.DmrSecure;
             if (st.Activity == ChannelActivity.Transmitting)
                 pttTap.Paint(p.Tx, p.OnStrong);
             else

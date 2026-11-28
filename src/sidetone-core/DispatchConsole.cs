@@ -46,10 +46,16 @@ namespace Sidetone.Core
         public bool IsVoice => IsP25 || IsDmr;
         /// <summary>A DMR channel the codeplug encrypts: transmit is refused (never sent in the clear instead).</summary>
         public bool DmrSecure;
+        /// <summary>Why the codeplug's P25 encryption settings are unusable (an unknown <c>algo</c>, or no valid
+        /// <c>keyId</c>), or null. Such a channel receives but never transmits, not even in the clear (as the
+        /// Windows console since R02A00).</summary>
+        public string TxConfigError;
+        /// <summary>Nothing may be sent on this channel: receive-only, or its encryption settings are unusable.</summary>
+        public bool NoTx => Cfg.RxOnly || TxConfigError != null;
         /// <summary>"tg 100" on P25, "tg 100, TS1" on DMR.</summary>
         public string TgText => IsDmr ? $"tg {Tg}, TS{Slot}" : $"tg {Tg}";
         /// <summary>What PTT sends on this channel: "tg 100, clear", "tg 100, AES-256", "tg 9, TS2, clear".</summary>
-        public string TxDescription => $"{TgText}, {(DmrSecure ? "encrypted DMR, no transmit yet" : TxSecure ? KeyStore.AlgorithmName(TxAlg) : "clear")}";
+        public string TxDescription => $"{TgText}, {(DmrSecure ? "encrypted DMR, no transmit yet" : TxConfigError != null ? "no transmit: bad encryption settings" : TxSecure ? KeyStore.AlgorithmName(TxAlg) : "clear")}";
         public bool Encrypted;
         public byte TxAlg;
         public byte KeyRequestAlg;
@@ -237,6 +243,7 @@ namespace Sidetone.Core
                     bool dmr = c.GetChannelMode() == Codeplug.ChannelMode.DMR;
                     bool enc = p25 && !string.IsNullOrWhiteSpace(c.Algo) && !c.Algo.Equals("none", StringComparison.OrdinalIgnoreCase);
                     uint.TryParse(c.Tgid, out uint tg);
+                    string txConfigError = p25 && !c.ValidateP25EncryptionConfig(out string configError) ? configError : null;
                     ConsoleZone inZone = ZoneFor(zone, zi);
                     Chan made = new Chan
                     {
@@ -249,6 +256,7 @@ namespace Sidetone.Core
                         IsDmr = dmr && tg != 0 && tg <= 0xFFFFFF,
                         Slot = (byte)(c.Slot == 2 ? 2 : 1),
                         DmrSecure = dmr && c.GetDmrAlgorithmId() != 0,
+                        TxConfigError = txConfigError,
                         Encrypted = enc,
                         Selectable = enc && c.SelectableEncryption,
                         TxAlg = enc ? c.GetAlgoId() : P25Defines.P25_ALGO_UNENCRYPT,
@@ -275,11 +283,19 @@ namespace Sidetone.Core
         /// the PTT socket and the PTT device. Call it on the thread that will drive the console (the
         /// front end's UI thread); every other method except the audio and network callbacks expects that thread.
         /// </summary>
+        /// <summary>Logs each channel whose encryption settings are unusable (once, at start: the log file is set by then).</summary>
+        internal void LogTxConfigErrors()
+        {
+            foreach (Chan c in chans.Where(x => x.TxConfigError != null))
+                AddLog($"{c.Cfg.Name}: {c.TxConfigError} Transmit is refused on this channel until the codeplug is fixed.");
+        }
+
         public void Start()
         {
             if (LogFolder != null && logFile == null)
                 LogFiles.Prune(LogFolder, DateTime.UtcNow);
             AddLog($"Sidetone {Version} started{(LogFilePath != null ? $"; log file {LogFilePath}" : string.Empty)}");
+            LogTxConfigErrors();
             foreach (FneLink link in links)
             {
                 try { link.Peer = new CliPeer(link.Cfg, link.Keys, verbose: false); }
@@ -827,6 +843,8 @@ namespace Sidetone.Core
                 return Refuse($"{c.Cfg.Name}: encrypted DMR can't be sent yet (and isn't sent in the clear instead)");
             if (c.Cfg.RxOnly)
                 return Refuse($"{c.Cfg.Name}: receive-only channel");
+            if (c.TxConfigError != null)
+                return Refuse($"{c.Cfg.Name}: not transmitting: {c.TxConfigError}");
             if (!c.Link.CanSend)      // connected (the self-test's stand-in sink counts)
                 return Refuse(links.Count > 1 ? $"not connected to {c.Link.Name} yet" : "not connected to the FNE yet");
             string tgWhy = TalkgroupBlocker(c);
@@ -1569,6 +1587,7 @@ namespace Sidetone.Core
                 : c.IsDmr ? $"{c.Cfg.Name}: tones and announcements aren't sent on DMR channels yet"
                 : !c.IsP25 ? $"{c.Cfg.Name}: can't transmit on a {c.Cfg.Mode} channel"
                 : c.Cfg.RxOnly ? $"{c.Cfg.Name}: receive-only channel"
+                : c.TxConfigError != null ? $"{c.Cfg.Name}: not transmitting: {c.TxConfigError}"
                 : links.Count > 1 && !c.Link.CanSend ? $"{c.Cfg.Name}: its system isn't connected yet"
                 : null;
             return why == null ? new List<Chan> { c } : null;
@@ -1757,6 +1776,8 @@ namespace Sidetone.Core
             HashSet<Chan> sending = new HashSet<Chan>();
             foreach (Chan c in targets)
             {
+                if (c.NoTx)
+                    continue;       // the callers already refuse these; never send on one regardless
                 string tgWhy = TalkgroupBlocker(c);
                 if (tgWhy != null)
                 {

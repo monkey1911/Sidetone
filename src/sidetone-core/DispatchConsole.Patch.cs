@@ -265,7 +265,7 @@ namespace Sidetone.Core
             else
             {
                 List<Chan> sources = members.Where(m => m.PatchRole != PatchRole.TargetOnly).ToList();
-                List<Chan> targets = members.Where(m => m.PatchRole != PatchRole.SourceOnly && !m.Cfg.RxOnly).ToList();
+                List<Chan> targets = members.Where(m => m.PatchRole != PatchRole.SourceOnly && !m.NoTx).ToList();
                 if (members.All(m => m.PatchRole == PatchRole.Both))
                     AddLog($"{name}: {string.Join(" + ", members.Select(m => m.Cfg.Name))}");
                 else
@@ -274,7 +274,7 @@ namespace Sidetone.Core
                     // are targets, and with the targets when the others are sources.
                     bool anySource = members.Any(m => m.PatchRole == PatchRole.SourceOnly), anyTarget = members.Any(m => m.PatchRole == PatchRole.TargetOnly);
                     IEnumerable<string> left = members.Where(m => m.PatchRole == PatchRole.SourceOnly || (m.PatchRole == PatchRole.Both && (anyTarget || !anySource))).Select(m => m.Cfg.Name);
-                    IEnumerable<string> right = members.Where(m => !m.Cfg.RxOnly && (m.PatchRole == PatchRole.TargetOnly || (m.PatchRole == PatchRole.Both && (anySource || !anyTarget)))).Select(m => m.Cfg.Name);
+                    IEnumerable<string> right = members.Where(m => !m.NoTx && (m.PatchRole == PatchRole.TargetOnly || (m.PatchRole == PatchRole.Both && (anySource || !anyTarget)))).Select(m => m.Cfg.Name);
                     List<Chan> both = members.Where(m => m.PatchRole == PatchRole.Both).ToList();
                     AddLog($"{name}: one-way, {string.Join(" + ", left)} → {string.Join(" + ", right)}" +
                            (both.Count >= 2 ? $" ({string.Join(" + ", both.Select(m => m.Cfg.Name))} both ways between them)" : string.Empty));
@@ -375,7 +375,7 @@ namespace Sidetone.Core
             {
                 if (m == source || m.Patch != patch || !m.Selected || !m.IsP25)
                     continue;
-                if (m.Cfg.RxOnly || m.PatchRole == PatchRole.SourceOnly)
+                if (m.NoTx || m.PatchRole == PatchRole.SourceOnly)
                     continue;       // can be heard into the patch, never sent to
                 if (m.Rx?.InCall == true)
                 {
@@ -603,7 +603,7 @@ namespace Sidetone.Core
                 consolePatch = p;
                 foreach (Chan m in chans)
                 {
-                    if (m == c || m.Patch != p || !m.Selected || !m.IsP25 || m.Cfg.RxOnly || m.PatchRole == PatchRole.SourceOnly)
+                    if (m == c || m.Patch != p || !m.Selected || !m.IsP25 || m.NoTx || m.PatchRole == PatchRole.SourceOnly)
                         continue;
                     if (!m.Link.CanSend)
                         continue;

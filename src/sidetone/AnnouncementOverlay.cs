@@ -249,7 +249,7 @@ namespace Sidetone.Gui
                 every.ItemsSource = intervals;
                 every.SelectedIndex = Math.Max(0, Array.IndexOf(Speech.Intervals, t.EveryMinutes));
                 List<Choice> channels = new List<Choice> { new Choice(null, "The focused channel") };
-                channels.AddRange(c.Channels.Where(x => x.IsP25 && !x.Cfg.RxOnly).Select(x => x.Cfg.Name).Distinct().Select(n => new Choice(n, n)));
+                channels.AddRange(c.Channels.Where(x => x.IsP25 && !x.NoTx).Select(x => x.Cfg.Name).Distinct().Select(n => new Choice(n, n)));
                 if (t.Channel != null && channels.All(x => x.Value != t.Channel))
                     channels.Add(new Choice(t.Channel, $"{t.Channel} (not in this system)"));
                 onChannel.ItemsSource = channels;

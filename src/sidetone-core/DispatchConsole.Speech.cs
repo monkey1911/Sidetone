@@ -504,7 +504,7 @@ namespace Sidetone.Core
                 return $"no channel called {t.Channel} in this system";
             if (c.IsDmr)
                 return $"{c.Cfg.Name}: announcements aren't sent on DMR channels yet";
-            if (!c.IsP25 || c.Cfg.RxOnly)
+            if (!c.IsP25 || c.NoTx)
                 return $"{c.Cfg.Name} can't transmit";
             if (!c.Selected)
                 return $"not listening to {c.Cfg.Name} (it has to be listening, so the console knows when it's quiet)";

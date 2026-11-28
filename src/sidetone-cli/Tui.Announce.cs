@@ -213,7 +213,7 @@ namespace Sidetone.Cli
                 Time = TimeAnnouncement
             };
             f.Channels.Add(null);
-            f.Channels.AddRange(chans.Where(c => c.IsP25 && !c.Cfg.RxOnly).Select(c => c.Cfg.Name).Distinct());
+            f.Channels.AddRange(chans.Where(c => c.IsP25 && !c.NoTx).Select(c => c.Cfg.Name).Distinct());
             if (f.Time.Channel != null && !f.Channels.Contains(f.Time.Channel))
                 f.Channels.Add(f.Time.Channel);
             return f;

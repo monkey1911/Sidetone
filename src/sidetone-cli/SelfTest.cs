@@ -250,6 +250,9 @@ namespace Sidetone.Cli
                 // 19d. DMR: receive, clear transmit, recall, recording and history
                 DmrTests(tmp);
 
+                // 19d2. P25 channels whose encryption settings are unusable never transmit
+                BadEncryptionTests(tmp);
+
                 // 19e. tone and DTMF presets, and folding the TUI's bottom panels
                 TonePresetTests(tmp, cp, sys);
 
@@ -3395,6 +3398,67 @@ zones:
             gt.HandleInput(new InputEvent(InputKind.Key, InputKey.Char, 'b'));
             Check(!gt.BottomFolded && gt.Settings.BottomCollapsed == null, "TUI: b opens the bottom panels again");
             gt.Shutdown();
+        }
+
+        private const string BadEncryptionCodeplug = @"
+systems:
+  - { name: ""Crypto FNE"", identity: ""CRYPTO"", address: ""127.0.0.1"", port: 62062, peerId: 9000006, rid: ""3200001"", password: ""PASSWORD"" }
+zones:
+  - name: ""Crypto""
+    channels:
+      - { name: ""Clear"", system: ""Crypto FNE"", tgid: ""700"" }
+      - { name: ""Good"", system: ""Crypto FNE"", tgid: ""701"", algo: ""aes"", keyId: ""50"" }
+      - { name: ""Typo"", system: ""Crypto FNE"", tgid: ""702"", algo: ""aess"", keyId: ""50"" }
+      - { name: ""No key ID"", system: ""Crypto FNE"", tgid: ""703"", algo: ""aes"" }
+      - { name: ""Bad key ID"", system: ""Crypto FNE"", tgid: ""704"", algo: ""des"", keyId: ""zz"" }
+      - { name: ""Selectable"", system: ""Crypto FNE"", tgid: ""705"", algo: ""aes"", keyId: ""0"", selectable_encryption: true }
+      - { name: ""Spelled none"", system: ""Crypto FNE"", tgid: ""706"", algo: ""none"" }
+";
+
+        private static void BadEncryptionTests(string tmp)
+        {
+            string bPath = Path.Combine(tmp, "bad-encryption.yml");
+            File.WriteAllText(bPath, BadEncryptionCodeplug);
+            Codeplug bcp = Program.LoadCodeplug(bPath);
+            Codeplug.System bsys = bcp.Systems[0];
+            DispatchConsole bc = new DispatchConsole(bcp, bsys, TimeSpan.FromSeconds(120), null, null, Path.Combine(tmp, "bad-encryption-settings.json"))
+                { NoAudio = true, HistoryFolder = Path.Combine(tmp, "bad-encryption-history"), RecordingsFolder = Path.Combine(tmp, "bad-encryption-recordings") };
+            CaptureSink bOut = new CaptureSink(new CliPeer(bsys, new KeyStore(), verbose: false));
+            bc.sinkForTest = bOut;
+            bc.consoleRidForTest = 3200001;
+            bc.patchManualPump = true;
+            ConsoleChannel Ch(string name) => bc.Channels.First(c => c.Cfg.Name == name);
+            ConsoleChannel clear = Ch("Clear"), good = Ch("Good"), typo = Ch("Typo"), noKey = Ch("No key ID"), badKey = Ch("Bad key ID"), sel = Ch("Selectable");
+            ConsoleChannel[] bad = { typo, noKey, badKey, sel };
+            bc.LogTxConfigErrors();
+            Check(clear.TxConfigError == null && good.TxConfigError == null && Ch("Spelled none").TxConfigError == null && bad.All(c => c.TxConfigError != null && c.NoTx) &&
+                  typo.TxConfigError.Contains("none, aes, aes256, des, or arc4") && noKey.TxConfigError.Contains("keyId") && badKey.TxConfigError.Contains("keyId") &&
+                  bc.SnapshotLog(30).Count(l => l.Contains("Transmit is refused on this channel")) == 4,
+                  $"bad encryption settings: an unknown algo, a missing, unreadable or zero keyId are each found when the codeplug loads, and logged once ({typo.TxConfigError} / {noKey.TxConfigError})");
+
+            sel.TxClear = true;     // switched to clear: still refused, as the Windows console
+            List<string> refusals = bad.Select(c => bc.StartTx(c)).ToList();
+            Check(refusals.All(w => w != null && w.Contains("not transmitting")) && !bc.Transmitting && bOut.VoiceCount == 0 && bOut.TduCount == 0 &&
+                  typo.TxDescription.Contains("bad encryption settings"),
+                  $"bad encryption settings: PTT is refused on each such channel (a selectable one switched to clear too), and nothing is sent ({refusals[0]})");
+
+            bc.Select(typo);
+            bc.FocusTo(bc.Channels.ToList().IndexOf(typo));
+            string toneWhy = bc.ToneBlocker();
+            bc.SendAlert(1);
+            Check(toneWhy != null && toneWhy.Contains("not transmitting") && bOut.VoiceCount == 0 && bOut.TduCount == 0,
+                  $"bad encryption settings: tones and announcements are refused there too ({toneWhy})");
+
+            // a patch never sends into one: the console talking on Clear reaches the patch's other members only
+            bc.SetPatch(clear, 1);
+            bc.SetPatch(typo, 1);
+            bc.SetPatch(Ch("Spelled none"), 1);
+            string patchStart = bc.StartTx(clear);
+            bool on = bc.Transmitting;
+            bc.StopTx(null);
+            Check(patchStart == null && on && bOut.Tdus.Any(t => t.Dst == 700) && bOut.Tdus.Any(t => t.Dst == 706) && !bOut.Tdus.Any(t => t.Dst == 702),
+                  $"bad encryption settings: the console transmitting into a patch skips such a member ({string.Join(",", bOut.Tdus.Select(t => t.Dst).Distinct())})");
+            bc.Shutdown();
         }
 
         private const string DmrCodeplug = @"
