@@ -9,36 +9,50 @@ is left in it.
 
 Roughly in the order that makes sense to do them.
 
-1. **An automated network test.** Run a real dvmfne in CI with two console instances and check login, voice in both directions and encryption (key delivery from the FNE, then an AES call decrypted on the other side). Today every on-air check is done by hand.
-   - **Waiting** for dvmhost's `r05a06_dev` to be merged into `master` (expected soon, per the FNE's maintainers), so the test is pinned to what CTRS will run rather than a moving dev branch.
+1. **Refuse transmit on a P25 channel with bad encryption settings** (as the Windows console since R02A00). Today any `algo` other than blank or `none` marks the channel encrypted, but an unknown one (a typo such as `aess`) gives algorithm 0x80, unencrypted, so it could go out in the clear while the card says secure; and a `keyId` that isn't hexadecimal is now read as 0. `Codeplug.ValidateP25EncryptionConfig` (in the linked `Codeplug.cs` since the R02A00 submodule move) already checks both: call it when channels are made, so such a channel loads and receives but refuses to transmit, with the reason on the card and in the log. A self-test for each case.
+
+2. **An automated network test.** Run a real dvmfne in CI with two console instances and check login, voice in both directions and encryption (key delivery from the FNE, then an AES call decrypted on the other side). Today every on-air check is done by hand.
+   - ~~**Waiting** for dvmhost's `r05a06_dev` to be merged into `master` (expected soon, per the FNE's maintainers), so the test is pinned to what CTRS will run rather than a moving dev branch.~~ Merged on 2026-11-27 as R06A00 (dvmhost `master` eb2f9ae): pin the test's dvmfne to that commit.
    - The CI script writes the FNE's config, talkgroup rules, peer list, RID list, key container and both codeplugs each run, with made-up passwords and a test key; nothing is committed. The RID list must allow both consoles' radio IDs to request keys, or the FNE silently ignores their key requests.
    - An FNE alone would not have caught the missing grant encrypt flag fixed in 0.24.2: the dvmhost site denied that grant, not the FNE. Catching that would need a dvmhost in the test too (not yet checked whether one runs without a modem).
 
-2. **Analog** (`mode: analog`), for DVM networks that carry it (CTRS doesn't today). As the Windows console's `Docs/Getting Started/03-Configurations/08-Analog.md` describes, group voice is 8 kHz G.711 mu-law in 20 ms frames, routed by talkgroup. The FNE needs `allowAnalogTraffic: true`, and each talkgroup set up in its rules.
+3. **Analog** (`mode: analog`), for DVM networks that carry it (CTRS doesn't today). As the Windows console's `Docs/Getting Started/03-Configurations/08-Analog.md` describes, group voice is 8 kHz G.711 mu-law in 20 ms frames, routed by talkgroup. The FNE needs `allowAnalogTraffic: true`, and each talkgroup set up in its rules.
    - Most of it exists: fnecore's `AnalogVoicePacketCodec` (framing and mu-law), the Windows console's `AnalogTxCall` (paced 20 ms sending; queued audio finishes before the terminator), and `AnalogVoiceInversion` (already compiled into the core).
    - Sidetone's side, following DMR (0.37): a receiver and a transmitter behind `IVoiceReceiver`/`IVoiceTransmitter`, and a third codec for Instant recall, recordings and the history.
    - `scrambler_code` 2–16: Kenwood-style voice inversion, basic obfuscation, not encryption. `selectable_encryption: true` gives the card's scrambled/clear switch, saved per channel.
    - Being plain audio, tones and announcements can go out on analog too (unlike DMR so far).
    - Testing: the self-test, and two Sidetones through an FNE that allows analog. Hearing it on a radio needs an analog gateway or hotspot; the Windows console's scrambler codes are also still waiting for an over-the-air test.
 
-3. **NXDN**, for networks that carry it (CTRS doesn't). The same work as DMR (libvocoder has the codec; the Windows console's `MainWindow.NXDN.cs` and `FneSystemBase.NXDN.cs` show the framing), but with nobody to test it against a radio.
+4. **NXDN**, for networks that carry it (CTRS doesn't). The same work as DMR (libvocoder has the codec; the Windows console's `MainWindow.NXDN.cs` and `FneSystemBase.NXDN.cs` show the framing), but with nobody to test it against a radio.
 
-4. **TMS (text messaging) and Location, over MQTT.** Waiting on others: what the FNE side will publish and accept.
+5. **TMS (text messaging) and Location, over MQTT.** Waiting on others: what the FNE side will publish and accept.
    - ~~**SMPP** (2026-11-22, from the FNE's maintainers): the console will talk to a TMS server over SMPP.~~ Dropped on 2026-11-22: SMPP can't do secure authentication. Both TMS and the new **Location** feature will go over **MQTT** instead.
    - **Client: MQTTnet** (MIT, a .NET Foundation project, 5.2 with a net10.0 build, July 2026). MQTT 3.1.1 and 5.0, TLS including client certificates, user name and password, MQTT 5 enhanced authentication (the extensible part, if the FNE side wants more than a password), WebSockets. Plain C#, so the same on Linux, macOS, Windows and Android. Sidetone is only a client; the broker is on the FNE or server side. MQTTnet's own broker can stand in for it in the self-test, as a local HTTP server does for web streams.
    - Still to learn from the FNE's maintainers: the broker's address and how a console logs in (likely new codeplug keys per system: host, port, TLS, user name, password or certificate); the topic layout and message format (JSON?) for messages, delivery receipts and locations; how radio IDs map to topics; whether location is pushed regularly or asked for.
    - What it would likely take, once known: one MQTT connection per system in the core (connecting and reconnecting with the FNE link, `FneLink`); a messages panel in the GUI and TUI, and notifications for incoming messages (Android's, and the desktop ones); for Location, the last known position per radio in the call list and radio box at first, with a map later if wanted. Secrets (passwords, a client certificate's key) are never logged, as for FNE passwords.
 
-5. **Clocks for other time zones** (as the Windows console's toolbar clocks). A few clocks in the header, each with its own label and zone; the TUI's title line could show one.
+6. **Clocks for other time zones** (as the Windows console's toolbar clocks). A few clocks in the header, each with its own label and zone; the TUI's title line could show one.
 
-6. **Export and import settings** (as the Windows console). One file to move settings to another machine: tabs, outputs, announcements, tone presets. Never key-file passwords; codeplugs stay separate.
+7. **Export and import settings** (as the Windows console). One file to move settings to another machine: tabs, outputs, announcements, tone presets. Never key-file passwords; codeplugs stay separate.
 
-7. **Even Realities G2 glasses on Android** (requested by a user). A heads-up display and PTT for the Android app, through Even's native Android SDK (`com.evenrealities.devices:even-devices-native-android`, a beta). An Even Hub plugin isn't used: it runs in Even's own app, can only connect to web addresses declared in advance (so it couldn't reach Sidetone on the same phone), and Android may suspend it.
+8. **Even Realities G2 glasses on Android** (requested by a user). A heads-up display and PTT for the Android app, through Even's native Android SDK (`com.evenrealities.devices:even-devices-native-android`, a beta). An Even Hub plugin isn't used: it runs in Even's own app, can only connect to web addresses declared in advance (so it couldn't reach Sidetone on the same phone), and Android may suspend it.
    - **Waiting** for an enterprise licence from Even Realities (the SDK turns away glasses not listed in the licence file) and a pair of G2s to test with.
    - The display (576×288, monochrome green, text only in the native SDK's docs): the current call (`SYSTEM:CHANNEL:RADIOID/ALIAS`), receiving or transmitting, the time limit's countdown, and pages as they arrive.
    - PTT: long press and release on the R1 ring or the temple touchpads, through the same hold-to-talk path as other PTT keys (and the latch after a cut-off). Still to measure: the Bluetooth delay, and whether Even's own menu takes some presses first.
    - Microphone, optional: the glasses' mics (16 kHz PCM, resampled to 8 kHz). The phone's mic and Bluetooth headsets already work. The G2 has no speakers, so receive audio stays on the phone or headset.
    - Testing: by hand only. CI has no glasses.
+
+9. **Page alerts to the console** (as the Windows console's R02A00). Call alerts addressed to the console's RID are only logged and notified today; R02A00 also plays a chime three times and lists the page until acknowledged. A chime through the focused channel's output, an entry in Recent calls (or a page list) that a click acknowledges and silences, and Android's notification as now.
+
+10. **Remote patch status** (as the Windows console's R02A00, `PatchStatusService`). Each console publishes its active patches to the FNE's patch status registry every 5 s (records last 15 s), and the FNE sends back the other consoles' records, so a card shows that another console has patched its talkgroup. fnecore already has the protocol (`FnePeer.PatchStatus.cs`). Needs an FNE with the registry, R06A00 or newer; check what CTRS runs before starting.
+
+11. **More from R02A00**, each small, to weigh one at a time:
+   - Muting receive while transmitting (a setting; the Windows console's "RX mute during TX").
+   - Up to four more PTT keys, each assigned to a channel and shown in its colour on the card.
+   - Holding several channels' PTT at once, and transmitting to a multi-select group together.
+   - ~~fnecore's reconnect backoff and HA list fix~~ Done with the submodule move to R02A00 (fnecore 70e9d60, then 080d273).
+
+12. **Use fnecore's `SendP25TDU` for grant demands** instead of Sidetone's own `CliPeer.BuildTdu`, now that fnecore sets the grant encrypt flag (080d273, in the submodule since 2f13fdb). Less code of our own; keep the self-test that checks the control byte (0x80, plus 0x08 when encrypted).
 
 ## Partially implemented
 
@@ -49,8 +63,8 @@ Roughly in the order that makes sense to do them.
   - Still to do, if DTMF matters on the air: build IMBE codewords that decode to each digit's tone pair (as the single-tone table was), instead of encoding audio.
 - ~~**DMR**~~, ~~**and more than one FNE system at a time.**~~ (Several systems at once: done in 0.33; DMR receive and clear transmit: done in 0.37.) libvocoder already has the codec, the cards already show modes that aren't supported yet, and the Windows console in the submodule handles DMR (`MainWindow.DMR.cs`, `FneSystemBase.DMR.cs`, `DMR/DmrTxCall.cs`) to follow, so the work is a receiver and a transmitter. CTRS can carry DMR, but on a second FNE of its own (what setting it up last time required), so for a dispatcher DMR goes with connecting to several FNEs at once, as the Windows console can: one console with the P25 and DMR channels together.
   - ~~Until then, a second Sidetone with a codeplug for the DMR FNE works, in its own window.~~ Done in 0.33: one console connects to every system in the codeplug (each turned off in Settings if wanted), so DMR channels on the DMR FNE will sit beside the P25 ones once DMR itself is done.
-  - Testing without radios: two Sidetones through the network test's FNE (item 1). On the air needs someone on CTRS with a DMR radio; until then the release notes say DMR is untested on the air.
-  - Ask the FNE's maintainers whether the `r05a06_dev` merge (DMR grant work on 2026-11-10) still needs a separate FNE for DMR.
+  - Testing without radios: two Sidetones through the network test's FNE (item 2). On the air needs someone on CTRS with a DMR radio; until then the release notes say DMR is untested on the air.
+  - Ask the FNE's maintainers whether R06A00 (the `r05a06_dev` merge, with DMR grant work from 2026-11-10) still needs a separate FNE for DMR.
   - Still to do: encrypted DMR. Received encrypted calls show and are muted, and an encrypted DMR channel refuses to transmit, as in the Windows console.
   - Still to do: DMR channels in patches (P25 to DMR needs transcoding between IMBE and AMBE).
   - Still to do: alert tones, QCII pages, the channel marker and announcements on DMR channels.
