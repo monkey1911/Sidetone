@@ -260,7 +260,7 @@ src/sidetone/               graphical front end (Avalonia 12.1.6), namespace Sid
                             MainWindow only its desktop frame
 src/sidetone-android/       Sidetone for Android (net10.0-android, API 30+, targets 36, org.sidetone.app): compiles
                             src/sidetone's sources (all but Program.cs) and adds the activity, audio, service, TTS, keystore
-extern/dvmconsole           submodule: monkey1911/dvmconsole-ARM64, branch dev (the Windows console)
+extern/dvmconsole           submodule: monkey1911/dvmconsole-ARM64, branch dev (the Windows console, R02A00)
 extern/dvmvocoder           submodule: DVMProject/dvmvocoder main at e7ab96e (v0.2 plus the m_autoGain fix), built by CMake into libvocoder.so
 packaging/                  icons (sidetone-1024.png for macOS), macos/ (universal .app), windows/ (Inno Setup), sidetone.desktop (for packages; the dvmcli/dvmgui wrappers went in 0.29),
                             appimage/ (AppRun, build-appimage.sh: pinned appimagetool 1.9.1 + runtime 20251108,
@@ -434,8 +434,11 @@ every release on the air and on their hardware after publishing it.
 - **Upstream DVMConsole is `main` again** since 2026-11-27: the R02A00 release (547832a) merged
   `r01a02_dev` into `main`; the new dev branch is `r02a02_dev`. Before that, `main` was abandoned
   (net8.0, last commit 2026-03) and `r01a02_dev` was the live branch. The owner's fork
-  (monkey1911/dvmconsole-ARM64, our submodule, at 7082da1 from 2026-11-02 on its `dev` branch) is
-  behind R02A00. Compare against upstream `main` (or `r02a02_dev`) when checking what the Windows
+  (monkey1911/dvmconsole-ARM64, our submodule) has R02A00 on its `dev` branch since 2026-11-28 (PR #4,
+  9810c4a: upstream's tree with the fork's ARM64 build and AmbeHost replayed on it, ARM64 added to
+  upstream's `build-packages.yml`); the submodule is at that commit, fnecore at 70e9d60. Upstream squashes
+  its releases, so a later update is the same replay, not a merge. `Log.cs` is no longer linked (nothing
+  in Sidetone used it). Compare against upstream `main` (or `r02a02_dev`) when checking what the Windows
   console does. dvmhost merged `r05a06_dev` into `master` the same day (R06A00, eb2f9ae; its dev
   branch is now `r06a02_dev`), and fnecore's `master` is 70e9d60, which R02A00 pins. None of them
   set the grant encrypt flag below (checked 2026-11-27), so `CliPeer.BuildTdu` stays.

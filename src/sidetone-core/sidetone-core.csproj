@@ -24,7 +24,6 @@
     <Compile Include="$(DvmConsoleSrc)DMR/DmrTxCall.cs" Link="dvmconsole\DMR\DmrTxCall.cs" />
     <Compile Include="$(DvmConsoleSrc)TonePresetFileImporter.cs" Link="dvmconsole\TonePresetFileImporter.cs" />
     <Compile Include="$(DvmConsoleSrc)VocoderToneLookupTable.cs" Link="dvmconsole\VocoderToneLookupTable.cs" />
-    <Compile Include="$(DvmConsoleSrc)Log.cs" Link="dvmconsole\Log.cs" />
     <Compile Include="$(DvmConsoleSrc)AliasTools.cs" Link="dvmconsole\AliasTools.cs" />
     <Compile Include="$(DvmConsoleSrc)RadioAliasCache.cs" Link="dvmconsole\RadioAliasCache.cs" />
     <Compile Include="$(DvmConsoleSrc)RadioAliasDownload.cs" Link="dvmconsole\RadioAliasDownload.cs" />
