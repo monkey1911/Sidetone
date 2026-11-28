@@ -243,8 +243,8 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
   desktop's phone layout
   (Piper is installed on the owner's Surface, through `uv tool install piper-tts`, with the
   en_US-lessac-medium voice).
-- Next on the wishlist ("To be implemented"): a CI test against a real dvmfne (waiting for dvmhost's
-  `r05a06_dev` to merge into `master`); analog (`mode: analog`, G.711 mu-law; for any DVM network, though CTRS doesn't carry it);
+- Next on the wishlist ("To be implemented"): a CI test against a real dvmfne (no longer waiting: dvmhost's
+  `r05a06_dev` merged into `master` as R06A00, eb2f9ae, on 2026-11-27); analog (`mode: analog`, G.711 mu-law; for any DVM network, though CTRS doesn't carry it);
   NXDN; TMS and Location over MQTT (waiting on details); then Windows-console parity items
   (extra clocks, settings export, hiding panels). Sidetone is for any DVM
   network, not only CTRS (the owner's word). DMR's leftovers (encryption, patches, tones and
@@ -431,10 +431,14 @@ every release on the air and on their hardware after publishing it.
 
 ## Domain facts worth knowing
 
-- **Upstream DVMConsole's live branch is `r01a02_dev`.** `main` on DVMProject/dvmconsole is
-  essentially abandoned (still net8.0, last commit 2026-03). The owner's fork
-  (monkey1911/dvmconsole-ARM64, our submodule) follows `r01a02_dev` on its `dev` branch. Compare
-  against `r01a02_dev` when checking what the Windows console does, never `main`.
+- **Upstream DVMConsole is `main` again** since 2026-11-27: the R02A00 release (547832a) merged
+  `r01a02_dev` into `main`; the new dev branch is `r02a02_dev`. Before that, `main` was abandoned
+  (net8.0, last commit 2026-03) and `r01a02_dev` was the live branch. The owner's fork
+  (monkey1911/dvmconsole-ARM64, our submodule, at 7082da1 from 2026-11-02 on its `dev` branch) is
+  behind R02A00. Compare against upstream `main` (or `r02a02_dev`) when checking what the Windows
+  console does. dvmhost merged `r05a06_dev` into `master` the same day (R06A00, eb2f9ae; its dev
+  branch is now `r06a02_dev`), and fnecore's `master` is 70e9d60, which R02A00 pins. None of them
+  set the grant encrypt flag below (checked 2026-11-27), so `CliPeer.BuildTdu` stays.
 
 - **Grant demands for encrypted calls must carry the grant encrypt flag** (control byte 14:
   `0x80` grant demand, `0x08` grant encrypt; dvmhost's `NET_CTRL_*` in `BaseNetwork.h`). A dvmhost
