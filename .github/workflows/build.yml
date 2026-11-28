@@ -333,6 +333,8 @@ jobs:
           readelf="$ANDROID_NDK_LATEST_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
           rm -rf out/apk-libs && mkdir -p out/apk-libs && unzip -q -o "$apk" 'lib/arm64-v8a/*' 'lib/x86_64/*' -d out/apk-libs
           bad=0
+          # desktop libraries from NuGet don't belong in the app (Play flagged libportaudio.so, 0.40.3)
+          if find out/apk-libs -name 'libportaudio.so' | grep -q .; then echo "::error::libportaudio.so is in the APK"; bad=1; fi
           for so in $(find out/apk-libs -name '*.so' | sort); do
             min=$("$readelf" -lW "$so" | awk '$1 == "LOAD" { print $NF }' | sort -u | head -1)
             if [ $((min)) -lt 16384 ]; then echo "::error::$so: LOAD alignment $min (needs 0x4000)"; bad=1; else echo "  ok $min ${so#out/apk-libs/}"; fi

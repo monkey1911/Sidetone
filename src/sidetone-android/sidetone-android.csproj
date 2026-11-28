@@ -63,4 +63,13 @@
     <AndroidNativeLibrary Include="..\..\build\android\x86_64\libvocoder.so" Abi="x86_64" Condition="Exists('..\..\build\android\x86_64\libvocoder.so')" />
   </ItemGroup>
 
+  <!-- PortAudioSharp2's desktop PortAudio (glibc, for macOS's backend) reaches android-x64, whose RID inherits
+       linux-x64; Android never loads it (AndroidAudioBackend), and Play flags it as built with an old NDK -->
+  <Target Name="DropDesktopPortAudio" AfterTargets="ResolvePackageAssets">
+    <ItemGroup>
+      <NativeCopyLocalItems Remove="@(NativeCopyLocalItems)" Condition="'%(Filename)' == 'libportaudio'" />
+      <RuntimeTargetsCopyLocalItems Remove="@(RuntimeTargetsCopyLocalItems)" Condition="'%(Filename)' == 'libportaudio'" />
+    </ItemGroup>
+  </Target>
+
 </Project>
