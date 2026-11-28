@@ -436,15 +436,16 @@ every release on the air and on their hardware after publishing it.
   (net8.0, last commit 2026-03) and `r01a02_dev` was the live branch. The owner's fork
   (monkey1911/dvmconsole-ARM64, our submodule) has R02A00 on its `dev` branch since 2026-11-28 (PR #4,
   9810c4a: upstream's tree with the fork's ARM64 build and AmbeHost replayed on it, ARM64 added to
-  upstream's `build-packages.yml`); the submodule is at that commit, fnecore at 70e9d60. Upstream squashes
+  upstream's `build-packages.yml`); then upstream's grant-encrypt hotfix 82cefb8 (PR #5, 2f13fdb); the
+  submodule is at 2f13fdb, fnecore at 080d273. Upstream squashes
   its releases, so a later update is the same replay, not a merge. `Log.cs` is no longer linked (nothing
   in Sidetone used it). Compare against upstream `main` (or `r02a02_dev`) when checking what the Windows
   console does. dvmhost merged `r05a06_dev` into `master` the same day (R06A00, eb2f9ae; its dev
   branch is now `r06a02_dev`), and fnecore's `master` is 70e9d60, which R02A00 pins. The grant
   encrypt flag below was fixed upstream on 2026-11-27, after R02A00: fnecore `r06a02_dev` 080d273 (#18,
   `SendP25TDU(..., encrypted)`) and dvmconsole `r02a02_dev` 82cefb8 (hotfix passing it on every grant
-  demand). Neither is in R02A00, our fork or fnecore `master` yet; `CliPeer.BuildTdu` sets it anyway, and
-  could give way to fnecore's `SendP25TDU` once a release carries 080d273.
+  demand). Not in R02A00 or fnecore `master` yet, but in our fork and submodule since 2f13fdb;
+  `CliPeer.BuildTdu` sets it anyway, and could now give way to fnecore's `SendP25TDU`.
 
 - **Grant demands for encrypted calls must carry the grant encrypt flag** (control byte 14:
   `0x80` grant demand, `0x08` grant encrypt; dvmhost's `NET_CTRL_*` in `BaseNetwork.h`). A dvmhost
