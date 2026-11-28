@@ -8,7 +8,10 @@ built versions 0.4 to 0.23; read it, then `README.md` (user-facing behaviour) an
 
 ## State at hand-off (2026-11-16)
 
-- Version **0.40.3** on `main` (set once, in `src/Directory.Build.props`): a P25 channel with unusable encryption
+- Version **0.40.4** on `main` (set once, in `src/Directory.Build.props`): the Android app no longer carries
+  PortAudioSharp2's desktop `libportaudio.so` (android-x64 inherits linux-x64's NuGet native assets; Play flagged it
+  as built with an old NDK); `DropDesktopPortAudio` in the Android csproj removes it, and CI's 16 KB step fails if it
+  returns. 0.40.3: a P25 channel with unusable encryption
   settings (an unknown `algo`, or an encrypted one without a `keyId` 1–FFFF) receives but never transmits, not even
   in the clear (`ConsoleChannel.TxConfigError` from R02A00's `Codeplug.ValidateP25EncryptionConfig`; `NoTx` =
   receive-only or that, checked by `StartTx`, `FocusedTarget`, `SendTone`, scheduled announcements and patch
