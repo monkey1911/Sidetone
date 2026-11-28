@@ -3453,13 +3453,26 @@ zones:
             bc.SetPatch(clear, 1);
             bc.SetPatch(typo, 1);
             bc.SetPatch(Ch("Spelled none"), 1);
-            string patchStart = bc.StartTx(clear);
-            bool on = bc.Transmitting;
-            bc.StopTx(null);
+            IAudioBackend realAudio = AudioBackend.Current;
+            string patchStart;
+            bool on;
+            try
+            {
+                AudioBackend.Current = new FakeAudio();     // a microphone everywhere (CI runners have none)
+                bc.NoAudio = false;
+                patchStart = bc.StartTx(clear);
+                on = bc.Transmitting;
+                bc.StopTx(null);
+            }
+            finally
+            {
+                bc.NoAudio = true;
+                AudioBackend.Current = realAudio;
+            }
             // which members it keys is decided at once and logged; their grants go out on the network's own timing
             string also = bc.SnapshotLog(30).LastOrDefault(l => l.Contains("also transmitting on")) ?? "(none)";
             Check(patchStart == null && on && also.Contains("Spelled none") && !also.Contains("Typo") && !bOut.Tdus.Any(t => t.Dst == 702),
-                  $"bad encryption settings: the console transmitting into a patch skips such a member ({also})");
+                  $"bad encryption settings: the console transmitting into a patch skips such a member ({patchStart ?? also})");
             bc.Shutdown();
         }
 
